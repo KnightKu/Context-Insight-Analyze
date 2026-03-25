@@ -65,7 +65,7 @@ static int read_small_text_file(const char *path, char *buf, size_t buf_len) {
 }
 
 static bool is_pci_bdf(const char *s) {
-    // Accept both "0000:5e:00.0" and "5e:00.0".
+    // 兼容 "0000:5e:00.0" 与 "5e:00.0"
     unsigned int a = 0, b = 0, c = 0, d = 0;
     if (sscanf(s, "%x:%x:%x.%x", &a, &b, &c, &d) == 4) {
         return true;
@@ -289,7 +289,7 @@ int nvme_read(const char *device_name,
             uint64_t remaining = seg_len - offset;
             uint64_t chunk_size = remaining > NVME_READ_CHUNK_BYTES ? NVME_READ_CHUNK_BYTES : remaining;
             uint32_t lba_count = (uint32_t)(chunk_size / NVME_LBA_SIZE_BYTES);
-            // Read only from cwd14/15 backup LBA in a linear sequence.
+            // 仅使用 cwd14/15 backup LBA：从 backup 基址线性递增读取。
             uint64_t chunk_lba = backup_lba + ((seg_offset + offset) / NVME_LBA_SIZE_BYTES);
 
             nvme_io_ctx_t io_ctx;
