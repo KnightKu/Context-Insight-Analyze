@@ -51,6 +51,65 @@ static int write_all(int fd, const void *buf, size_t count) {
     return 0;
 }
 
+static uint64_t get_mdts_chunk_bytes_or_default(int nvme_fd) {
+    unsigned char *id_ctrl = NULL;
+    if (posix_memalign((void **)&id_ctrl, 4096, 4096) != 0) {
+        fprintf(stderr, "posix_memalign failed for identify buffer, fallback chunk=%llu\n",
+                (unsigned long long)NVME_READ_CHUNK_BYTES);
+        return NVME_READ_CHUNK_BYTES;
+    }
+    memset(id_ctrl, 0, 4096);
+
+    struct nvme_admin_cmd admin_cmd;
+    memset(&admin_cmd, 0, sizeof(admin_cmd));
+    admin_cmd.opcode = 0x06;  // Identify
+    admin_cmd.nsid = 0;
+    admin_cmd.addr = (uint64_t)(uintptr_t)id_ctrl;
+    admin_cmd.data_len = 4096;
+    admin_cmd.cdw10 = 1;      // CNS = 1, Identify Controller
+
+    if (ioctl(nvme_fd, NVME_IOCTL_ADMIN_CMD, &admin_cmd) < 0) {
+        fprintf(stderr, "identify controller failed: %s, fallback chunk=%llu\n",
+                strerror(errno), (unsigned long long)NVME_READ_CHUNK_BYTES);
+        free(id_ctrl);
+        return NVME_READ_CHUNK_BYTES;
+    }
+
+    // Identify Controller data structure: byte 77 is MDTS.
+    uint8_t mdts = id_ctrl[77];
+    free(id_ctrl);
+
+    if (mdts == 0U) {
+        // 0 means no MDTS limit reported, keep using configured default chunk.
+        fprintf(stderr, "mdts=0 (no limit reported), use fallback chunk=%llu\n",
+                (unsigned long long)NVME_READ_CHUNK_BYTES);
+        return NVME_READ_CHUNK_BYTES;
+    }
+
+    if (mdts >= 52U) {
+        fprintf(stderr, "mdts=%u too large, fallback chunk=%llu\n",
+                (unsigned int)mdts, (unsigned long long)NVME_READ_CHUNK_BYTES);
+        return NVME_READ_CHUNK_BYTES;
+    }
+
+    uint64_t chunk_bytes = (1ULL << (12U + (uint64_t)mdts));
+    if (chunk_bytes < NVME_LBA_SIZE_BYTES || (chunk_bytes % NVME_LBA_SIZE_BYTES) != 0ULL) {
+        fprintf(stderr, "invalid mdts-derived chunk=%llu, fallback chunk=%llu\n",
+                (unsigned long long)chunk_bytes, (unsigned long long)NVME_READ_CHUNK_BYTES);
+        return NVME_READ_CHUNK_BYTES;
+    }
+
+    if (chunk_bytes > (uint64_t)UINT32_MAX) {
+        fprintf(stderr, "mdts-derived chunk too large=%llu, fallback chunk=%llu\n",
+                (unsigned long long)chunk_bytes, (unsigned long long)NVME_READ_CHUNK_BYTES);
+        return NVME_READ_CHUNK_BYTES;
+    }
+
+    fprintf(stderr, "mdts=%u, read chunk=%llu bytes\n",
+            (unsigned int)mdts, (unsigned long long)chunk_bytes);
+    return chunk_bytes;
+}
+
 int nvme_read(const char *device_name,
               uint64_t lba,
               uint64_t data_len,
@@ -91,8 +150,18 @@ int nvme_read(const char *device_name,
         return -1;
     }
 
+    uint64_t read_chunk_bytes = get_mdts_chunk_bytes_or_default(nvme_fd);
+    if ((read_chunk_bytes % NVME_LBA_SIZE_BYTES) != 0ULL) {
+        errno = EINVAL;
+        fprintf(stderr, "read chunk must be %llu-byte aligned, got %llu\n",
+                (unsigned long long)NVME_LBA_SIZE_BYTES, (unsigned long long)read_chunk_bytes);
+        close(out_fd);
+        close(nvme_fd);
+        return -1;
+    }
+
     void *chunk_buf = NULL;
-    if (posix_memalign(&chunk_buf, 4096, NVME_READ_CHUNK_BYTES) != 0) {
+    if (posix_memalign(&chunk_buf, 4096, (size_t)read_chunk_bytes) != 0) {
         fprintf(stderr, "posix_memalign failed\n");
         close(out_fd);
         close(nvme_fd);
@@ -112,7 +181,7 @@ int nvme_read(const char *device_name,
     uint64_t total_read_bytes = 0;
     while (offset < data_len) {
         uint64_t remaining = data_len - offset;
-        uint64_t chunk_size = remaining > NVME_READ_CHUNK_BYTES ? NVME_READ_CHUNK_BYTES : remaining;
+        uint64_t chunk_size = remaining > read_chunk_bytes ? read_chunk_bytes : remaining;
         uint64_t chunk_lba = offset / NVME_LBA_SIZE_BYTES;
         uint64_t backup_lba = lba + chunk_lba;
 
