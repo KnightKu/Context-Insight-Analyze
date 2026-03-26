@@ -1,25 +1,39 @@
+#define _POSIX_C_SOURCE 200809L
 #include "nvme_read.h"
 
 #include <errno.h>
 #include <fcntl.h>
 #include <linux/nvme_ioctl.h>
-#include <pthread.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
+#include <time.h>
 #include <unistd.h>
 
-typedef struct {
-    const char *device_name;
-    const char *filename_prefix;
-    uint64_t backup_lba_base;
-    uint64_t segment_offset_bytes;
-    uint64_t segment_len_bytes;
-    size_t segment_index;
-    int rc;
-} nvme_thread_arg_t;
+static int default_post_action(void *ctx, void *data, uint32_t data_len, uint64_t offset_bytes) {
+    (void)ctx;
+    (void)data;
+    (void)data_len;
+    (void)offset_bytes;
+    return 0;
+}
+
+static nvme_read_post_action_t g_post_action = default_post_action;
+static void *g_post_action_ctx = NULL;
+
+int nvme_read_set_post_action(nvme_read_post_action_t action, void *ctx) {
+    if (action == NULL) {
+        g_post_action = default_post_action;
+        g_post_action_ctx = NULL;
+        return 0;
+    }
+
+    g_post_action = action;
+    g_post_action_ctx = ctx;
+    return 0;
+}
 
 static int write_all(int fd, const void *buf, size_t count) {
     const unsigned char *p = (const unsigned char *)buf;
@@ -35,86 +49,6 @@ static int write_all(int fd, const void *buf, size_t count) {
         written += (size_t)n;
     }
     return 0;
-}
-
-static void *read_segment_worker(void *arg_ptr) {
-    nvme_thread_arg_t *arg = (nvme_thread_arg_t *)arg_ptr;
-    arg->rc = -1;
-
-    int nvme_fd = open(arg->device_name, O_RDONLY);
-    if (nvme_fd < 0) {
-        fprintf(stderr, "open %s failed: %s\n", arg->device_name, strerror(errno));
-        return NULL;
-    }
-
-    char output_name[4096];
-    int name_len = snprintf(output_name, sizeof(output_name), "%s_part%04zu.bin",
-                            arg->filename_prefix, arg->segment_index);
-    if (name_len < 0 || (size_t)name_len >= sizeof(output_name)) {
-        fprintf(stderr, "output filename too long for segment %zu\n", arg->segment_index);
-        close(nvme_fd);
-        return NULL;
-    }
-
-    int out_fd = open(output_name, O_CREAT | O_TRUNC | O_WRONLY, 0644);
-    if (out_fd < 0) {
-        fprintf(stderr, "open %s failed: %s\n", output_name, strerror(errno));
-        close(nvme_fd);
-        return NULL;
-    }
-
-    void *chunk_buf = NULL;
-    if (posix_memalign(&chunk_buf, 4096, NVME_READ_CHUNK_BYTES) != 0) {
-        fprintf(stderr, "posix_memalign failed for segment %zu\n", arg->segment_index);
-        close(out_fd);
-        close(nvme_fd);
-        return NULL;
-    }
-
-    uint64_t offset = 0;
-    while (offset < arg->segment_len_bytes) {
-        uint64_t remaining = arg->segment_len_bytes - offset;
-        uint64_t chunk_size = remaining > NVME_READ_CHUNK_BYTES ? NVME_READ_CHUNK_BYTES : remaining;
-        uint64_t chunk_lba =
-            (arg->segment_offset_bytes + offset) / NVME_LBA_SIZE_BYTES;
-        uint64_t backup_lba = arg->backup_lba_base + chunk_lba;
-
-        struct nvme_passthru_cmd cmd;
-        memset(&cmd, 0, sizeof(cmd));
-        cmd.opcode = 0x02;      // NVM Read
-        cmd.nsid = 1;
-        cmd.addr = (uint64_t)(uintptr_t)chunk_buf;
-        cmd.data_len = (uint32_t)chunk_size;
-        cmd.cdw10 = (uint32_t)(chunk_lba & 0xFFFFFFFFULL);
-        cmd.cdw11 = (uint32_t)((chunk_lba >> 32) & 0xFFFFFFFFULL);
-        cmd.cdw12 = (uint32_t)(chunk_size / NVME_LBA_SIZE_BYTES) - 1U;
-        cmd.cdw14 = (uint32_t)(backup_lba & 0xFFFFFFFFULL);
-        cmd.cdw15 = (uint32_t)((backup_lba >> 32) & 0xFFFFFFFFULL);
-
-        if (ioctl(nvme_fd, NVME_IOCTL_IO_CMD, &cmd) < 0) {
-            fprintf(stderr, "ioctl failed in segment %zu: %s\n", arg->segment_index, strerror(errno));
-            free(chunk_buf);
-            close(out_fd);
-            close(nvme_fd);
-            return NULL;
-        }
-
-        if (write_all(out_fd, chunk_buf, (size_t)chunk_size) != 0) {
-            fprintf(stderr, "write failed for %s: %s\n", output_name, strerror(errno));
-            free(chunk_buf);
-            close(out_fd);
-            close(nvme_fd);
-            return NULL;
-        }
-
-        offset += chunk_size;
-    }
-
-    free(chunk_buf);
-    close(out_fd);
-    close(nvme_fd);
-    arg->rc = 0;
-    return NULL;
 }
 
 int nvme_read(const char *device_name,
@@ -144,71 +78,105 @@ int nvme_read(const char *device_name,
         return -1;
     }
 
-    uint64_t segment_count_u64 =
-        (data_len + NVME_SPLIT_BYTES - 1ULL) / NVME_SPLIT_BYTES;
-    if (segment_count_u64 == 0ULL) {
-        errno = EINVAL;
-        fprintf(stderr, "invalid segment count for data_len=%llu\n", (unsigned long long)data_len);
+    int nvme_fd = open(device_name, O_RDONLY);
+    if (nvme_fd < 0) {
+        fprintf(stderr, "open %s failed: %s\n", device_name, strerror(errno));
         return -1;
     }
 
-    size_t segment_count = (size_t)segment_count_u64;
-    size_t start = 0;
-    while (start < segment_count) {
-        size_t batch = segment_count - start;
-        if (batch > NVME_MAX_THREADS) {
-            batch = NVME_MAX_THREADS;
-        }
+    int out_fd = open(filename, O_CREAT | O_TRUNC | O_WRONLY, 0644);
+    if (out_fd < 0) {
+        fprintf(stderr, "open %s failed: %s\n", filename, strerror(errno));
+        close(nvme_fd);
+        return -1;
+    }
 
-        pthread_t threads[NVME_MAX_THREADS];
-        nvme_thread_arg_t args[NVME_MAX_THREADS];
-        memset(threads, 0, sizeof(threads));
-        memset(args, 0, sizeof(args));
+    void *chunk_buf = NULL;
+    if (posix_memalign(&chunk_buf, 4096, NVME_READ_CHUNK_BYTES) != 0) {
+        fprintf(stderr, "posix_memalign failed\n");
+        close(out_fd);
+        close(nvme_fd);
+        return -1;
+    }
 
-        for (size_t i = 0; i < batch; ++i) {
-            size_t seg_idx = start + i;
-            uint64_t seg_offset = (uint64_t)seg_idx * NVME_SPLIT_BYTES;
-            uint64_t seg_len = data_len - seg_offset;
-            if (seg_len > NVME_SPLIT_BYTES) {
-                seg_len = NVME_SPLIT_BYTES;
-            }
+    struct timespec ts_begin;
+    if (clock_gettime(CLOCK_MONOTONIC, &ts_begin) != 0) {
+        fprintf(stderr, "clock_gettime begin failed: %s\n", strerror(errno));
+        free(chunk_buf);
+        close(out_fd);
+        close(nvme_fd);
+        return -1;
+    }
 
-            args[i].device_name = device_name;
-            args[i].filename_prefix = filename;
-            // cdw10/cdw11 默认从 0 LBA 开始递增。
-            args[i].backup_lba_base = lba;
-            args[i].segment_offset_bytes = seg_offset;
-            args[i].segment_len_bytes = seg_len;
-            args[i].segment_index = seg_idx;
-            args[i].rc = -1;
+    uint64_t offset = 0;
+    uint64_t total_read_bytes = 0;
+    while (offset < data_len) {
+        uint64_t remaining = data_len - offset;
+        uint64_t chunk_size = remaining > NVME_READ_CHUNK_BYTES ? NVME_READ_CHUNK_BYTES : remaining;
+        uint64_t chunk_lba = offset / NVME_LBA_SIZE_BYTES;
+        uint64_t backup_lba = lba + chunk_lba;
 
-            int rc = pthread_create(&threads[i], NULL, read_segment_worker, &args[i]);
-            if (rc != 0) {
-                errno = rc;
-                fprintf(stderr, "pthread_create failed for segment %zu: %s\n",
-                        seg_idx, strerror(errno));
-                for (size_t j = 0; j < i; ++j) {
-                    pthread_join(threads[j], NULL);
-                }
-                return -1;
-            }
-        }
+        struct nvme_passthru_cmd cmd;
+        memset(&cmd, 0, sizeof(cmd));
+        cmd.opcode = 0x02;      // NVM Read
+        cmd.nsid = 1;
+        cmd.addr = (uint64_t)(uintptr_t)chunk_buf;
+        cmd.data_len = (uint32_t)chunk_size;
+        cmd.cdw10 = (uint32_t)(chunk_lba & 0xFFFFFFFFULL);
+        cmd.cdw11 = (uint32_t)((chunk_lba >> 32) & 0xFFFFFFFFULL);
+        cmd.cdw12 = (uint32_t)(chunk_size / NVME_LBA_SIZE_BYTES) - 1U;
+        cmd.cdw14 = (uint32_t)(backup_lba & 0xFFFFFFFFULL);
+        cmd.cdw15 = (uint32_t)((backup_lba >> 32) & 0xFFFFFFFFULL);
 
-        int has_error = 0;
-        for (size_t i = 0; i < batch; ++i) {
-            pthread_join(threads[i], NULL);
-            if (args[i].rc != 0) {
-                has_error = 1;
-            }
-        }
-
-        if (has_error) {
-            errno = EIO;
+        if (ioctl(nvme_fd, NVME_IOCTL_IO_CMD, &cmd) < 0) {
+            fprintf(stderr, "ioctl failed at offset=%llu: %s\n",
+                    (unsigned long long)offset, strerror(errno));
+            free(chunk_buf);
+            close(out_fd);
+            close(nvme_fd);
             return -1;
         }
 
-        start += batch;
+        if (g_post_action(g_post_action_ctx, chunk_buf, (uint32_t)chunk_size, offset) != 0) {
+            if (errno == 0) {
+                errno = EIO;
+            }
+            fprintf(stderr, "post action failed at offset=%llu: %s\n",
+                    (unsigned long long)offset, strerror(errno));
+            free(chunk_buf);
+            close(out_fd);
+            close(nvme_fd);
+            return -1;
+        }
+
+        if (write_all(out_fd, chunk_buf, (size_t)chunk_size) != 0) {
+            fprintf(stderr, "write failed for %s: %s\n", filename, strerror(errno));
+            free(chunk_buf);
+            close(out_fd);
+            close(nvme_fd);
+            return -1;
+        }
+
+        offset += chunk_size;
+        total_read_bytes += chunk_size;
     }
 
+    struct timespec ts_end;
+    if (clock_gettime(CLOCK_MONOTONIC, &ts_end) == 0) {
+        double elapsed_s = (double)(ts_end.tv_sec - ts_begin.tv_sec) +
+                           (double)(ts_end.tv_nsec - ts_begin.tv_nsec) / 1000000000.0;
+        if (elapsed_s <= 0.0) {
+            elapsed_s = 1e-9;
+        }
+        double bandwidth_mib_s =
+            ((double)total_read_bytes / (1024.0 * 1024.0)) / elapsed_s;
+        fprintf(stderr,
+                "read stats: bytes=%llu elapsed=%.6f sec bandwidth=%.2f MiB/s\n",
+                (unsigned long long)total_read_bytes, elapsed_s, bandwidth_mib_s);
+    }
+
+    free(chunk_buf);
+    close(out_fd);
+    close(nvme_fd);
     return 0;
 }
