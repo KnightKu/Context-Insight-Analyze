@@ -16,9 +16,8 @@ typedef int (*nvme_read_post_action_t)(void *ctx,
 int nvme_read_set_post_action(nvme_read_post_action_t action, void *ctx);
 
 int nvme_read(const char *device_name,
-              uint64_t lba,
+              uint64_t slba,
               uint64_t data_len,
-              void *buffer,
-              const char *filename);
+              void *buffer);
 
 #endif  // NVME_READ_H
