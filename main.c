@@ -2,21 +2,22 @@
 
 #include <ctype.h>
 #include <errno.h>
-#include <stdlib.h>
+#include <inttypes.h>
+#include <limits.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
-static int parse_u64_with_unit(const char *text, uint64_t *value) {
-    if (text == NULL || *text == '\0' || value == NULL) {
-        errno = EINVAL;
+static int parse_u64_with_unit(const char *arg, uint64_t *out_value) {
+    if (arg == NULL || out_value == NULL || *arg == '\0') {
         return -1;
     }
 
-    errno = 0;
     char *endptr = NULL;
-    unsigned long long base = strtoull(text, &endptr, 10);
-    if (errno != 0 || endptr == text) {
+    errno = 0;
+    unsigned long long base = strtoull(arg, &endptr, 10);
+    if (errno != 0 || endptr == arg) {
         return -1;
     }
 
@@ -37,7 +38,6 @@ static int parse_u64_with_unit(const char *text, uint64_t *value) {
                 multiplier = 1024ULL * 1024ULL * 1024ULL * 1024ULL;
                 break;
             default:
-                errno = EINVAL;
                 return -1;
         }
 
@@ -46,50 +46,44 @@ static int parse_u64_with_unit(const char *text, uint64_t *value) {
             ++endptr;
         }
         if (*endptr != '\0') {
-            errno = EINVAL;
             return -1;
         }
     }
 
-    if ((uint64_t)base > UINT64_MAX / multiplier) {
+    if (base > (ULLONG_MAX / multiplier)) {
         errno = ERANGE;
         return -1;
     }
 
-    *value = (uint64_t)base * multiplier;
+    *out_value = (uint64_t)base * multiplier;
     return 0;
 }
 
 int main(int argc, char *argv[]) {
-    if (argc != 3 && argc != 5) {
-        fprintf(stderr,
-                "usage: %s <device_name> <output_filename> [slba] [data_len]\n"
-                "  slba/data_len support optional units: K M G T (e.g. 64K, 1G)\n",
-                argv[0]);
+    if (argc != 4) {
+        fprintf(stderr, "usage: %s <device_name> <slba[K|M|G|T]> <data_len[K|M|G|T]>\n", argv[0]);
         return 1;
     }
 
     const char *device_name = argv[1];
-    const char *output_filename = argv[2];
-    uint64_t lba = 0ULL;
-    uint64_t data_len = NVME_DEFAULT_DATA_LEN;
-
-    if (argc == 5) {
-        if (parse_u64_with_unit(argv[3], &lba) != 0) {
-            fprintf(stderr, "invalid slba: %s\n", argv[3]);
-            return 1;
-        }
-        if (parse_u64_with_unit(argv[4], &data_len) != 0) {
-            fprintf(stderr, "invalid data_len: %s\n", argv[4]);
-            return 1;
-        }
+    uint64_t slba = 0ULL;
+    if (parse_u64_with_unit(argv[2], &slba) != 0) {
+        fprintf(stderr, "invalid slba: %s\n", argv[2]);
+        return 1;
     }
 
-    if (nvme_read(device_name, lba, data_len, NULL, output_filename) != 0) {
+    uint64_t data_len = 0;
+    if (parse_u64_with_unit(argv[3], &data_len) != 0 || data_len == 0ULL) {
+        fprintf(stderr, "invalid data_len: %s (examples: 128K, 64M, 1G, 1T)\n", argv[3]);
+        return 1;
+    }
+
+    if (nvme_read(device_name, slba, data_len, NULL) != 0) {
         fprintf(stderr, "nvme_read failed: %s\n", strerror(errno));
         return 1;
     }
 
-    fprintf(stderr, "nvme passthru read done. output: %s\n", output_filename);
+    fprintf(stderr, "nvme passthru read done. slba=%" PRIu64 " data_len=%" PRIu64 "\n",
+            slba, data_len);
     return 0;
 }
