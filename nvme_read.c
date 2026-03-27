@@ -95,7 +95,7 @@ static uint64_t get_mdts_chunk_bytes_or_default(int nvme_fd) {
 }
 
 int nvme_read(const char *device_name,
-              uint64_t lba,
+              uint64_t slba,
               uint64_t data_len,
               void *buffer) {
     (void)buffer;
@@ -155,8 +155,10 @@ int nvme_read(const char *device_name,
     while (offset < data_len) {
         uint64_t remaining = data_len - offset;
         uint64_t chunk_size = remaining > read_chunk_bytes ? read_chunk_bytes : remaining;
+        // Real LBA starts from 0 and increases with read offset.
         uint64_t chunk_lba = offset / NVME_LBA_SIZE_BYTES;
-        uint64_t backup_lba = lba + chunk_lba;
+        // slba is encoded into cdw14/cdw15 after conversion.
+        uint64_t backup_lba = slba + chunk_lba;
 
         struct nvme_passthru_cmd cmd;
         memset(&cmd, 0, sizeof(cmd));
