@@ -43,22 +43,16 @@ static int default_post_action(void *ctx, void *data, uint32_t data_len, uint64_
 
     const unsigned char *bytes = (const unsigned char *)data;
     uint32_t unit_count = data_len / NVME_POST_ACTION_UNIT_BYTES;
-    if (unit_count == 0U) {
-#if NVME_POST_ACTION_DEBUG
-        fprintf(stderr,
-                "post action debug: no 8-byte unit, offset=%llu data_len=%u\n",
-                (unsigned long long)offset_bytes, (unsigned int)data_len);
-#else
-        (void)offset_bytes;
-#endif
-        return 0;
-    }
+
 
     for (uint32_t i = 0; i < unit_count; ++i) {
         const unsigned char *unit = bytes + ((size_t)i * NVME_POST_ACTION_UNIT_BYTES);
         uint8_t op = unit[0];
         uint64_t parsed_value = load_le64(unit);
         (void)parsed_value;
+#if NVME_POST_ACTION_DEBUG
+         printf("data value is %x\n", parsed_value);
+#endif
         if (op > NVME_POST_ACTION_OP_MAX) {
             errno = EINVAL;
             fprintf(stderr,
