@@ -35,22 +35,6 @@ int nvme_read_set_post_action(nvme_read_post_action_t action, void *ctx) {
     return 0;
 }
 
-static int write_all(int fd, const void *buf, size_t count) {
-    const unsigned char *p = (const unsigned char *)buf;
-    size_t written = 0;
-    while (written < count) {
-        ssize_t n = write(fd, p + written, count - written);
-        if (n < 0) {
-            if (errno == EINTR) {
-                continue;
-            }
-            return -1;
-        }
-        written += (size_t)n;
-    }
-    return 0;
-}
-
 static uint64_t get_mdts_chunk_bytes_or_default(int nvme_fd) {
     unsigned char *id_ctrl = NULL;
     if (posix_memalign((void **)&id_ctrl, 4096, 4096) != 0) {
@@ -113,13 +97,12 @@ static uint64_t get_mdts_chunk_bytes_or_default(int nvme_fd) {
 int nvme_read(const char *device_name,
               uint64_t lba,
               uint64_t data_len,
-              void *buffer,
-              const char *filename) {
+              void *buffer) {
     (void)buffer;
 
-    if (device_name == NULL || filename == NULL || data_len == 0) {
+    if (device_name == NULL || data_len == 0) {
         errno = EINVAL;
-        fprintf(stderr, "invalid argument: device_name/filename/data_len\n");
+        fprintf(stderr, "invalid argument: device_name/data_len\n");
         return -1;
     }
 
@@ -143,19 +126,11 @@ int nvme_read(const char *device_name,
         return -1;
     }
 
-    int out_fd = open(filename, O_CREAT | O_TRUNC | O_WRONLY, 0644);
-    if (out_fd < 0) {
-        fprintf(stderr, "open %s failed: %s\n", filename, strerror(errno));
-        close(nvme_fd);
-        return -1;
-    }
-
     uint64_t read_chunk_bytes = get_mdts_chunk_bytes_or_default(nvme_fd);
     if ((read_chunk_bytes % NVME_LBA_SIZE_BYTES) != 0ULL) {
         errno = EINVAL;
         fprintf(stderr, "read chunk must be %llu-byte aligned, got %llu\n",
                 (unsigned long long)NVME_LBA_SIZE_BYTES, (unsigned long long)read_chunk_bytes);
-        close(out_fd);
         close(nvme_fd);
         return -1;
     }
@@ -163,7 +138,6 @@ int nvme_read(const char *device_name,
     void *chunk_buf = NULL;
     if (posix_memalign(&chunk_buf, 4096, (size_t)read_chunk_bytes) != 0) {
         fprintf(stderr, "posix_memalign failed\n");
-        close(out_fd);
         close(nvme_fd);
         return -1;
     }
@@ -172,7 +146,6 @@ int nvme_read(const char *device_name,
     if (clock_gettime(CLOCK_MONOTONIC, &ts_begin) != 0) {
         fprintf(stderr, "clock_gettime begin failed: %s\n", strerror(errno));
         free(chunk_buf);
-        close(out_fd);
         close(nvme_fd);
         return -1;
     }
@@ -201,7 +174,6 @@ int nvme_read(const char *device_name,
             fprintf(stderr, "ioctl failed at offset=%llu: %s\n",
                     (unsigned long long)offset, strerror(errno));
             free(chunk_buf);
-            close(out_fd);
             close(nvme_fd);
             return -1;
         }
@@ -213,15 +185,6 @@ int nvme_read(const char *device_name,
             fprintf(stderr, "post action failed at offset=%llu: %s\n",
                     (unsigned long long)offset, strerror(errno));
             free(chunk_buf);
-            close(out_fd);
-            close(nvme_fd);
-            return -1;
-        }
-
-        if (write_all(out_fd, chunk_buf, (size_t)chunk_size) != 0) {
-            fprintf(stderr, "write failed for %s: %s\n", filename, strerror(errno));
-            free(chunk_buf);
-            close(out_fd);
             close(nvme_fd);
             return -1;
         }
@@ -245,7 +208,6 @@ int nvme_read(const char *device_name,
     }
 
     free(chunk_buf);
-    close(out_fd);
     close(nvme_fd);
     return 0;
 }
