@@ -18,7 +18,15 @@
 #endif
 
 #define NVME_POST_ACTION_UNIT_BYTES 8U
-#define NVME_POST_ACTION_OP_MAX 0x04U
+#define NVME_POST_ACTION_OP_CONTIGUOUS_MAX 0x03U
+#define NVME_POST_ACTION_OP_SPECIAL_0F 0x0FU
+#define NVME_POST_ACTION_OP_SPECIAL_FF 0xFFU
+
+static int is_valid_post_action_op(uint8_t op) {
+    return (op <= NVME_POST_ACTION_OP_CONTIGUOUS_MAX) ||
+           (op == NVME_POST_ACTION_OP_SPECIAL_0F) ||
+           (op == NVME_POST_ACTION_OP_SPECIAL_FF);
+}
 
 static uint64_t load_le64(const unsigned char *p) {
     return ((uint64_t)p[0]) |
@@ -53,7 +61,7 @@ static int default_post_action(void *ctx, void *data, uint32_t data_len, uint64_
 #if NVME_POST_ACTION_DEBUG
          printf("data value is %x\n", parsed_value);
 #endif
-        if (op > NVME_POST_ACTION_OP_MAX) {
+        if (!is_valid_post_action_op(op)) {
             errno = EINVAL;
             fprintf(stderr,
                     "post action invalid op: offset=%llu unit=%u op=0x%02x\n",
