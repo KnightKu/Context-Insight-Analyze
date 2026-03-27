@@ -13,11 +13,62 @@
 #include <time.h>
 #include <unistd.h>
 
+#ifndef NVME_POST_ACTION_DEBUG
+#define NVME_POST_ACTION_DEBUG 0
+#endif
+
+#define NVME_POST_ACTION_UNIT_BYTES 8U
+#define NVME_POST_ACTION_OP_MIN 0x00U
+#define NVME_POST_ACTION_OP_MAX 0x04U
+
+static uint64_t load_le64(const unsigned char *p) {
+    return ((uint64_t)p[0]) |
+           ((uint64_t)p[1] << 8U) |
+           ((uint64_t)p[2] << 16U) |
+           ((uint64_t)p[3] << 24U) |
+           ((uint64_t)p[4] << 32U) |
+           ((uint64_t)p[5] << 40U) |
+           ((uint64_t)p[6] << 48U) |
+           ((uint64_t)p[7] << 56U);
+}
+
 static int default_post_action(void *ctx, void *data, uint32_t data_len, uint64_t offset_bytes) {
     (void)ctx;
-    (void)data;
-    (void)data_len;
-    (void)offset_bytes;
+    if (data_len == 0U) {
+        return 0;
+    }
+    if (data == NULL) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    const unsigned char *bytes = (const unsigned char *)data;
+    uint32_t unit_count = data_len / NVME_POST_ACTION_UNIT_BYTES;
+    if (unit_count == 0U) {
+#if NVME_POST_ACTION_DEBUG
+        fprintf(stderr,
+                "post action debug: no 8-byte unit, offset=%llu data_len=%u\n",
+                (unsigned long long)offset_bytes, (unsigned int)data_len);
+#else
+        (void)offset_bytes;
+#endif
+        return 0;
+    }
+
+    for (uint32_t i = 0; i < unit_count; ++i) {
+        const unsigned char *unit = bytes + ((size_t)i * NVME_POST_ACTION_UNIT_BYTES);
+        uint8_t op = unit[0];
+        uint64_t parsed_value = load_le64(unit);
+        (void)parsed_value;
+        if (op < NVME_POST_ACTION_OP_MIN || op > NVME_POST_ACTION_OP_MAX) {
+            errno = EINVAL;
+            fprintf(stderr,
+                    "post action invalid op: offset=%llu unit=%u op=0x%02x\n",
+                    (unsigned long long)offset_bytes, (unsigned int)i, (unsigned int)op);
+            return -1;
+        }
+    }
+
     return 0;
 }
 
