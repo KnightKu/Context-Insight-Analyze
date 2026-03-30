@@ -123,6 +123,36 @@ typedef struct {
     nvme_pipeline_state_t *state;
 } nvme_pipeline_worker_args_t;
 
+static int default_post_action(void *ctx, void *data, uint32_t data_len, uint64_t offset_bytes);
+
+static nvme_read_post_action_t g_post_action = default_post_action;
+static void *g_post_action_ctx = NULL;
+static int g_nvme_read_debug = 0;
+static pthread_mutex_t g_post_action_stats_mutex = PTHREAD_MUTEX_INITIALIZER;
+static uint64_t g_post_action_invalid_records = 0ULL;
+
+static void post_action_reset_invalid_count(void) {
+    pthread_mutex_lock(&g_post_action_stats_mutex);
+    g_post_action_invalid_records = 0ULL;
+    pthread_mutex_unlock(&g_post_action_stats_mutex);
+}
+
+static void post_action_add_invalid_count(uint64_t delta) {
+    if (delta == 0ULL) {
+        return;
+    }
+    pthread_mutex_lock(&g_post_action_stats_mutex);
+    g_post_action_invalid_records += delta;
+    pthread_mutex_unlock(&g_post_action_stats_mutex);
+}
+
+static uint64_t post_action_get_invalid_count(void) {
+    pthread_mutex_lock(&g_post_action_stats_mutex);
+    uint64_t v = g_post_action_invalid_records;
+    pthread_mutex_unlock(&g_post_action_stats_mutex);
+    return v;
+}
+
 // Fast unaligned 64-bit little-endian load.
 static inline uint64_t load_le64_u(const unsigned char *p) {
     uint64_t v = 0ULL;
@@ -691,19 +721,20 @@ static int default_post_action(void *ctx, void *data, uint32_t data_len, uint64_
         return 0;
     }
 
-    if ((data_len % NVME_POST_ACTION_RECORD_BYTES_SHORT) != 0U) {
-        errno = EINVAL;
-        fprintf(stderr,
-                "post action invalid data_len: offset=%llu data_len=%u not 8-byte aligned\n",
-                (unsigned long long)offset_bytes, (unsigned int)data_len);
-        return -1;
-    }
-
     const unsigned char *bytes = (const unsigned char *)data;
     // Fast path: decode each record with one/two 64-bit loads, then extract fields via bit ops.
     uint32_t cursor = 0U;
     uint32_t record_index = 0U;
-    while (cursor < data_len) {
+    uint64_t local_invalid_records = 0ULL;
+    uint32_t parse_len = data_len;
+    uint32_t tail_bytes = data_len % NVME_POST_ACTION_RECORD_BYTES_SHORT;
+    if (tail_bytes != 0U) {
+        // Keep parsing aligned records and treat tail fragment as one invalid item.
+        parse_len -= tail_bytes;
+        ++local_invalid_records;
+    }
+
+    while (cursor < parse_len) {
         const unsigned char *record = bytes + cursor;
         uint64_t record_offset = offset_bytes + (uint64_t)cursor;
         uint64_t record_lo = load_le64_u(record);
@@ -727,16 +758,10 @@ static int default_post_action(void *ctx, void *data, uint32_t data_len, uint64_
         }
 
         if (op == NVME_POST_ACTION_OP_READ || op == NVME_POST_ACTION_OP_WRITE) {
-            if ((data_len - cursor) < NVME_POST_ACTION_RECORD_BYTES_LONG) {
-                errno = EINVAL;
-                fprintf(stderr,
-                        "post action truncated record: offset=%llu record=%u op=0x%02x remain=%u need=%u\n",
-                        (unsigned long long)record_offset,
-                        (unsigned int)record_index,
-                        (unsigned int)op,
-                        (unsigned int)(data_len - cursor),
-                        (unsigned int)NVME_POST_ACTION_RECORD_BYTES_LONG);
-                return -1;
+            if ((parse_len - cursor) < NVME_POST_ACTION_RECORD_BYTES_LONG) {
+                // Invalid 16B record tail: count and stop to avoid crossing chunk boundary.
+                ++local_invalid_records;
+                break;
             }
             uint64_t record_hi = load_le64_u(record + 8U);
             rc = parse_rw_record(record_lo, record_hi, op, record_offset, record_index);
@@ -745,10 +770,14 @@ static int default_post_action(void *ctx, void *data, uint32_t data_len, uint64_
         } else if (op == NVME_POST_ACTION_OP_TRIM) {
             uint32_t consumed_bytes = 0U;
             uint32_t consumed_records = 0U;
-            rc = parse_trim_group(bytes, data_len, cursor, offset_bytes, record_index,
+            rc = parse_trim_group(bytes, parse_len, cursor, offset_bytes, record_index,
                                   &consumed_bytes, &consumed_records);
             if (rc != 0) {
-                return -1;
+                // Invalid trim group: count one bad record and skip current 16B record.
+                ++local_invalid_records;
+                cursor += NVME_POST_ACTION_RECORD_BYTES_LONG;
+                ++record_index;
+                continue;
             }
             cursor += consumed_bytes;
             record_index += consumed_records;
@@ -761,25 +790,29 @@ static int default_post_action(void *ctx, void *data, uint32_t data_len, uint64_
             cursor += NVME_POST_ACTION_RECORD_BYTES_SHORT;
             ++record_index;
         } else {
-            errno = EINVAL;
-            fprintf(stderr,
-                    "post action invalid op: offset=%llu record=%u op=0x%02x\n",
-                    (unsigned long long)record_offset,
-                    (unsigned int)record_index,
-                    (unsigned int)op);
-            return -1;
+            ++local_invalid_records;
+            cursor += NVME_POST_ACTION_RECORD_BYTES_SHORT;
+            ++record_index;
+            continue;
         }
         if (rc != 0) {
-            return -1;
+            // Parser-level invalid record: count and continue with next aligned record.
+            ++local_invalid_records;
+            continue;
         }
     }
 
+#if NVME_POST_ACTION_DEBUG
+    if (local_invalid_records > 0ULL) {
+        fprintf(stderr,
+                "post action invalid records: count=%llu chunk_offset=%llu\n",
+                (unsigned long long)local_invalid_records,
+                (unsigned long long)offset_bytes);
+    }
+#endif
+    post_action_add_invalid_count(local_invalid_records);
     return 0;
 }
-
-static nvme_read_post_action_t g_post_action = default_post_action;
-static void *g_post_action_ctx = NULL;
-static int g_nvme_read_debug = 0;
 
 int nvme_read_set_post_action(nvme_read_post_action_t action, void *ctx) {
     if (action == NULL) {
@@ -898,6 +931,8 @@ int nvme_read(const char *device_name,
         return -1;
     }
 
+    post_action_reset_invalid_count();
+
     int nvme_fd = open(device_name, O_RDONLY);
     if (nvme_fd < 0) {
         fprintf(stderr, "open %s failed: %s\n", device_name, strerror(errno));
@@ -960,9 +995,13 @@ int nvme_read(const char *device_name,
         }
         double bandwidth_mib_s =
             ((double)total_read_bytes / (1024.0 * 1024.0)) / elapsed_s;
+        uint64_t invalid_records = post_action_get_invalid_count();
         fprintf(stderr,
-                "read stats: bytes=%llu elapsed=%.6f sec bandwidth=%.2f MiB/s\n",
-                (unsigned long long)total_read_bytes, elapsed_s, bandwidth_mib_s);
+                "read stats: bytes=%llu elapsed=%.6f sec bandwidth=%.2f MiB/s invalid_records=%llu\n",
+                (unsigned long long)total_read_bytes,
+                elapsed_s,
+                bandwidth_mib_s,
+                (unsigned long long)invalid_records);
     }
 
     close(nvme_fd);

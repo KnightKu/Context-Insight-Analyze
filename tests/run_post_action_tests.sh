@@ -17,7 +17,7 @@ PASS_CASES=(
   "tests/fixtures/valid_termination.bin"
 )
 
-FAIL_CASES=(
+SKIP_CASES=(
   "tests/fixtures/invalid_op.bin"
   "tests/fixtures/invalid_rw_reserved.bin"
   "tests/fixtures/invalid_trim_total_ranges.bin"
@@ -30,13 +30,10 @@ for f in "${PASS_CASES[@]}"; do
   ./post_action_file_tester "${f}" >/dev/null 2>&1
 done
 
-echo "[4/4] run fail cases"
-for f in "${FAIL_CASES[@]}"; do
-  echo "  FAIL expected: ${f}"
-  if ./post_action_file_tester "${f}" >/dev/null 2>&1; then
-    echo "unexpected success for ${f}" >&2
-    exit 1
-  fi
+echo "[4/4] run invalid-data skip cases"
+for f in "${SKIP_CASES[@]}"; do
+  echo "  SKIP expected (success with invalid-count in debug): ${f}"
+  ./post_action_file_tester "${f}" >/dev/null 2>&1
 done
 
 echo "all post-action tests passed"
