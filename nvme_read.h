@@ -15,6 +15,10 @@ typedef int (*nvme_read_post_action_t)(void *ctx,
 
 int nvme_read_set_post_action(nvme_read_post_action_t action, void *ctx);
 
+int nvme_post_action_process(void *data,
+                             uint32_t data_len,
+                             uint64_t offset_bytes);
+
 int nvme_read(const char *device_name,
               uint64_t slba,
               uint64_t data_len,

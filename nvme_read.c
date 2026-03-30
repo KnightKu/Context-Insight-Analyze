@@ -476,6 +476,16 @@ int nvme_read_set_post_action(nvme_read_post_action_t action, void *ctx) {
     return 0;
 }
 
+int nvme_post_action_process(void *data, uint32_t data_len, uint64_t offset_bytes) {
+    if (g_post_action(g_post_action_ctx, data, data_len, offset_bytes) != 0) {
+        if (errno == 0) {
+            errno = EIO;
+        }
+        return -1;
+    }
+    return 0;
+}
+
 static uint64_t get_mdts_chunk_bytes_or_default(int nvme_fd) {
     unsigned char *id_ctrl = NULL;
     if (posix_memalign((void **)&id_ctrl, 4096, 4096) != 0) {
@@ -650,10 +660,7 @@ int nvme_read(const char *device_name,
             return -1;
         }
 
-        if (g_post_action(g_post_action_ctx, chunk_buf, (uint32_t)chunk_size, offset) != 0) {
-            if (errno == 0) {
-                errno = EIO;
-            }
+        if (nvme_post_action_process(chunk_buf, (uint32_t)chunk_size, offset) != 0) {
             fprintf(stderr, "post action failed at offset=%llu: %s\n",
                     (unsigned long long)offset, strerror(errno));
             free(chunk_buf);
