@@ -70,9 +70,27 @@ The default post action:
 - Supports an early termination marker:
   - if a 16-byte window has first-byte `0x00` in both 8-byte halves,
     post-action parsing stops successfully
+
+## 5. Read/Process Pipeline
+
+The main read path uses a producer-consumer pipeline to overlap device reads and post-action processing:
+
+- **Reader thread (producer)**:
+  - issues NVMe read commands
+  - writes chunks into ring-buffer slots
+- **Worker thread (consumer)**:
+  - consumes ready slots
+  - runs `nvme_post_action_process(...)`
+
+Current default settings:
+
+- ring-buffer slots: `4` (`NVME_READ_PIPELINE_SLOTS`)
+- one reader thread + one worker thread
+
+This design helps reduce idle time by allowing I/O and parsing to run concurrently.
 - Prints read bandwidth statistics only when debug mode is enabled (`-D` / `--debug`)
 
-## 5. Debug Macro
+## 6. Debug Macro
 
 File: `nvme_read.c`
 
@@ -96,7 +114,7 @@ How to enable:
 make clean && make
 ```
 
-## 6. Troubleshooting
+## 7. Troubleshooting
 
 ### 6.1 Invalid CLI Arguments
 
@@ -136,7 +154,7 @@ Checks:
 - Verify record layout against `docs/design.md`
 - Verify opcode and record size mapping (8-byte vs 16-byte records)
 
-## 7. Common Development Commands
+## 8. Common Development Commands
 
 ```bash
 # Build

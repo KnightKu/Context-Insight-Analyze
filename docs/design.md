@@ -96,7 +96,29 @@ The parser now uses `load_le64_u(const unsigned char *p)` as the hot-path primit
    - `parse_marker_record`
 7. Move `cursor += record_size` and continue
 
-### 4.3 Validation Rules
+### 4.3 Read/Process Pipeline (Producer-Consumer)
+
+The read path now uses a two-stage pipeline:
+
+- **Reader thread (producer)**:
+  - Issues NVMe read commands
+  - Writes chunk payload into ring slots
+  - Pushes ready slots to the consumer queue
+- **Post-action thread (consumer)**:
+  - Pops ready slots
+  - Runs `nvme_post_action_process(...)`
+  - Returns slots back to free queue
+
+Implementation notes:
+
+- Ring depth: `NVME_READ_PIPELINE_SLOTS` (currently 4)
+- Per-slot buffer size: `read_chunk_bytes`
+- Synchronization: `pthread_mutex_t` + condition variables (`cv_free`, `cv_ready`)
+- Error policy:
+  - Any producer/consumer error sets stop flag and broadcasts wakeups
+  - Pipeline exits and returns failure to `nvme_read`
+
+### 4.4 Validation Rules
 
 - Unknown opcode -> `EINVAL` with explicit log
 - Non-zero reserved field -> `EINVAL` with explicit log
@@ -108,6 +130,7 @@ The parser now uses `load_le64_u(const unsigned char *p)` as the hot-path primit
 - Parse failures return `-1` and set `errno` (typically `EINVAL`)
 - `nvme_read` aborts when post action returns error
 - Logs include `offset`, `record index`, `opcode`, and field context for troubleshooting
+- Pipeline thread failures preserve `errno` and are propagated to the caller
 
 ## 6. Debug and Observability
 

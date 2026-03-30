@@ -152,3 +152,26 @@ This allows custom parsing, aggregation, filtering, or external export logic.
 - Record decode uses unaligned 64-bit little-endian loads (`load_le64_u`) and bit extraction.
 - 8B records use one 64-bit load; 16B records use two 64-bit loads.
 - Trim groups are parsed as one logical object, reducing repeated per-record orchestration overhead.
+
+## 9. Read/Post-Action Pipeline
+
+The current read path uses a producer-consumer pipeline to overlap I/O and parsing:
+
+- Reader thread (producer):
+  - reads NVMe chunks into a slot pool
+  - enqueues ready slots
+- Post-action thread (consumer):
+  - dequeues ready slots
+  - runs `nvme_post_action_process(...)`
+  - returns slots to free queue
+
+Implementation characteristics:
+
+- Double-ended queues implemented with fixed-size ring buffers
+- 4 in-flight slots (`NVME_READ_PIPELINE_SLOTS`)
+- Thread synchronization via `pthread_mutex_t` + `pthread_cond_t`
+- Unified error propagation (`producer_failed` / `worker_failed`), with coordinated stop
+
+Benefit:
+
+- Overlaps device read latency with CPU-side parsing to improve throughput on mixed I/O+CPU workloads.
