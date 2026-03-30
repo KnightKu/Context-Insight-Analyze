@@ -17,26 +17,151 @@
 #define NVME_POST_ACTION_DEBUG 0
 #endif
 
-#define NVME_POST_ACTION_UNIT_BYTES 8U
-#define NVME_POST_ACTION_OP_CONTIGUOUS_MAX 0x03U
-#define NVME_POST_ACTION_OP_SPECIAL_0F 0x0FU
-#define NVME_POST_ACTION_OP_SPECIAL_FF 0xFFU
+#define NVME_POST_ACTION_RECORD_BYTES_SHORT 8U
+#define NVME_POST_ACTION_RECORD_BYTES_LONG 16U
 
-static int is_valid_post_action_op(uint8_t op) {
-    return (op <= NVME_POST_ACTION_OP_CONTIGUOUS_MAX) ||
-           (op == NVME_POST_ACTION_OP_SPECIAL_0F) ||
-           (op == NVME_POST_ACTION_OP_SPECIAL_FF);
+#define NVME_POST_ACTION_OP_READ 0x01U
+#define NVME_POST_ACTION_OP_WRITE 0x02U
+#define NVME_POST_ACTION_OP_TRIM 0x03U
+#define NVME_POST_ACTION_OP_STAT 0x0FU
+#define NVME_POST_ACTION_OP_MARKER 0xFFU
+
+#define NVME_POST_ACTION_START_LBA_MASK 0xFFFFFFFFFFULL
+
+static uint64_t load_le_u64_n(const unsigned char *p, uint32_t nbytes) {
+    uint64_t v = 0ULL;
+    for (uint32_t i = 0; i < nbytes; ++i) {
+        v |= ((uint64_t)p[i] << (8U * i));
+    }
+    return v;
 }
 
-static uint64_t load_le64(const unsigned char *p) {
-    return ((uint64_t)p[0]) |
-           ((uint64_t)p[1] << 8U) |
-           ((uint64_t)p[2] << 16U) |
-           ((uint64_t)p[3] << 24U) |
-           ((uint64_t)p[4] << 32U) |
-           ((uint64_t)p[5] << 40U) |
-           ((uint64_t)p[6] << 48U) |
-           ((uint64_t)p[7] << 56U);
+static int parse_rw_record(const unsigned char *record,
+                           uint8_t op,
+                           uint64_t offset_bytes,
+                           uint32_t record_index) {
+    uint64_t start_lba = load_le_u64_n(record + 1, 5) & NVME_POST_ACTION_START_LBA_MASK;
+    uint16_t length = (uint16_t)load_le_u64_n(record + 6, 2);
+    uint16_t reserved = (uint16_t)load_le_u64_n(record + 8, 2);
+    uint32_t latency = (uint32_t)load_le_u64_n(record + 10, 3);
+    uint32_t time_rel = (uint32_t)load_le_u64_n(record + 13, 3);
+
+    if (reserved != 0U) {
+        errno = EINVAL;
+        fprintf(stderr,
+                "post action invalid rw reserved: offset=%llu record=%u op=0x%02x reserved=0x%04x\n",
+                (unsigned long long)offset_bytes, (unsigned int)record_index, (unsigned int)op,
+                (unsigned int)reserved);
+        return -1;
+    }
+
+#if NVME_POST_ACTION_DEBUG
+    fprintf(stderr,
+            "post action %s: offset=%llu record=%u start_lba=%llu len=%u latency=%u time=%u\n",
+            op == NVME_POST_ACTION_OP_READ ? "read" : "write",
+            (unsigned long long)offset_bytes,
+            (unsigned int)record_index,
+            (unsigned long long)start_lba,
+            (unsigned int)length,
+            (unsigned int)latency,
+            (unsigned int)time_rel);
+#else
+    (void)op;
+    (void)start_lba;
+    (void)length;
+    (void)latency;
+    (void)time_rel;
+#endif
+    return 0;
+}
+
+static int parse_trim_record(const unsigned char *record,
+                             uint64_t offset_bytes,
+                             uint32_t record_index) {
+    uint64_t start_lba = load_le_u64_n(record + 1, 5) & NVME_POST_ACTION_START_LBA_MASK;
+    uint8_t total_ranges = record[6];
+    uint8_t range_index = record[7];
+    uint8_t reserved = record[8];
+    uint32_t length = (uint32_t)load_le_u64_n(record + 9, 4);
+    uint32_t time_rel = (uint32_t)load_le_u64_n(record + 13, 3);
+
+    if (reserved != 0U) {
+        errno = EINVAL;
+        fprintf(stderr,
+                "post action invalid trim reserved: offset=%llu record=%u reserved=0x%02x\n",
+                (unsigned long long)offset_bytes, (unsigned int)record_index, (unsigned int)reserved);
+        return -1;
+    }
+
+#if NVME_POST_ACTION_DEBUG
+    fprintf(stderr,
+            "post action trim: offset=%llu record=%u start_lba=%llu total_ranges=%u range_index=%u "
+            "len=%u time=%u\n",
+            (unsigned long long)offset_bytes,
+            (unsigned int)record_index,
+            (unsigned long long)start_lba,
+            (unsigned int)total_ranges,
+            (unsigned int)range_index,
+            (unsigned int)length,
+            (unsigned int)time_rel);
+#else
+    (void)start_lba;
+    (void)total_ranges;
+    (void)range_index;
+    (void)length;
+    (void)time_rel;
+#endif
+    return 0;
+}
+
+static int parse_stat_record(const unsigned char *record,
+                             uint64_t offset_bytes,
+                             uint32_t record_index) {
+    uint8_t reserved = record[1];
+    uint16_t qd = (uint16_t)load_le_u64_n(record + 2, 2);
+    uint8_t wa = record[4];
+    uint32_t time_rel = (uint32_t)load_le_u64_n(record + 5, 3);
+
+    if (reserved != 0U) {
+        errno = EINVAL;
+        fprintf(stderr,
+                "post action invalid stat reserved: offset=%llu record=%u reserved=0x%02x\n",
+                (unsigned long long)offset_bytes, (unsigned int)record_index, (unsigned int)reserved);
+        return -1;
+    }
+
+#if NVME_POST_ACTION_DEBUG
+    fprintf(stderr,
+            "post action stat: offset=%llu record=%u qd=%u wa=%u time=%u\n",
+            (unsigned long long)offset_bytes,
+            (unsigned int)record_index,
+            (unsigned int)qd,
+            (unsigned int)wa,
+            (unsigned int)time_rel);
+#else
+    (void)qd;
+    (void)wa;
+    (void)time_rel;
+#endif
+    return 0;
+}
+
+static int parse_marker_record(const unsigned char *record,
+                               uint64_t offset_bytes,
+                               uint32_t record_index) {
+    uint64_t abs_time = load_le_u64_n(record + 1, 7);
+#if NVME_POST_ACTION_DEBUG
+    fprintf(stderr,
+            "post action marker: offset=%llu record=%u abs_time=%llu\n",
+            (unsigned long long)offset_bytes,
+            (unsigned int)record_index,
+            (unsigned long long)abs_time);
+#else
+    (void)abs_time;
+    (void)offset_bytes;
+    (void)record_index;
+#endif
+    return 0;
 }
 
 static int default_post_action(void *ctx, void *data, uint32_t data_len, uint64_t offset_bytes) {
@@ -49,25 +174,78 @@ static int default_post_action(void *ctx, void *data, uint32_t data_len, uint64_
         return -1;
     }
 
-    const unsigned char *bytes = (const unsigned char *)data;
-    uint32_t unit_count = data_len / NVME_POST_ACTION_UNIT_BYTES;
-
-
-    for (uint32_t i = 0; i < unit_count; ++i) {
-        const unsigned char *unit = bytes + ((size_t)i * NVME_POST_ACTION_UNIT_BYTES);
-        uint8_t op = unit[0];
-        uint64_t parsed_value = load_le64(unit);
-        (void)parsed_value;
+    if (data_len < NVME_POST_ACTION_RECORD_BYTES_SHORT) {
 #if NVME_POST_ACTION_DEBUG
-         printf("data value is %x\n", parsed_value);
+        fprintf(stderr,
+                "post action debug: no 8-byte unit, offset=%llu data_len=%u\n",
+                (unsigned long long)offset_bytes, (unsigned int)data_len);
 #endif
-        if (!is_valid_post_action_op(op)) {
+        return 0;
+    }
+
+    if ((data_len % NVME_POST_ACTION_RECORD_BYTES_SHORT) != 0U) {
+        errno = EINVAL;
+        fprintf(stderr,
+                "post action invalid data_len: offset=%llu data_len=%u not 8-byte aligned\n",
+                (unsigned long long)offset_bytes, (unsigned int)data_len);
+        return -1;
+    }
+
+    const unsigned char *bytes = (const unsigned char *)data;
+    uint32_t cursor = 0U;
+    uint32_t record_index = 0U;
+    while (cursor < data_len) {
+        uint8_t op = bytes[cursor];
+        uint32_t record_size = 0U;
+        switch (op) {
+            case NVME_POST_ACTION_OP_READ:
+            case NVME_POST_ACTION_OP_WRITE:
+            case NVME_POST_ACTION_OP_TRIM:
+                record_size = NVME_POST_ACTION_RECORD_BYTES_LONG;
+                break;
+            case NVME_POST_ACTION_OP_STAT:
+            case NVME_POST_ACTION_OP_MARKER:
+                record_size = NVME_POST_ACTION_RECORD_BYTES_SHORT;
+                break;
+            default:
+                errno = EINVAL;
+                fprintf(stderr,
+                        "post action invalid op: offset=%llu record=%u op=0x%02x\n",
+                        (unsigned long long)(offset_bytes + (uint64_t)cursor),
+                        (unsigned int)record_index,
+                        (unsigned int)op);
+                return -1;
+        }
+
+        if ((data_len - cursor) < record_size) {
             errno = EINVAL;
             fprintf(stderr,
-                    "post action invalid op: offset=%llu unit=%u op=0x%02x\n",
-                    (unsigned long long)offset_bytes, (unsigned int)i, (unsigned int)op);
+                    "post action truncated record: offset=%llu record=%u op=0x%02x remain=%u need=%u\n",
+                    (unsigned long long)(offset_bytes + (uint64_t)cursor),
+                    (unsigned int)record_index,
+                    (unsigned int)op,
+                    (unsigned int)(data_len - cursor),
+                    (unsigned int)record_size);
             return -1;
         }
+
+        const unsigned char *record = bytes + cursor;
+        int rc = 0;
+        if (op == NVME_POST_ACTION_OP_READ || op == NVME_POST_ACTION_OP_WRITE) {
+            rc = parse_rw_record(record, op, offset_bytes + (uint64_t)cursor, record_index);
+        } else if (op == NVME_POST_ACTION_OP_TRIM) {
+            rc = parse_trim_record(record, offset_bytes + (uint64_t)cursor, record_index);
+        } else if (op == NVME_POST_ACTION_OP_STAT) {
+            rc = parse_stat_record(record, offset_bytes + (uint64_t)cursor, record_index);
+        } else {  // NVME_POST_ACTION_OP_MARKER
+            rc = parse_marker_record(record, offset_bytes + (uint64_t)cursor, record_index);
+        }
+        if (rc != 0) {
+            return -1;
+        }
+
+        cursor += record_size;
+        ++record_index;
     }
 
     return 0;
