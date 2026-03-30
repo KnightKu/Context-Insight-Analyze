@@ -21,6 +21,7 @@ static int parse_u64_with_unit(const char *arg, uint64_t *out_value) {
         return -1;
     }
 
+    // Accept raw number or optional binary suffix: K/M/G/T (and optional trailing B/b).
     uint64_t multiplier = 1ULL;
     if (*endptr != '\0') {
         char unit = (char)toupper((unsigned char)*endptr);
@@ -50,6 +51,7 @@ static int parse_u64_with_unit(const char *arg, uint64_t *out_value) {
         }
     }
 
+    // Guard against multiplication overflow before converting to final value.
     if (base > (ULLONG_MAX / multiplier)) {
         errno = ERANGE;
         return -1;
@@ -66,6 +68,7 @@ int main(int argc, char *argv[]) {
     }
 
     const char *device_name = argv[1];
+    // slba and data_len share the same unit parser for consistent CLI behavior.
     uint64_t slba = 0ULL;
     if (parse_u64_with_unit(argv[2], &slba) != 0) {
         fprintf(stderr, "invalid slba: %s\n", argv[2]);
