@@ -1,6 +1,6 @@
 # Usage Guide
 
-This document explains how to build and run `nvme_reader`, how to enable debug logging,
+This document explains how to build and run `sfx_ctx_insight_analyze`, how to enable debug logging,
 and how to troubleshoot common runtime errors.
 
 ## 1. Requirements
@@ -20,7 +20,7 @@ make clean && make
 Binary output:
 
 ```bash
-./nvme_reader
+./sfx_ctx_insight_analyze
 ```
 
 ## 3. CLI Arguments
@@ -28,7 +28,7 @@ Binary output:
 Current command format:
 
 ```bash
-./nvme_reader [-D|--debug] <device_name> <slba[K|M|G|T]> <data_len[K|M|G|T]>
+./sfx_ctx_insight_analyze [-D|--debug] <device_name> <slba[K|M|G|T]> <data_len[K|M|G|T]>
 ```
 
 Argument details:
@@ -41,10 +41,10 @@ Argument details:
 Examples:
 
 ```bash
-./nvme_reader /dev/nvme0n1 0 64M
-./nvme_reader /dev/nvme0n1 1G 256M
-./nvme_reader /dev/nvme0n1 1024K 1T
-./nvme_reader --debug /dev/nvme0n1 0 64M
+./sfx_ctx_insight_analyze /dev/nvme0n1 0 64M
+./sfx_ctx_insight_analyze /dev/nvme0n1 1G 256M
+./sfx_ctx_insight_analyze /dev/nvme0n1 1024K 1T
+./sfx_ctx_insight_analyze --debug /dev/nvme0n1 0 64M
 ```
 
 Notes:

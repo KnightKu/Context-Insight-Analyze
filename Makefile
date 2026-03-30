@@ -2,7 +2,7 @@ CC := gcc
 CFLAGS := -Wall -Wextra -pedantic -std=c11 -I.
 LDFLAGS := -lpthread
 
-TARGET := nvme_reader
+TARGET := sfx_ctx_insight_analyze
 SRCS := main.c nvme_read.c
 OBJS := $(SRCS:.c=.o)
 TEST_TARGET := post_action_file_tester
