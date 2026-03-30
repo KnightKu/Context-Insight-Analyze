@@ -28,7 +28,7 @@ Binary output:
 Current command format:
 
 ```bash
-./nvme_reader <device_name> <slba[K|M|G|T]> <data_len[K|M|G|T]>
+./nvme_reader [-D|--debug] <device_name> <slba[K|M|G|T]> <data_len[K|M|G|T]>
 ```
 
 Argument details:
@@ -36,6 +36,7 @@ Argument details:
 - `device_name`: device path, for example `/dev/nvme0n1`
 - `slba`: start LBA, supports unit suffix `K/M/G/T` (case-insensitive)
 - `data_len`: read size in bytes, supports unit suffix `K/M/G/T` (case-insensitive)
+- `-D` / `--debug`: enables runtime debug mode
 
 Examples:
 
@@ -43,6 +44,7 @@ Examples:
 ./nvme_reader /dev/nvme0n1 0 64M
 ./nvme_reader /dev/nvme0n1 1G 256M
 ./nvme_reader /dev/nvme0n1 1024K 1T
+./nvme_reader --debug /dev/nvme0n1 0 64M
 ```
 
 Notes:
@@ -68,6 +70,7 @@ The default post action:
 - Supports an early termination marker:
   - if a 16-byte window has first-byte `0x00` in both 8-byte halves,
     post-action parsing stops successfully
+- Prints read bandwidth statistics only when debug mode is enabled (`-D` / `--debug`)
 
 ## 5. Debug Macro
 

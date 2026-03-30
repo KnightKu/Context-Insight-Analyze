@@ -463,6 +463,7 @@ static int default_post_action(void *ctx, void *data, uint32_t data_len, uint64_
 
 static nvme_read_post_action_t g_post_action = default_post_action;
 static void *g_post_action_ctx = NULL;
+static int g_nvme_read_debug = 0;
 
 int nvme_read_set_post_action(nvme_read_post_action_t action, void *ctx) {
     if (action == NULL) {
@@ -473,6 +474,11 @@ int nvme_read_set_post_action(nvme_read_post_action_t action, void *ctx) {
 
     g_post_action = action;
     g_post_action_ctx = ctx;
+    return 0;
+}
+
+int nvme_read_set_debug(int enabled) {
+    g_nvme_read_debug = (enabled != 0) ? 1 : 0;
     return 0;
 }
 
@@ -673,7 +679,7 @@ int nvme_read(const char *device_name,
     }
 
     struct timespec ts_end;
-    if (clock_gettime(CLOCK_MONOTONIC, &ts_end) == 0) {
+    if (g_nvme_read_debug != 0 && clock_gettime(CLOCK_MONOTONIC, &ts_end) == 0) {
         double elapsed_s = (double)(ts_end.tv_sec - ts_begin.tv_sec) +
                            (double)(ts_end.tv_nsec - ts_begin.tv_nsec) / 1000000000.0;
         if (elapsed_s <= 0.0) {
