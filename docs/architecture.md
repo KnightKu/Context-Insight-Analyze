@@ -1,141 +1,141 @@
-# NVMe Reader 架构文档
+# NVMe Reader Architecture Document
 
-## 1. 总体架构
+## 1. High-Level Architecture
 
-项目采用分层结构：
+The project follows a layered structure:
 
-1. **CLI 层（`main.c`）**
-   - 负责参数解析（`device_name`、`slba`、`data_len`）
-   - 支持 `K/M/G/T` 单位参数
-   - 调用核心库接口 `nvme_read(...)`
+1. **CLI Layer (`main.c`)**
+   - Parses user arguments (`device_name`, `slba`, `data_len`)
+   - Supports `K/M/G/T` units
+   - Invokes the core API `nvme_read(...)`
 
-2. **核心读流程层（`nvme_read.c`）**
-   - 设备打开与参数校验
-   - 设备能力探测（扇区大小、MDTS）
-   - 分块读取循环（NVMe passthru）
-   - 调用 post action 处理读取到的数据
-   - 统计吞吐并输出读性能
+2. **Core Read Pipeline (`nvme_read.c`)**
+   - Opens the device and validates parameters
+   - Detects device capabilities (sector size, MDTS)
+   - Executes chunk-based NVMe passthrough reads
+   - Invokes post action on each read chunk
+   - Computes and prints bandwidth statistics
 
-3. **扩展处理层（post action）**
-   - 通过函数指针 `nvme_read_post_action_t` 提供扩展点
-   - 默认实现按协议解析记录并做格式校验
-   - 支持外部注入自定义回调
+3. **Extension Layer (Post Action)**
+   - Exposed via callback type `nvme_read_post_action_t`
+   - Default implementation parses and validates protocol records
+   - Supports user-provided custom callbacks
 
 ---
 
-## 2. 代码模块与职责
+## 2. Modules and Responsibilities
 
 ### 2.1 `main.c`
 
 - `parse_u64_with_unit(...)`
-  - 将 `10K/64M/1G/1T` 等参数解析为字节数（或数值）
-  - 处理溢出与非法后缀
+  - Parses values such as `10K`, `64M`, `1G`, `1T`
+  - Handles invalid suffixes and overflow
 
 - `main(...)`
-  - 校验参数个数
-  - 解析 `slba`、`data_len`
-  - 调用 `nvme_read(...)`
+  - Validates command-line arguments
+  - Parses `slba` and `data_len`
+  - Calls `nvme_read(...)`
 
 ### 2.2 `nvme_read.h`
 
-- 常量定义：
+- Constants:
   - `NVME_READ_CHUNK_BYTES`
   - `NVME_SPLIT_BYTES`
   - `NVME_DEFAULT_DATA_LEN`
   - `NVME_LBA_SIZE_BYTES`
 
-- 类型定义：
+- Types:
   - `nvme_read_post_action_t`
 
-- 对外接口：
+- Public APIs:
   - `nvme_read_set_post_action(...)`
   - `nvme_read(...)`
 
 ### 2.3 `nvme_read.c`
 
-- 能力探测函数：
+- Capability probing:
   - `get_sector_size_or_default(...)`
   - `get_mdts_chunk_bytes_or_default(...)`
 
-- 默认 post action：
-  - 记录解析与格式校验
-  - 调试日志打印（`NVME_POST_ACTION_DEBUG`）
+- Default post action:
+  - Record parsing and format validation
+  - Optional debug logs (`NVME_POST_ACTION_DEBUG`)
 
-- 主读流程：
+- Main read function:
   - `nvme_read(...)`
 
 ---
 
-## 3. 关键时序
+## 3. Execution Sequence
 
-读流程主时序如下：
+Main read sequence:
 
-1. `main` 调用 `nvme_read`
-2. 打开 NVMe 设备节点
-3. 探测扇区大小（`BLKSSZGET`）
-4. 查询 MDTS，决定单次读取 chunk 大小
-5. 循环发起 `NVME_IOCTL_IO_CMD`
-6. 每次读取后调用 `g_post_action(...)`
-7. 所有 chunk 完成后输出统计信息并释放资源
-
----
-
-## 4. 数据流
-
-1. 参数输入流（用户输入）
-   - CLI 文本参数 -> 数值（`uint64_t`）
-
-2. 设备数据流（NVMe 读取）
-   - 设备 -> `chunk_buf`（内存）
-   - `chunk_buf` -> post action（解析/校验）
-
-3. 诊断输出流
-   - 错误输出到 `stderr`
-   - 调试日志受宏控制
+1. `main` calls `nvme_read`
+2. Open NVMe device node
+3. Detect logical sector size (`BLKSSZGET`)
+4. Query MDTS and determine chunk size
+5. Submit `NVME_IOCTL_IO_CMD` in a loop
+6. Run `g_post_action(...)` after each chunk
+7. Print statistics and release resources
 
 ---
 
-## 5. 错误处理策略
+## 4. Data Flow
 
-### 5.1 统一策略
+1. Input argument flow
+   - CLI string arguments -> numeric values (`uint64_t`)
 
-- 失败时设置 `errno`（如 `EINVAL`、`EIO`）
-- 输出定位信息（offset、record、op）
-- 及时释放资源（buffer、fd）
+2. Device data flow
+   - Device -> `chunk_buf` (memory)
+   - `chunk_buf` -> post action (parse/validate)
 
-### 5.2 输入与结构校验
-
-- `data_len` 对齐要求
-- post action 记录长度完整性
-- reserved 字段必须为 0
-- opcode 取值白名单
+3. Diagnostic output flow
+   - Errors printed to `stderr`
+   - Debug logs controlled by macro
 
 ---
 
-## 6. 可扩展性
+## 5. Error-Handling Strategy
 
-### 6.1 自定义 post action
+### 5.1 General Policy
 
-通过：
+- Set `errno` on failure (e.g., `EINVAL`, `EIO`)
+- Print contextual diagnostics (offset, record index, opcode)
+- Release all allocated resources promptly (buffer, file descriptors)
+
+### 5.2 Input and Record Validation
+
+- `data_len` alignment requirements
+- Record completeness checks in post action
+- Reserved-field zero checks
+- Opcode whitelist checks
+
+---
+
+## 6. Extensibility
+
+### 6.1 Custom Post Action
+
+Use:
 
 ```c
 int nvme_read_set_post_action(nvme_read_post_action_t action, void *ctx);
 ```
 
-可注入业务解析、统计、过滤、写入外部系统等逻辑。
+This allows custom parsing, aggregation, filtering, or external export logic.
 
-### 6.2 未来扩展方向
+### 6.2 Future Directions
 
-- 新增 opcode 类型与版本化协议
-- 增加结构体反序列化层和统一事件总线
-- 支持可配置的错误容忍策略（跳过坏包/严格失败）
-- 增加单元测试与回放测试（record fixture）
+- Add new opcode types and protocol versioning
+- Introduce a dedicated deserialization layer and event bus
+- Support configurable fault-tolerance policy (strict fail vs skip-bad-record)
+- Add unit tests and replay tests using protocol fixtures
 
 ---
 
-## 7. 架构约束
+## 7. Architectural Constraints
 
-- 读流程当前为单线程串行
-- post action 同步执行，回调耗时会影响吞吐
-- 解析逻辑默认在读取路径内，不应引入大块堆分配
-- 依赖 Linux NVMe ioctl 接口，平台相关性较高
+- Current read path is single-threaded and synchronous
+- Post action runs inline and can affect throughput
+- Parsing logic should avoid heavy dynamic allocation
+- Depends on Linux NVMe ioctl APIs and is platform specific

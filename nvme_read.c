@@ -28,6 +28,7 @@
 
 #define NVME_POST_ACTION_START_LBA_MASK 0xFFFFFFFFFFULL
 
+// Decode an unsigned integer from little-endian bytes (1..8 bytes).
 static uint64_t load_le_u64_n(const unsigned char *p, uint32_t nbytes) {
     uint64_t v = 0ULL;
     for (uint32_t i = 0; i < nbytes; ++i) {
@@ -192,6 +193,7 @@ static int default_post_action(void *ctx, void *data, uint32_t data_len, uint64_
     }
 
     const unsigned char *bytes = (const unsigned char *)data;
+    // Walk the chunk sequentially and dispatch each record by opcode.
     uint32_t cursor = 0U;
     uint32_t record_index = 0U;
     while (cursor < data_len) {

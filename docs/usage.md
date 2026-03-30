@@ -1,38 +1,43 @@
-# 使用文档（Usage Guide）
+# Usage Guide
 
-本文档说明 `nvme_reader` 的编译、运行参数、调试开关以及常见问题定位方式。
+This document explains how to build and run `nvme_reader`, how to enable debug logging,
+and how to troubleshoot common runtime errors.
 
-## 1. 环境要求
+## 1. Requirements
 
-- Linux 环境（依赖 NVMe ioctl 接口）
-- C 编译器（如 `gcc`）
-- 需要对目标 NVMe 设备有读取权限
+- Linux (depends on NVMe ioctl interfaces)
+- C compiler (for example, `gcc`)
+- Read permission for the target NVMe device node
 
-## 2. 编译
+## 2. Build
 
-在仓库根目录执行：
+Run in the repository root:
 
 ```bash
 make clean && make
 ```
 
-生成可执行文件：`./nvme_reader`
+Binary output:
 
-## 3. 命令行参数
+```bash
+./nvme_reader
+```
 
-当前程序参数格式：
+## 3. CLI Arguments
+
+Current command format:
 
 ```bash
 ./nvme_reader <device_name> <slba[K|M|G|T]> <data_len[K|M|G|T]>
 ```
 
-参数说明：
+Argument details:
 
-- `device_name`：设备路径，例如 `/dev/nvme0n1`
-- `slba`：起始 LBA，可带单位 `K/M/G/T`（大小写均可）
-- `data_len`：读取字节数，可带单位 `K/M/G/T`（大小写均可）
+- `device_name`: device path, for example `/dev/nvme0n1`
+- `slba`: start LBA, supports unit suffix `K/M/G/T` (case-insensitive)
+- `data_len`: read size in bytes, supports unit suffix `K/M/G/T` (case-insensitive)
 
-示例：
+Examples:
 
 ```bash
 ./nvme_reader /dev/nvme0n1 0 64M
@@ -40,27 +45,28 @@ make clean && make
 ./nvme_reader /dev/nvme0n1 1024K 1T
 ```
 
-说明：
+Notes:
 
-- 单位按 `1024` 进制换算（例如 `1M = 1024 * 1024`）。
-- `data_len` 需要满足设备扇区大小对齐（程序运行时会校验）。
+- Units use binary scaling (`1M = 1024 * 1024`).
+- `data_len` must satisfy the runtime sector alignment check.
 
-## 4. 默认 post action 行为
+## 4. Default Post Action Behavior
 
-读取到的数据会进入默认 post action 做格式解析与校验，解析规则见：
+Every read chunk is passed to the default post action for format parsing and validation.
+See:
 
-- `docs/design.md`（字段级定义）
-- `docs/architecture.md`（流程与模块关系）
+- `docs/design.md` (field-level protocol details)
+- `docs/architecture.md` (module interactions and flow)
 
-默认 post action：
+The default post action:
 
-- 不修改读取数据
-- 不写额外输出文件
-- 主要用于数据格式校验和调试观测
+- Does not modify data
+- Does not write additional files
+- Focuses on format validation and observability
 
-## 5. Debug 宏
+## 5. Debug Macro
 
-文件：`nvme_read.c`
+File: `nvme_read.c`
 
 ```c
 #ifndef NVME_POST_ACTION_DEBUG
@@ -68,68 +74,68 @@ make clean && make
 #endif
 ```
 
-将其改为 `1` 可启用调试日志：
+Set it to `1` to enable debug logs:
 
-- 输出各记录解析后的关键字段
-- 当 `data_len < 8`（没有完整 8B 单元）时打印提示
+- Prints parsed fields for each record type
+- Prints a message when `data_len < 8` (no complete 8-byte record)
 
-开启方式示例：
+How to enable:
 
-1. 修改宏值为 `1`
-2. 重新编译：
+1. Change the macro value to `1`
+2. Rebuild:
 
 ```bash
 make clean && make
 ```
 
-## 6. 错误定位建议
+## 6. Troubleshooting
 
-### 6.1 参数错误
+### 6.1 Invalid CLI Arguments
 
-常见表现：
+Typical errors:
 
 - `invalid slba`
 - `invalid data_len`
 
-排查建议：
+Checks:
 
-- 检查单位是否为 `K/M/G/T`
-- 检查输入是否为非负整数 + 可选单位后缀
+- Confirm suffix is one of `K/M/G/T`
+- Confirm input is a non-negative integer with optional unit suffix
 
-### 6.2 对齐错误
+### 6.2 Alignment Errors
 
-常见表现：
+Typical errors:
 
 - `data_len must be ...-byte aligned`
 - `read chunk must be ...-byte aligned`
 
-排查建议：
+Checks:
 
-- 将 `data_len` 调整为扇区大小（通常 512）整数倍
+- Use a `data_len` value aligned to device sector size (typically 512 bytes)
 
-### 6.3 post action 格式错误
+### 6.3 Post Action Parse Errors
 
-常见表现：
+Typical errors:
 
 - `post action invalid op`
 - `post action truncated record`
 - `post action invalid ... reserved`
 
-排查建议：
+Checks:
 
-- 对照 `docs/design.md` 确认记录长度和字段布局
-- 确认 opcode 与对应结构长度（8B / 16B）匹配
+- Verify record layout against `docs/design.md`
+- Verify opcode and record size mapping (8-byte vs 16-byte records)
 
-## 7. 常用开发命令
+## 7. Common Development Commands
 
 ```bash
-# 构建
+# Build
 make clean && make
 
-# 查看当前分支和状态
+# Current branch and working tree status
 git branch --show-current
 git status --short
 
-# 推送当前分支
+# Push dev branch
 git push -u origin dev
 ```
