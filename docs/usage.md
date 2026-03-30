@@ -1,6 +1,6 @@
 # Usage Guide
 
-This document explains how to build and run `nvme_reader`, how to enable debug logging,
+This document explains how to build and run `sfx_ctx_insight_analyze`, how to enable debug logging,
 and how to troubleshoot common runtime errors.
 
 ## 1. Requirements
@@ -20,7 +20,7 @@ make clean && make
 Binary output:
 
 ```bash
-./nvme_reader
+./sfx_ctx_insight_analyze
 ```
 
 ## 3. CLI Arguments
@@ -28,7 +28,7 @@ Binary output:
 Current command format:
 
 ```bash
-./nvme_reader <device_name> <slba[K|M|G|T]> <data_len[K|M|G|T]>
+./sfx_ctx_insight_analyze [-D|--debug] <device_name> <slba[K|M|G|T]> <data_len[K|M|G|T]>
 ```
 
 Argument details:
@@ -36,13 +36,15 @@ Argument details:
 - `device_name`: device path, for example `/dev/nvme0n1`
 - `slba`: start LBA, supports unit suffix `K/M/G/T` (case-insensitive)
 - `data_len`: read size in bytes, supports unit suffix `K/M/G/T` (case-insensitive)
+- `-D` / `--debug`: enables runtime debug mode
 
 Examples:
 
 ```bash
-./nvme_reader /dev/nvme0n1 0 64M
-./nvme_reader /dev/nvme0n1 1G 256M
-./nvme_reader /dev/nvme0n1 1024K 1T
+./sfx_ctx_insight_analyze /dev/nvme0n1 0 64M
+./sfx_ctx_insight_analyze /dev/nvme0n1 1G 256M
+./sfx_ctx_insight_analyze /dev/nvme0n1 1024K 1T
+./sfx_ctx_insight_analyze --debug /dev/nvme0n1 0 64M
 ```
 
 Notes:
@@ -68,6 +70,7 @@ The default post action:
 - Supports an early termination marker:
   - if a 16-byte window has first-byte `0x00` in both 8-byte halves,
     post-action parsing stops successfully
+- Prints read bandwidth statistics only when debug mode is enabled (`-D` / `--debug`)
 
 ## 5. Debug Macro
 

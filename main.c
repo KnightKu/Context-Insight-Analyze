@@ -62,24 +62,35 @@ static int parse_u64_with_unit(const char *arg, uint64_t *out_value) {
 }
 
 int main(int argc, char *argv[]) {
-    if (argc != 4) {
-        fprintf(stderr, "usage: %s <device_name> <slba[K|M|G|T]> <data_len[K|M|G|T]>\n", argv[0]);
+    int argi = 1;
+    int debug_enabled = 0;
+    if (argi < argc && (strcmp(argv[argi], "-D") == 0 || strcmp(argv[argi], "--debug") == 0)) {
+        debug_enabled = 1;
+        ++argi;
+    }
+
+    if ((argc - argi) != 3) {
+        fprintf(stderr,
+                "usage: %s [-D|--debug] <device_name> <slba[K|M|G|T]> <data_len[K|M|G|T]>\n",
+                argv[0]);
         return 1;
     }
 
-    const char *device_name = argv[1];
+    const char *device_name = argv[argi];
     // slba and data_len share the same unit parser for consistent CLI behavior.
     uint64_t slba = 0ULL;
-    if (parse_u64_with_unit(argv[2], &slba) != 0) {
-        fprintf(stderr, "invalid slba: %s\n", argv[2]);
+    if (parse_u64_with_unit(argv[argi + 1], &slba) != 0) {
+        fprintf(stderr, "invalid slba: %s\n", argv[argi + 1]);
         return 1;
     }
 
     uint64_t data_len = 0;
-    if (parse_u64_with_unit(argv[3], &data_len) != 0 || data_len == 0ULL) {
-        fprintf(stderr, "invalid data_len: %s (examples: 128K, 64M, 1G, 1T)\n", argv[3]);
+    if (parse_u64_with_unit(argv[argi + 2], &data_len) != 0 || data_len == 0ULL) {
+        fprintf(stderr, "invalid data_len: %s (examples: 128K, 64M, 1G, 1T)\n", argv[argi + 2]);
         return 1;
     }
+
+    nvme_read_set_debug(debug_enabled);
 
     if (nvme_read(device_name, slba, data_len, NULL) != 0) {
         fprintf(stderr, "nvme_read failed: %s\n", strerror(errno));
