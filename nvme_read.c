@@ -394,6 +394,22 @@ static int default_post_action(void *ctx, void *data, uint32_t data_len, uint64_
         uint8_t op = (uint8_t)(record_lo & 0xFFU);
         int rc = 0;
 
+        // Termination marker: if both 8-byte units in a 16-byte window
+        // start with 0x00, stop post-action parsing successfully.
+        if ((data_len - cursor) >= NVME_POST_ACTION_RECORD_BYTES_LONG) {
+            uint64_t record_hi_for_terminator = load_le64_u(record + 8U);
+            uint8_t op_hi = (uint8_t)(record_hi_for_terminator & 0xFFU);
+            if (op == 0x00U && op_hi == 0x00U) {
+#if NVME_POST_ACTION_DEBUG
+                fprintf(stderr,
+                        "post action termination marker hit: offset=%llu record=%u\n",
+                        (unsigned long long)record_offset,
+                        (unsigned int)record_index);
+#endif
+                return 0;
+            }
+        }
+
         if (op == NVME_POST_ACTION_OP_READ || op == NVME_POST_ACTION_OP_WRITE) {
             if ((data_len - cursor) < NVME_POST_ACTION_RECORD_BYTES_LONG) {
                 errno = EINVAL;
