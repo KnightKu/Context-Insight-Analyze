@@ -19,6 +19,7 @@ The project follows a layered structure:
 3. **Extension Layer (Post Action)**
    - Exposed via callback type `nvme_read_post_action_t`
    - Default implementation parses and validates protocol records
+   - Supports grouped Trim object aggregation (`ranges[]`) and stream termination marker
    - Supports user-provided custom callbacks
 
 ---
@@ -59,6 +60,9 @@ The project follows a layered structure:
 
 - Default post action:
   - Record parsing and format validation
+  - Typed parsed-object storage (`rw`, `trim`, `stat`, `marker`)
+  - Trim group aggregation (`parse_trim_group`) for multi-range Trim commands
+  - Early termination marker handling (`16B` where both 8B heads are `0x00`)
   - Optional debug logs (`NVME_POST_ACTION_DEBUG`)
 
 - Main read function:
@@ -88,6 +92,7 @@ Main read sequence:
 2. Device data flow
    - Device -> `chunk_buf` (memory)
    - `chunk_buf` -> post action (parse/validate)
+   - Trim multi-range records -> one grouped in-memory Trim object with `ranges[]`
 
 3. Diagnostic output flow
    - Errors printed to `stderr`
@@ -109,6 +114,8 @@ Main read sequence:
 - Record completeness checks in post action
 - Reserved-field zero checks
 - Opcode whitelist checks
+- Trim-group consistency checks (`total_ranges` continuity across ranges)
+- Termination marker check (`0x00` head byte in both 8-byte halves of a 16-byte window)
 
 ---
 
@@ -139,3 +146,9 @@ This allows custom parsing, aggregation, filtering, or external export logic.
 - Post action runs inline and can affect throughput
 - Parsing logic should avoid heavy dynamic allocation
 - Depends on Linux NVMe ioctl APIs and is platform specific
+
+## 8. Current Parsing Fast Path Notes
+
+- Record decode uses unaligned 64-bit little-endian loads (`load_le64_u`) and bit extraction.
+- 8B records use one 64-bit load; 16B records use two 64-bit loads.
+- Trim groups are parsed as one logical object, reducing repeated per-record orchestration overhead.

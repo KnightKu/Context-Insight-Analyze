@@ -63,6 +63,11 @@ The default post action:
 - Does not modify data
 - Does not write additional files
 - Focuses on format validation and observability
+- Parses records using a fast 64-bit load path (`load_le64_u`)
+- Aggregates consecutive Trim ranges into a single logical Trim group object
+- Supports an early termination marker:
+  - if a 16-byte window has first-byte `0x00` in both 8-byte halves,
+    post-action parsing stops successfully
 
 ## 5. Debug Macro
 
@@ -120,6 +125,8 @@ Typical errors:
 - `post action invalid op`
 - `post action truncated record`
 - `post action invalid ... reserved`
+- `post action trim group broken`
+- `post action trim group inconsistent total_ranges`
 
 Checks:
 

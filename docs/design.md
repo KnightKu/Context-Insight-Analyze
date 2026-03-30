@@ -68,13 +68,14 @@ The current parser supports 5 opcodes and two record lengths:
 
 ## 4. Core Algorithm
 
-### 4.1 Endianness Decoder
+### 4.1 Fast Endianness Decoder
 
-The parser uses `load_le_u64_n(const unsigned char *p, uint32_t nbytes)` for all packed fields:
+The parser now uses `load_le64_u(const unsigned char *p)` as the hot-path primitive:
 
-- Accepts any little-endian fragment of 1..8 bytes
-- Returns a `uint64_t`
-- Reused by all 3B / 5B / 7B fields to avoid duplicated bit logic
+- Loads one unaligned 8-byte word via `memcpy`
+- Uses host-endian branch (no swap on little-endian hosts)
+- Decodes 8-byte records with one load and 16-byte records with two loads
+- Extracts fields with bit masks and shifts
 
 ### 4.2 Record Dispatch and Boundary Safety
 
@@ -84,10 +85,13 @@ The parser uses `load_le_u64_n(const unsigned char *p, uint32_t nbytes)` for all
 2. Start scanning with `cursor = 0`
 3. Read `op = bytes[cursor]`
 4. Determine record size (8 or 16) from opcode
-5. Fail with `truncated record` if remaining bytes are insufficient
+5. Check termination marker:
+   - If at least 16 bytes remain
+   - And the first byte of both 8-byte halves is `0x00`
+   - Stop parsing and return success
 6. Dispatch to one parser:
    - `parse_rw_record`
-   - `parse_trim_record`
+   - `parse_trim_group`
    - `parse_stat_record`
    - `parse_marker_record`
 7. Move `cursor += record_size` and continue
@@ -97,6 +101,7 @@ The parser uses `load_le_u64_n(const unsigned char *p, uint32_t nbytes)` for all
 - Unknown opcode -> `EINVAL` with explicit log
 - Non-zero reserved field -> `EINVAL` with explicit log
 - Non-8-byte-aligned `data_len` -> fail fast to prevent record misalignment
+- Truncated record/group -> `EINVAL` with explicit log
 
 ## 5. Error Handling Strategy
 
@@ -111,6 +116,7 @@ Compile-time macro `NVME_POST_ACTION_DEBUG` controls debug logs:
 - Default: `0` (off)
 - Set to `1` to print parsed fields for each record type
 - When `data_len < 8`, the "no complete 8-byte unit" message is printed only in debug mode
+- When termination marker is hit, a debug line is printed (in debug mode)
 
 ## 7. Extensibility
 
@@ -122,7 +128,33 @@ To add a new opcode:
 
 For future variable-length records, parse a minimal header first, then compute dynamic record size.
 
-## 8. Known Limits and Recommendations
+## 8. Trim Group Aggregation Model
+
+`Trim (0x03)` records are aggregated into one logical object:
+
+- Structure: `nvme_post_action_trim_t`
+  - `meta` (op, offset, record index)
+  - `total_ranges`
+  - `range_count`
+  - `ranges[256]`
+- Each entry in `ranges[]` stores:
+  - `start_lba`
+  - `range_index`
+  - `length`
+  - `time_rel`
+
+Special handling:
+
+- Field width for `total_ranges` is 1 byte, but protocol max is 256.
+- Raw `total_ranges == 0` is interpreted as `256`.
+
+Consistency checks during aggregation:
+
+- Every grouped record must remain opcode `0x03`
+- Every grouped record must have consistent `total_ranges`
+- Every grouped record must satisfy reserved-field constraints
+
+## 9. Known Limits and Recommendations
 
 - Current implementation validates structure and reserved fields only; it does not enforce cross-record semantics (for example, Trim range sequence consistency).
 - Recommended next steps:
