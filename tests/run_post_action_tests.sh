@@ -15,6 +15,7 @@ python3 tests/gen_post_action_fixtures.py
 PASS_CASES=(
   "tests/fixtures/valid_mixed.bin"
   "tests/fixtures/valid_termination.bin"
+  "tests/fixtures/valid_relative_time_with_marker.bin"
 )
 
 SKIP_CASES=(
@@ -22,6 +23,7 @@ SKIP_CASES=(
   "tests/fixtures/invalid_rw_reserved.bin"
   "tests/fixtures/invalid_trim_total_ranges.bin"
   "tests/fixtures/invalid_alignment.bin"
+  "tests/fixtures/invalid_missing_marker.bin"
 )
 
 echo "[3/4] run pass cases"

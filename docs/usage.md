@@ -67,6 +67,8 @@ The default post action:
 - Focuses on format validation and observability
 - Parses records using a fast 64-bit load path (`load_le64_u`)
 - Aggregates consecutive Trim ranges into a single logical Trim group object
+- Treats marker (`0xFF`) `abs_time` as absolute time in microseconds
+- Interprets `time` fields in `read/write/trim/stat` as relative offsets (3B) from the latest previous marker
 - Supports an early termination marker:
   - if a 16-byte window has first-byte `0x00` in both 8-byte halves,
     post-action parsing stops successfully

@@ -64,7 +64,16 @@ The current parser supports 5 opcodes and two record lengths:
 | Field | Size | Offset | Description |
 |---|---:|---:|---|
 | Opcode | 1B | 0 | `0xFF` |
-| Absolute time | 7B | 1 | High-precision absolute timestamp |
+| Absolute time | 7B | 1 | High-precision absolute timestamp (microseconds) |
+
+### 3.5 Timestamp Semantics
+
+- `Marker.abs_time` is an absolute timestamp in microseconds (`us`).
+- For `Read/Write/Trim/Stat`, the 3-byte `time` field is interpreted as a relative delta (`time_rel`)
+  against the most recent preceding marker.
+- Effective timestamp:
+  - `abs_time_us = last_marker_abs_time_us + time_rel`
+- If a non-marker record appears before any marker, the record is treated as invalid by parser rules.
 
 ## 4. Core Algorithm
 
@@ -120,16 +129,19 @@ Implementation notes:
 
 ### 4.4 Validation Rules
 
-- Unknown opcode -> `EINVAL` with explicit log
-- Non-zero reserved field -> `EINVAL` with explicit log
-- Non-8-byte-aligned `data_len` -> fail fast to prevent record misalignment
-- Truncated record/group -> `EINVAL` with explicit log
+- Unknown opcode -> counted as invalid and skipped by one aligned record unit
+- Non-zero reserved field -> counted as invalid and skipped
+- Missing marker reference for relative timestamp -> counted as invalid and skipped
+- Non-8-byte-aligned tail bytes -> counted as invalid tail fragment
+- Truncated record/group -> counted as invalid and skipped conservatively
 
 ## 5. Error Handling Strategy
 
-- Parse failures return `-1` and set `errno` (typically `EINVAL`)
-- `nvme_read` aborts when post action returns error
-- Logs include `offset`, `record index`, `opcode`, and field context for troubleshooting
+- Parser-level invalid records do not abort the whole chunk processing path.
+- Invalid records are counted and skipped so parsing can continue.
+- `nvme_read` aborts only on structural/runtime failures outside tolerated invalid-record scope
+  (for example, I/O failure, thread/setup failure).
+- Logs still include `offset`, `record index`, `opcode`, and field context for troubleshooting.
 - Pipeline thread failures preserve `errno` and are propagated to the caller
 
 ## 6. Debug and Observability
@@ -140,6 +152,7 @@ Compile-time macro `NVME_POST_ACTION_DEBUG` controls debug logs:
 - Set to `1` to print parsed fields for each record type
 - When `data_len < 8`, the "no complete 8-byte unit" message is printed only in debug mode
 - When termination marker is hit, a debug line is printed (in debug mode)
+- Invalid record count is reported in final debug read stats (`invalid_records=...`)
 
 ## 7. Extensibility
 

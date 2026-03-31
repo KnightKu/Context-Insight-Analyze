@@ -83,6 +83,11 @@ typedef struct {
 } nvme_post_action_trim_record_fields_t;
 
 typedef struct {
+    uint64_t marker_abs_time_us;
+    int has_marker;
+} nvme_post_action_time_ref_t;
+
+typedef struct {
     void *buf;
     uint32_t len;
     uint64_t offset;
@@ -151,6 +156,21 @@ static uint64_t post_action_get_invalid_count(void) {
     uint64_t v = g_post_action_invalid_records;
     pthread_mutex_unlock(&g_post_action_stats_mutex);
     return v;
+}
+
+static int resolve_abs_time_us(uint32_t time_rel_us,
+                               nvme_post_action_time_ref_t *time_ref,
+                               uint64_t *abs_time_us_out) {
+    if (time_ref == NULL || abs_time_us_out == NULL) {
+        errno = EINVAL;
+        return -1;
+    }
+    if (time_ref->has_marker == 0) {
+        errno = EINVAL;
+        return -1;
+    }
+    *abs_time_us_out = time_ref->marker_abs_time_us + (uint64_t)time_rel_us;
+    return 0;
 }
 
 // Fast unaligned 64-bit little-endian load.
@@ -447,7 +467,8 @@ static int parse_rw_record(uint64_t record_lo,
                            uint64_t record_hi,
                            uint8_t op,
                            uint64_t offset_bytes,
-                           uint32_t record_index) {
+                           uint32_t record_index,
+                           nvme_post_action_time_ref_t *time_ref) {
     nvme_post_action_rw_t parsed;
     parsed.meta.op = op;
     parsed.meta.offset_bytes = offset_bytes;
@@ -457,6 +478,7 @@ static int parse_rw_record(uint64_t record_lo,
     uint16_t reserved = (uint16_t)(record_hi & 0xFFFFU);
     parsed.latency = (uint32_t)((record_hi >> 16U) & NVME_POST_ACTION_U24_MASK);
     parsed.time_rel = (uint32_t)((record_hi >> 40U) & NVME_POST_ACTION_U24_MASK);
+    uint64_t abs_time_us = 0ULL;
 
     if (reserved != 0U) {
         errno = EINVAL;
@@ -467,18 +489,30 @@ static int parse_rw_record(uint64_t record_lo,
         return -1;
     }
 
+    if (resolve_abs_time_us(parsed.time_rel, time_ref, &abs_time_us) != 0) {
+        fprintf(stderr,
+                "post action missing marker for rw time: offset=%llu record=%u op=0x%02x time_rel=%u\n",
+                (unsigned long long)offset_bytes,
+                (unsigned int)record_index,
+                (unsigned int)op,
+                (unsigned int)parsed.time_rel);
+        return -1;
+    }
+
 #if NVME_POST_ACTION_DEBUG
     fprintf(stderr,
-            "post action %s: offset=%llu record=%u start_lba=%llu len=%u latency=%u time=%u\n",
+            "post action %s: offset=%llu record=%u start_lba=%llu len=%u latency=%u time_rel=%u abs_time_us=%llu\n",
             parsed.meta.op == NVME_POST_ACTION_OP_READ ? "read" : "write",
             (unsigned long long)parsed.meta.offset_bytes,
             (unsigned int)parsed.meta.record_index,
             (unsigned long long)parsed.start_lba,
             (unsigned int)parsed.length,
             (unsigned int)parsed.latency,
-            (unsigned int)parsed.time_rel);
+            (unsigned int)parsed.time_rel,
+            (unsigned long long)abs_time_us);
 #else
     (void)parsed;
+    (void)abs_time_us;
 #endif
     return 0;
 }
@@ -515,10 +549,19 @@ static int parse_trim_group(const unsigned char *bytes,
                             uint32_t cursor,
                             uint64_t base_offset_bytes,
                             uint32_t record_index,
+                            nvme_post_action_time_ref_t *time_ref,
                             uint32_t *consumed_bytes,
                             uint32_t *consumed_records) {
     if (bytes == NULL || consumed_bytes == NULL || consumed_records == NULL) {
         errno = EINVAL;
+        return -1;
+    }
+    if (time_ref == NULL || time_ref->has_marker == 0) {
+        errno = EINVAL;
+        fprintf(stderr,
+                "post action missing marker for trim time: offset=%llu record=%u\n",
+                (unsigned long long)(base_offset_bytes + (uint64_t)cursor),
+                (unsigned int)record_index);
         return -1;
     }
 
@@ -621,6 +664,18 @@ static int parse_trim_group(const unsigned char *bytes,
         parsed.ranges[i].range_index = fields.range_index;
         parsed.ranges[i].length = fields.length;
         parsed.ranges[i].time_rel = fields.time_rel;
+        uint64_t abs_time_us = 0ULL;
+        if (resolve_abs_time_us(fields.time_rel, time_ref, &abs_time_us) != 0) {
+            fprintf(stderr,
+                    "post action missing marker for trim range time: offset=%llu record=%u range=%u\n",
+                    (unsigned long long)(base_offset_bytes + (uint64_t)group_cursor),
+                    (unsigned int)(record_index + (uint32_t)i),
+                    (unsigned int)i);
+            return -1;
+        }
+#if NVME_POST_ACTION_DEBUG
+        (void)abs_time_us;
+#endif
     }
     parsed.range_count = parsed.total_ranges;
 
@@ -631,13 +686,15 @@ static int parse_trim_group(const unsigned char *bytes,
             (unsigned int)parsed.meta.record_index,
             (unsigned int)parsed.total_ranges);
     for (uint16_t i = 0; i < parsed.range_count; ++i) {
+        uint64_t abs_time_us = time_ref->marker_abs_time_us + (uint64_t)parsed.ranges[i].time_rel;
         fprintf(stderr,
-                "  trim range[%u]: start_lba=%llu range_index=%u len=%u time=%u\n",
+                "  trim range[%u]: start_lba=%llu range_index=%u len=%u time_rel=%u abs_time_us=%llu\n",
                 (unsigned int)i,
                 (unsigned long long)parsed.ranges[i].start_lba,
                 (unsigned int)parsed.ranges[i].range_index,
                 (unsigned int)parsed.ranges[i].length,
-                (unsigned int)parsed.ranges[i].time_rel);
+                (unsigned int)parsed.ranges[i].time_rel,
+                (unsigned long long)abs_time_us);
     }
 #else
     (void)parsed;
@@ -650,7 +707,8 @@ static int parse_trim_group(const unsigned char *bytes,
 
 static int parse_stat_record(uint64_t record_lo,
                              uint64_t offset_bytes,
-                             uint32_t record_index) {
+                             uint32_t record_index,
+                             nvme_post_action_time_ref_t *time_ref) {
     nvme_post_action_stat_t parsed;
     parsed.meta.op = NVME_POST_ACTION_OP_STAT;
     parsed.meta.offset_bytes = offset_bytes;
@@ -659,6 +717,7 @@ static int parse_stat_record(uint64_t record_lo,
     parsed.qd = (uint16_t)((record_lo >> 16U) & 0xFFFFU);
     parsed.wa = (uint8_t)((record_lo >> 32U) & 0xFFU);
     parsed.time_rel = (uint32_t)((record_lo >> 40U) & NVME_POST_ACTION_U24_MASK);
+    uint64_t abs_time_us = 0ULL;
 
     if (reserved != 0U) {
         errno = EINVAL;
@@ -668,28 +727,46 @@ static int parse_stat_record(uint64_t record_lo,
         return -1;
     }
 
+    if (resolve_abs_time_us(parsed.time_rel, time_ref, &abs_time_us) != 0) {
+        fprintf(stderr,
+                "post action missing marker for stat time: offset=%llu record=%u time_rel=%u\n",
+                (unsigned long long)offset_bytes,
+                (unsigned int)record_index,
+                (unsigned int)parsed.time_rel);
+        return -1;
+    }
+
 #if NVME_POST_ACTION_DEBUG
     fprintf(stderr,
-            "post action stat: offset=%llu record=%u qd=%u wa=%u time=%u\n",
+            "post action stat: offset=%llu record=%u qd=%u wa=%u time_rel=%u abs_time_us=%llu\n",
             (unsigned long long)parsed.meta.offset_bytes,
             (unsigned int)parsed.meta.record_index,
             (unsigned int)parsed.qd,
             (unsigned int)parsed.wa,
-            (unsigned int)parsed.time_rel);
+            (unsigned int)parsed.time_rel,
+            (unsigned long long)abs_time_us);
 #else
     (void)parsed;
+    (void)abs_time_us;
 #endif
     return 0;
 }
 
 static int parse_marker_record(uint64_t record_lo,
                                uint64_t offset_bytes,
-                               uint32_t record_index) {
+                               uint32_t record_index,
+                               nvme_post_action_time_ref_t *time_ref) {
     nvme_post_action_marker_t parsed;
     parsed.meta.op = NVME_POST_ACTION_OP_MARKER;
     parsed.meta.offset_bytes = offset_bytes;
     parsed.meta.record_index = record_index;
     parsed.abs_time = (record_lo >> 8U) & NVME_POST_ACTION_U56_MASK;
+    if (time_ref == NULL) {
+        errno = EINVAL;
+        return -1;
+    }
+    time_ref->marker_abs_time_us = parsed.abs_time;
+    time_ref->has_marker = 1;
 #if NVME_POST_ACTION_DEBUG
     fprintf(stderr,
             "post action marker: offset=%llu record=%u abs_time=%llu\n",
@@ -726,6 +803,8 @@ static int default_post_action(void *ctx, void *data, uint32_t data_len, uint64_
     uint32_t cursor = 0U;
     uint32_t record_index = 0U;
     uint64_t local_invalid_records = 0ULL;
+    nvme_post_action_time_ref_t time_ref;
+    memset(&time_ref, 0, sizeof(time_ref));
     uint32_t parse_len = data_len;
     uint32_t tail_bytes = data_len % NVME_POST_ACTION_RECORD_BYTES_SHORT;
     if (tail_bytes != 0U) {
@@ -764,13 +843,13 @@ static int default_post_action(void *ctx, void *data, uint32_t data_len, uint64_
                 break;
             }
             uint64_t record_hi = load_le64_u(record + 8U);
-            rc = parse_rw_record(record_lo, record_hi, op, record_offset, record_index);
+            rc = parse_rw_record(record_lo, record_hi, op, record_offset, record_index, &time_ref);
             cursor += NVME_POST_ACTION_RECORD_BYTES_LONG;
             ++record_index;
         } else if (op == NVME_POST_ACTION_OP_TRIM) {
             uint32_t consumed_bytes = 0U;
             uint32_t consumed_records = 0U;
-            rc = parse_trim_group(bytes, parse_len, cursor, offset_bytes, record_index,
+            rc = parse_trim_group(bytes, parse_len, cursor, offset_bytes, record_index, &time_ref,
                                   &consumed_bytes, &consumed_records);
             if (rc != 0) {
                 // Invalid trim group: count one bad record and skip current 16B record.
@@ -782,11 +861,11 @@ static int default_post_action(void *ctx, void *data, uint32_t data_len, uint64_
             cursor += consumed_bytes;
             record_index += consumed_records;
         } else if (op == NVME_POST_ACTION_OP_STAT) {
-            rc = parse_stat_record(record_lo, record_offset, record_index);
+            rc = parse_stat_record(record_lo, record_offset, record_index, &time_ref);
             cursor += NVME_POST_ACTION_RECORD_BYTES_SHORT;
             ++record_index;
         } else if (op == NVME_POST_ACTION_OP_MARKER) {
-            rc = parse_marker_record(record_lo, record_offset, record_index);
+            rc = parse_marker_record(record_lo, record_offset, record_index, &time_ref);
             cursor += NVME_POST_ACTION_RECORD_BYTES_SHORT;
             ++record_index;
         } else {
