@@ -93,6 +93,13 @@ Main read sequence:
    - Device -> `chunk_buf` (memory)
    - `chunk_buf` -> post action (parse/validate)
    - Trim multi-range records -> one grouped in-memory Trim object with `ranges[]`
+   - Optional LBA statistics path:
+     - Bucket granularity: 4KiB (`4096B`)
+     - Per-bucket footprint: 5 bytes (`read_count`, `write_to_first_read_latency`, `life_cycle_latency`)
+     - Default logical coverage: 4TiB with default sector size `512B`
+     - Total footprint: 5GiB (allocated via anonymous mmap)
+     - `read_count` uses saturating counter (`max=255`)
+     - Latency fields use non-linear encoding via lookup table
 
 3. Diagnostic output flow
    - Errors printed to `stderr`

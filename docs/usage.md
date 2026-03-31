@@ -72,6 +72,11 @@ The default post action:
 - Supports an early termination marker:
   - if a 16-byte window has first-byte `0x00` in both 8-byte halves,
     post-action parsing stops successfully
+- Maintains in-memory per-4KB LBA statistics:
+  - 1B saturated read count (`0..255`) for write-then-read events
+  - 2B non-linear encoded write-to-first-read latency
+  - 2B non-linear encoded write life-cycle latency (write to next overwrite)
+  - LBA and length units are sectors; sector size defaults to `512B`
 
 ## 5. Read/Process Pipeline
 
@@ -88,9 +93,13 @@ Current default settings:
 
 - ring-buffer slots: `4` (`NVME_READ_PIPELINE_SLOTS`)
 - one reader thread + one worker thread
+- stats bucket size: `4KB` per bucket
+- stats storage: `5 bytes` per bucket (`ReadCount[1] + W2FR[2] + LifeCycle[2]`)
+- default total LBA span: `4TB` (`~1,073,741,824` buckets, ~`5GB` virtual memory)
 
 This design helps reduce idle time by allowing I/O and parsing to run concurrently.
 - Prints read bandwidth statistics only when debug mode is enabled (`-D` / `--debug`)
+- In debug mode, prints post-action stats summary (`buckets`, `touched`, `read_count_nonzero`, `bytes`)
 
 ## 6. Debug Macro
 

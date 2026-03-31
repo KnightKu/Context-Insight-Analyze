@@ -154,6 +154,57 @@ Compile-time macro `NVME_POST_ACTION_DEBUG` controls debug logs:
 - When termination marker is hit, a debug line is printed (in debug mode)
 - Invalid record count is reported in final debug read stats (`invalid_records=...`)
 
+## 7. LBA Post-Action Statistics (5-Byte Bucket Model)
+
+The post-action path now includes an in-memory LBA statistics engine.
+
+### 7.1 Bucket Granularity and Memory Layout
+
+- Bucket granularity: **4 KiB logical address window**
+- Per-bucket storage: **5 bytes**
+  - `read_count` (1 byte)
+  - `write_to_first_read_latency` (2 bytes)
+  - `life_cycle_latency` (2 bytes)
+
+By default, total logical address space is treated as 4 TiB:
+
+- `4 TiB / 4 KiB = 1,073,741,824` buckets
+- `1,073,741,824 * 5 B = 5,368,709,120 B` (~5 GiB virtual memory)
+
+The storage is initialized by `mmap` (with `MAP_NORESERVE` when available) to keep startup cost low.
+
+### 7.2 Unit Semantics
+
+- In records, both `start_lba` and `length` are interpreted in units of `sector_size`.
+- Default `sector_size` is 512 bytes; runtime-detected sector size is used when available.
+- Bucket mapping:
+  - `start_bytes = start_lba * sector_size`
+  - `end_bytes = (start_lba + length) * sector_size`
+  - all covered 4 KiB buckets are updated.
+
+### 7.3 Counters and Latency Encoding
+
+1. **Read Count (1B)**
+   - Counts reads that occur after at least one write in the bucket.
+   - Uses saturating counter semantics (`max = 255`).
+
+2. **Write-to-First-Read Latency (2B code)**
+   - Measured from latest write to first subsequent read.
+   - If no prior write exists, latency remains `0`.
+   - Encoded with non-linear lookup-table mapping in milliseconds.
+
+3. **LBA Life Cycle (2B code)**
+   - Measured from one write to the next overwrite write.
+   - Encoded with the same non-linear lookup-table mapping.
+
+### 7.4 Non-Linear LUT Encoding
+
+- Input unit: milliseconds (converted from microsecond timestamps).
+- Output: `uint16_t` code (`0..65535`).
+- Mapping is monotonic and super-linear (step size grows by code range), covering
+  millisecond scale to multi-hour scale.
+- Values above the table upper bound are saturated to `65535`.
+
 ## 7. Extensibility
 
 To add a new opcode:
