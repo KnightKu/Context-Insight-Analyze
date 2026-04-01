@@ -78,6 +78,25 @@ The default post action:
   - 2B non-linear encoded write life-cycle latency (write to next overwrite)
   - LBA and length units are sectors; sector size defaults to `512B`
 
+CSV export API (bucket range):
+
+```c
+int nvme_post_action_export_stats_csv(const char *csv_path,
+                                      uint64_t start_bucket,
+                                      uint64_t bucket_count);
+```
+
+- Exports current in-memory post-action stats to a CSV file
+- Bucket granularity is `4KB` per row
+- `start_bucket` is inclusive
+- `bucket_count` controls exported rows (`0` is invalid and returns error)
+- If `start_bucket + bucket_count` exceeds available buckets, export is clamped to the valid tail.
+- CSV columns:
+  - `bucket_index`
+  - `read_count`
+  - `write_to_first_read_latency_code`
+  - `life_cycle_latency_code`
+
 ## 5. Read/Process Pipeline
 
 The main read path uses a producer-consumer pipeline to overlap device reads and post-action processing:

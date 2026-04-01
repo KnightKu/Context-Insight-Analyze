@@ -214,6 +214,25 @@ The storage is initialized by `mmap` (with `MAP_NORESERVE` when available) to ke
   millisecond scale to multi-hour scale.
 - Values above the table upper bound are saturated to `65535`.
 
+### 7.5 Statistics Export API (CSV by Bucket Range)
+
+A public export API is available:
+
+```c
+int nvme_post_action_export_stats_csv(const char *csv_path,
+                                      uint64_t start_bucket,
+                                      uint64_t bucket_count);
+```
+
+Behavior:
+
+- Exports only the requested bucket range to CSV.
+- Header format:
+  - `bucket_index,read_count,write_to_first_read_latency_code,life_cycle_latency_code`
+- One row per bucket in `[start_bucket, start_bucket + bucket_count)`.
+- If range exceeds available buckets, export is clamped to the valid tail.
+- Returns `0` on success, `-1` on failure (`errno` set).
+
 ## 7. Extensibility
 
 To add a new opcode:
