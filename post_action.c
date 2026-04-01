@@ -64,8 +64,11 @@ typedef struct {
 typedef struct {
     nvme_post_action_record_meta_t meta;
     uint16_t qd;
-    uint8_t wa;
     uint32_t time_rel;
+    uint16_t log_write;
+    uint16_t reserved;
+    uint32_t hot_write;
+    uint32_t folding_write;
 } nvme_post_action_stat_t;
 
 typedef struct {
@@ -325,6 +328,7 @@ static int parse_trim_group(const unsigned char *bytes,
 
 #if !NVME_POST_ACTION_SKIP_STAT
 static int parse_stat_record(uint64_t record_lo,
+                             uint64_t record_hi,
                              uint64_t offset_bytes,
                              uint32_t record_index,
                              nvme_post_action_time_ref_t *time_ref) {
@@ -332,18 +336,36 @@ static int parse_stat_record(uint64_t record_lo,
     parsed.meta.op = NVME_POST_ACTION_OP_STAT;
     parsed.meta.offset_bytes = offset_bytes;
     parsed.meta.record_index = record_index;
-    uint8_t reserved = (uint8_t)((record_lo >> 8U) & 0xFFU);
-    parsed.qd = (uint16_t)((record_lo >> 16U) & 0xFFFFU);
-    parsed.wa = (uint8_t)((record_lo >> 32U) & 0xFFU);
-    parsed.time_rel = (uint32_t)((record_lo >> 40U) & NVME_POST_ACTION_U24_MASK);
+    parsed.qd = (uint16_t)((record_lo >> 8U) & 0xFFFFU);
+    parsed.time_rel = (uint32_t)((record_lo >> 24U) & NVME_POST_ACTION_U24_MASK);
+    parsed.log_write = (uint16_t)((record_lo >> 48U) & 0xFFFFU);
+    parsed.reserved = (uint16_t)(record_hi & 0xFFFFU);
+    parsed.hot_write = (uint32_t)((record_hi >> 16U) & NVME_POST_ACTION_U24_MASK);
+    parsed.folding_write = (uint32_t)((record_hi >> 40U) & NVME_POST_ACTION_U24_MASK);
     uint64_t abs_time_us = 0ULL;
-    if (reserved != 0U) {
+
+    if (parsed.reserved != 0U) {
         errno = EINVAL;
         return -1;
     }
     if (resolve_abs_time_us(parsed.time_rel, time_ref, &abs_time_us) != 0) {
         return -1;
     }
+#if NVME_POST_ACTION_DEBUG
+    fprintf(stderr,
+            "post action stat: offset=%llu record=%u qd=%u time_rel=%u abs_time_us=%llu "
+            "log_write_4k=%u hot_write_4k=%u folding_write_4k=%u\n",
+            (unsigned long long)parsed.meta.offset_bytes,
+            (unsigned int)parsed.meta.record_index,
+            (unsigned int)parsed.qd,
+            (unsigned int)parsed.time_rel,
+            (unsigned long long)abs_time_us,
+            (unsigned int)parsed.log_write,
+            (unsigned int)parsed.hot_write,
+            (unsigned int)parsed.folding_write);
+#else
+    (void)parsed;
+#endif
     (void)abs_time_us;
     return 0;
 }
@@ -428,12 +450,17 @@ static int default_post_action(void *ctx, void *data, uint32_t data_len, uint64_
             cursor += consumed_bytes;
             record_index += consumed_records;
         } else if (op == NVME_POST_ACTION_OP_STAT) {
+            if ((parse_len - cursor) < NVME_POST_ACTION_RECORD_BYTES_LONG) {
+                ++local_invalid_records;
+                break;
+            }
+            uint64_t record_hi = load_le64_u(record + 8U);
 #if NVME_POST_ACTION_SKIP_STAT
             rc = 0;
 #else
-            rc = parse_stat_record(record_lo, record_offset, record_index, &time_ref);
+            rc = parse_stat_record(record_lo, record_hi, record_offset, record_index, &time_ref);
 #endif
-            cursor += NVME_POST_ACTION_RECORD_BYTES_SHORT;
+            cursor += NVME_POST_ACTION_RECORD_BYTES_LONG;
             ++record_index;
         } else if (op == NVME_POST_ACTION_OP_MARKER) {
             rc = parse_marker_record(record_lo, record_offset, record_index, &time_ref);

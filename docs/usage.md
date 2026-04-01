@@ -170,7 +170,7 @@ Optional stat-skip macro:
 #endif
 ```
 
-When `NVME_POST_ACTION_SKIP_STAT` is set to `1`, post action still consumes 8-byte
+When `NVME_POST_ACTION_SKIP_STAT` is set to `1`, post action still consumes 16-byte
 `Stat (0x0F)` records to keep stream alignment, but skips stat field parsing/validation
 and directly continues with the next record.
 

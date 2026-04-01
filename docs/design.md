@@ -49,15 +49,17 @@ The current parser supports 5 opcodes and two record lengths:
 
 > If `Total ranges > 1`, consecutive Trim records represent one logical Trim operation.
 
-### 3.3 Stat (`0x0F`) - 8B
+### 3.3 Stat (`0x0F`) - 16B
 
 | Field | Size | Offset | Description |
 |---|---:|---:|---|
 | Opcode | 1B | 0 | `0x0F` |
-| Reserved | 1B | 1 | Must be `0x00` |
-| QD | 2B | 2 | Queue depth |
-| WA | 1B | 4 | Write amplification |
-| Time | 3B | 5 | Timestamp |
+| QD | 2B | 1 | Queue depth |
+| Time | 3B | 3 | Relative timestamp |
+| Log write | 2B | 6 | Log write volume (unit: 4KiB) |
+| Reserved | 2B | 8 | Must be `0x0000` |
+| Hot write | 3B | 10 | Hot write volume (unit: 4KiB) |
+| Folding write | 3B | 13 | Folding/migration write volume (unit: 4KiB) |
 
 ### 3.4 Marker (`0xFF`) - 8B
 

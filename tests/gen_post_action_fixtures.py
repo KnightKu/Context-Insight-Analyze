@@ -14,8 +14,21 @@ def rec_trim(start_lba: int, total_ranges_raw: int, range_index: int, reserved: 
     return bytes([0x03]) + le_n(start_lba, 5) + bytes([total_ranges_raw, range_index, reserved]) + le_n(length, 4) + le_n(time_rel, 3)
 
 
-def rec_stat(qd: int, wa: int, time_rel: int, reserved: int = 0) -> bytes:
-    return bytes([0x0F, reserved]) + le_n(qd, 2) + bytes([wa]) + le_n(time_rel, 3)
+def rec_stat(qd: int,
+             time_rel: int,
+             log_write_4k: int,
+             reserved: int,
+             hot_write_4k: int,
+             folding_write_4k: int) -> bytes:
+    return (
+        bytes([0x0F]) +
+        le_n(qd, 2) +
+        le_n(time_rel, 3) +
+        le_n(log_write_4k, 2) +
+        le_n(reserved, 2) +
+        le_n(hot_write_4k, 3) +
+        le_n(folding_write_4k, 3)
+    )
 
 
 def rec_marker(abs_time: int) -> bytes:
@@ -35,7 +48,7 @@ def main() -> None:
             rec_trim(0x10, 3, 0, 0, 16, 100),
             rec_trim(0x20, 3, 1, 0, 32, 101),
             rec_trim(0x30, 3, 2, 0, 48, 102),
-            rec_stat(8, 2, 1000),
+            rec_stat(8, 1000, 64, 0, 12, 4),
         ]
     )
     (fixture_dir / "valid_mixed.bin").write_bytes(valid)
@@ -45,7 +58,7 @@ def main() -> None:
         [
             rec_marker(2_000_000),
             rec_rw(0x02, 0x1000, 0x80, 0x0000, 300, 15),
-            rec_stat(16, 3, 20),
+            rec_stat(16, 20, 7, 0, 2, 1),
             rec_trim(0x2000, 2, 0, 0, 64, 25),
             rec_trim(0x3000, 2, 1, 0, 64, 30),
         ]
@@ -54,7 +67,7 @@ def main() -> None:
 
     # Valid termination marker: first byte of both 8-byte halves is 0x00.
     # Put marker first so non-marker record has a valid absolute-time base.
-    terminator = rec_marker(3_000_000) + rec_stat(4, 1, 50) + bytes([0x00]) + b"\x11" * 7 + bytes([0x00]) + b"\x22" * 7
+    terminator = rec_marker(3_000_000) + rec_stat(4, 50, 3, 0, 1, 0) + bytes([0x00]) + b"\x11" * 7 + bytes([0x00]) + b"\x22" * 7
     (fixture_dir / "valid_termination.bin").write_bytes(terminator)
 
     # Invalid: unknown opcode
@@ -62,8 +75,8 @@ def main() -> None:
     (fixture_dir / "invalid_op.bin").write_bytes(invalid_op)
 
     # Invalid: non-marker record appears before any marker.
-    invalid_missing_marker = rec_stat(2, 1, 7)
-    (fixture_dir / "invalid_missing_marker_for_stat.bin").write_bytes(invalid_missing_marker)
+    invalid_missing_marker = rec_stat(2, 7, 1, 0, 1, 0)
+    (fixture_dir / "invalid_missing_marker.bin").write_bytes(invalid_missing_marker)
 
     # Invalid: RW reserved non-zero
     invalid_rw_reserved = rec_rw(0x02, 0xABCDE, 0x10, 0x0001, 1, 2)
@@ -79,7 +92,7 @@ def main() -> None:
     (fixture_dir / "invalid_trim_total_ranges.bin").write_bytes(invalid_trim_total)
 
     # Invalid: not 8-byte aligned tail fragment (has marker first).
-    invalid_alignment = rec_marker(1_000_000) + rec_stat(1, 1, 1) + b"\xAA"
+    invalid_alignment = rec_marker(1_000_000) + rec_stat(1, 1, 1, 0, 1, 0) + b"\xAA"
     (fixture_dir / "invalid_alignment.bin").write_bytes(invalid_alignment)
 
 
