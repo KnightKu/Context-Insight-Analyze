@@ -78,6 +78,12 @@ The project follows a layered structure:
 - Owns CSV export API implementation
 - Exports specified bucket ranges using stats module accessors
 
+### 2.7 `post_action_latency.c`
+
+- Owns read/write/trim latency statistics aggregation
+- Prints fio-style latency summary with count/min/max/avg and percentiles
+- Runtime controlled by CLI option `-l` / `--latency`
+
 ---
 
 ## 3. Execution Sequence

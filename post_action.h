@@ -21,4 +21,12 @@ int nvme_post_action_set_debug(int enabled);
 
 int nvme_post_action_get_debug(void);
 
+int nvme_post_action_set_latency_enabled(int enabled);
+
+int nvme_post_action_get_latency_enabled(void);
+
+void nvme_post_action_reset_latency_stats(void);
+
+void nvme_post_action_print_latency_report(void);
+
 #endif  // POST_ACTION_H

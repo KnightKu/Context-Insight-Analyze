@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "post_action_latency.h"
 #include "post_action_stats.h"
 
 #ifndef NVME_POST_ACTION_DEBUG
@@ -181,8 +182,10 @@ static int parse_rw_record(uint64_t record_lo,
 
     if (op == NVME_POST_ACTION_OP_WRITE) {
         nvme_post_action_stats_update_write(parsed.start_lba, (uint64_t)parsed.length, abs_time_us);
+        nvme_post_action_latency_record_write(parsed.latency);
     } else if (op == NVME_POST_ACTION_OP_READ) {
         nvme_post_action_stats_update_read(parsed.start_lba, (uint64_t)parsed.length, abs_time_us);
+        nvme_post_action_latency_record_read(parsed.latency);
     }
 
 #if NVME_POST_ACTION_DEBUG
@@ -483,4 +486,21 @@ int nvme_post_action_get_debug(void) {
 
 int nvme_post_action_set_sector_size(uint32_t sector_size) {
     return nvme_post_action_stats_init(sector_size);
+}
+
+int nvme_post_action_set_latency_enabled(int enabled) {
+    nvme_post_action_latency_set_enabled(enabled);
+    return 0;
+}
+
+int nvme_post_action_get_latency_enabled(void) {
+    return nvme_post_action_latency_get_enabled();
+}
+
+void nvme_post_action_reset_latency_stats(void) {
+    nvme_post_action_latency_reset();
+}
+
+void nvme_post_action_print_latency_report(void) {
+    nvme_post_action_latency_print_summary();
 }

@@ -163,6 +163,15 @@ are parsed:
   - No Stat field validation is performed
   - No invalid-record count is added for skipped Stat records
 
+Runtime latency output switch:
+
+- CLI option `-l` / `--latency` enables fio-like latency summary printing for
+  `read`, `write`, and `trim` records.
+- Metrics are collected from parser-side record latency fields:
+  - `count`, `min`, `max`, `avg`
+  - `p50`, `p90`, `p99` percentiles
+- Output unit is microseconds (`us`), and aggregation is enabled only when latency mode is on.
+
 ## 7. LBA Post-Action Statistics (5-Byte Bucket Model)
 
 The post-action path now includes an in-memory LBA statistics engine.

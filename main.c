@@ -64,14 +64,24 @@ static int parse_u64_with_unit(const char *arg, uint64_t *out_value) {
 int main(int argc, char *argv[]) {
     int argi = 1;
     int debug_enabled = 0;
-    if (argi < argc && (strcmp(argv[argi], "-D") == 0 || strcmp(argv[argi], "--debug") == 0)) {
-        debug_enabled = 1;
-        ++argi;
+    int latency_enabled = 0;
+    while (argi < argc) {
+        if (strcmp(argv[argi], "-D") == 0 || strcmp(argv[argi], "--debug") == 0) {
+            debug_enabled = 1;
+            ++argi;
+            continue;
+        }
+        if (strcmp(argv[argi], "-l") == 0 || strcmp(argv[argi], "--latency") == 0) {
+            latency_enabled = 1;
+            ++argi;
+            continue;
+        }
+        break;
     }
 
     if ((argc - argi) != 3) {
         fprintf(stderr,
-                "usage: %s [-D|--debug] <device_name> <slba[K|M|G|T]> <data_len[K|M|G|T]>\n",
+                "usage: %s [-D|--debug] [-l|--latency] <device_name> <slba[K|M|G|T]> <data_len[K|M|G|T]>\n",
                 argv[0]);
         return 1;
     }
@@ -91,6 +101,7 @@ int main(int argc, char *argv[]) {
     }
 
     nvme_read_set_debug(debug_enabled);
+    nvme_read_set_latency(latency_enabled);
 
     if (nvme_read(device_name, slba, data_len, NULL) != 0) {
         fprintf(stderr, "nvme_read failed: %s\n", strerror(errno));

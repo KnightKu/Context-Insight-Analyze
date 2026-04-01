@@ -28,7 +28,7 @@ Binary output:
 Current command format:
 
 ```bash
-./sfx_ctx_insight_analyze [-D|--debug] <device_name> <slba[K|M|G|T]> <data_len[K|M|G|T]>
+./sfx_ctx_insight_analyze [-D|--debug] [-l|--latency] <device_name> <slba[K|M|G|T]> <data_len[K|M|G|T]>
 ```
 
 Argument details:
@@ -37,6 +37,7 @@ Argument details:
 - `slba`: start LBA, supports unit suffix `K/M/G/T` (case-insensitive)
 - `data_len`: read size in bytes, supports unit suffix `K/M/G/T` (case-insensitive)
 - `-D` / `--debug`: enables runtime debug mode
+- `-l` / `--latency`: enables fio-style latency summary output for post-action `read/write/trim`
 
 Examples:
 
@@ -45,6 +46,8 @@ Examples:
 ./sfx_ctx_insight_analyze /dev/nvme0n1 1G 256M
 ./sfx_ctx_insight_analyze /dev/nvme0n1 1024K 1T
 ./sfx_ctx_insight_analyze --debug /dev/nvme0n1 0 64M
+./sfx_ctx_insight_analyze --latency /dev/nvme0n1 0 64M
+./sfx_ctx_insight_analyze -D -l /dev/nvme0n1 0 64M
 ```
 
 Notes:
@@ -77,6 +80,10 @@ The default post action:
   - 2B non-linear encoded write-to-first-read latency
   - 2B non-linear encoded write life-cycle latency (write to next overwrite)
   - LBA and length units are sectors; sector size defaults to `512B`
+- Optional latency summary (`-l/--latency`) for post-action records:
+  - `read`, `write`: use protocol `latency` field (3B)
+  - `trim`: use per-range relative `time` delta as trim latency sample
+  - Output includes `samples/min/max/avg/p50/p90/p99`
 
 CSV export API (bucket range):
 
@@ -119,6 +126,7 @@ Current default settings:
 This design helps reduce idle time by allowing I/O and parsing to run concurrently.
 - Prints read bandwidth statistics only when debug mode is enabled (`-D` / `--debug`)
 - In debug mode, prints post-action stats summary (`buckets`, `touched`, `read_count_nonzero`, `bytes`)
+- Prints fio-style latency summary only when latency mode is enabled (`-l` / `--latency`)
 
 ## 6. Debug Macro
 
@@ -221,7 +229,7 @@ git push -u origin dev
 The repository includes a dedicated test binary that feeds file data into the post-action interface:
 
 ```bash
-./post_action_file_tester <input_file> [offset_bytes] [csv_path start_bucket bucket_count]
+./post_action_file_tester <input_file> [offset_bytes] [csv_path start_bucket bucket_count] [latency]
 ```
 
 Behavior:
@@ -230,6 +238,9 @@ Behavior:
 - Calls `nvme_post_action_process(data, data_len, offset_bytes)`
 - Optionally exports stats CSV by bucket range when
   `csv_path start_bucket bucket_count` are provided
+- Optional last argument `latency`:
+  - `0` disable latency summary
+  - `1` enable latency summary output
 - Returns:
   - `0` on success
   - `1` on post-action validation failure

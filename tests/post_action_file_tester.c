@@ -85,6 +85,7 @@ int main(int argc, char *argv[]) {
         return 2;
     }
 
+    nvme_read_set_latency(1);
     int rc = nvme_post_action_process(buf, (uint32_t)len, offset_bytes);
     if (rc != 0) {
         fprintf(stderr, "post action failed: %s\n", strerror(errno));

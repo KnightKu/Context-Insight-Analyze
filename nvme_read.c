@@ -2,6 +2,7 @@
 #include "nvme_read.h"
 #include "post_action.h"
 #include "post_action_export.h"
+#include "post_action_latency.h"
 #include "post_action_stats.h"
 
 #include <errno.h>
@@ -341,6 +342,11 @@ int nvme_read_set_post_action(nvme_read_post_action_t action, void *ctx) {
 
 int nvme_read_set_debug(int enabled) {
     g_nvme_read_debug = (enabled != 0) ? 1 : 0;
+    return nvme_post_action_set_debug(g_nvme_read_debug);
+}
+
+int nvme_read_set_latency(int enabled) {
+    nvme_post_action_latency_set_enabled(enabled);
     return 0;
 }
 
@@ -507,6 +513,7 @@ int nvme_read(const char *device_name,
                 bandwidth_mib_s,
                 (unsigned long long)invalid_records);
         nvme_post_action_stats_print_summary_debug(g_nvme_read_debug);
+        nvme_post_action_latency_print_summary();
     }
 
     close(nvme_fd);
