@@ -94,14 +94,6 @@ The default post action:
   - `trim`: use per-range relative `time` delta as trim latency sample
   - Output includes `samples/min/max/avg/p50/p90/p99`
 
-Stat (`0x0F`) record parsing (8-byte):
-
-- `Opcode` (1B): `0x0F`
-- `Reserved` (1B): must be `0x00`
-- `QD` (2B): queue depth
-- `WA` (2B): write amplification (updated structure)
-- `Time` (2B): relative timestamp to latest marker (updated structure)
-
 CSV export API (bucket range):
 
 ```c

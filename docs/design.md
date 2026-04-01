@@ -54,10 +54,10 @@ The current parser supports 5 opcodes and two record lengths:
 | Field | Size | Offset | Description |
 |---|---:|---:|---|
 | Opcode | 1B | 0 | `0x0F` |
-| QD | 2B | 1 | Queue depth |
-| WA | 1B | 3 | Write amplification |
-| Reserved | 1B | 4 | Must be `0x00` |
-| Time | 3B | 5 | Relative timestamp |
+| Reserved | 1B | 1 | Must be `0x00` |
+| QD | 2B | 2 | Queue depth |
+| WA | 1B | 4 | Write amplification |
+| Time | 3B | 5 | Timestamp |
 
 ### 3.4 Marker (`0xFF`) - 8B
 
