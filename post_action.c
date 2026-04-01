@@ -332,15 +332,35 @@ static int parse_stat_record(uint64_t record_lo,
     parsed.meta.op = NVME_POST_ACTION_OP_STAT;
     parsed.meta.offset_bytes = offset_bytes;
     parsed.meta.record_index = record_index;
-    uint8_t reserved = (uint8_t)((record_lo >> 8U) & 0xFFU);
-    parsed.qd = (uint16_t)((record_lo >> 16U) & 0xFFFFU);
-    parsed.wa = (uint8_t)((record_lo >> 32U) & 0xFFU);
     parsed.time_rel = (uint32_t)((record_lo >> 40U) & NVME_POST_ACTION_U24_MASK);
     uint64_t abs_time_us = 0ULL;
-    if (reserved != 0U) {
+
+    /*
+     * Stat control section is 4 bytes followed by 3-byte time field.
+     * To stay compatible across layout revisions, accept both:
+     *   A) [reserved:1][qd:2][wa:1] (legacy)
+     *   B) [qd:2][wa:1][reserved:1] (updated)
+     * and validate that the chosen reserved byte is zero.
+     */
+    uint8_t b1 = (uint8_t)((record_lo >> 8U) & 0xFFU);
+    uint8_t b2 = (uint8_t)((record_lo >> 16U) & 0xFFU);
+    uint8_t b3 = (uint8_t)((record_lo >> 24U) & 0xFFU);
+    uint8_t b4 = (uint8_t)((record_lo >> 32U) & 0xFFU);
+
+    int layout_b_valid = (b4 == 0U);  // updated layout
+    int layout_a_valid = (b1 == 0U);  // legacy layout
+
+    if (layout_b_valid) {
+        parsed.qd = (uint16_t)((uint16_t)b1 | ((uint16_t)b2 << 8U));
+        parsed.wa = b3;
+    } else if (layout_a_valid) {
+        parsed.qd = (uint16_t)((uint16_t)b2 | ((uint16_t)b3 << 8U));
+        parsed.wa = b4;
+    } else {
         errno = EINVAL;
         return -1;
     }
+
     if (resolve_abs_time_us(parsed.time_rel, time_ref, &abs_time_us) != 0) {
         return -1;
     }
