@@ -314,6 +314,7 @@ static int parse_trim_group(const unsigned char *bytes,
             return -1;
         }
         nvme_post_action_stats_update_write(fields.start_lba, (uint64_t)fields.length, abs_time_us);
+        nvme_post_action_latency_record_trim(fields.time_rel);
     }
     parsed.range_count = parsed.total_ranges;
     (void)parsed;

@@ -242,6 +242,21 @@ Behavior:
 - If range exceeds available buckets, export is clamped to the valid tail.
 - Returns `0` on success, `-1` on failure (`errno` set).
 
+### 7.6 Advanced LBA Life-Cycle Group Statistics
+
+Advanced overwrite life-cycle grouping is supported for covered write ranges:
+
+- Scope: grouped overwrite statistics based on per-4KiB bucket life-cycle codes.
+- Group size bins: `4K, 8K, 16K, ...` up to current read `mdts` size.
+- Alignment rule:
+  - group analysis is 4KiB aligned.
+  - non-4KiB-aligned write length is rounded down to covered full 4KiB groups.
+  - example: `12K` covered write contributes to `8K` group analysis.
+- Counting rule:
+  - if all 4KiB buckets inside one group share the same life-cycle encoded value,
+    that `(group_size, life_cycle_code)` counter is incremented by 1.
+- Life-cycle encoding reuses the same non-linear LUT (`ms -> code`) used by bucket life-cycle.
+
 ## 8. Extensibility
 
 To add a new opcode:

@@ -80,6 +80,11 @@ The default post action:
   - 2B non-linear encoded write-to-first-read latency
   - 2B non-linear encoded write life-cycle latency (write to next overwrite)
   - LBA and length units are sectors; sector size defaults to `512B`
+  - Advanced life-cycle overwrite statistics:
+    - Tracks overwrite-write segments by size bins: `4K, 8K, 16K, ...` up to MDTS-aligned cap
+    - Requires all covered 4K buckets in a segment to share the same life-cycle code
+    - Uses the same non-linear life-cycle code as grouping key
+    - Non-4K-aligned overwrite lengths are rounded down to 4K powers (example: `12K -> 8K`)
 - Optional latency summary (`-l/--latency`) for post-action records:
   - `read`, `write`: use protocol `latency` field (3B)
   - `trim`: use per-range relative `time` delta as trim latency sample

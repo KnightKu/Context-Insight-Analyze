@@ -26,6 +26,26 @@ static uint32_t g_latency_threshold_ms[NVME_POST_ACTION_LATENCY_CODE_MAX + 1U];
 static lba_active_write_entry_t *g_active_writes = NULL;
 static uint64_t g_active_writes_cap = 0ULL;
 static uint64_t g_active_writes_count = 0ULL;
+static uint32_t g_advanced_max_scale = 0U;
+static uint64_t *g_advanced_hist = NULL;
+static uint64_t g_advanced_hist_size = 0ULL;
+static uint64_t g_mdts_bytes = 0ULL;
+
+static inline uint64_t advanced_hist_index(uint32_t scale_idx, uint16_t life_code) {
+    return ((uint64_t)scale_idx * ((uint64_t)NVME_POST_ACTION_LATENCY_CODE_MAX + 1ULL)) +
+           (uint64_t)life_code;
+}
+
+static uint64_t floor_pow2_u64(uint64_t x) {
+    if (x == 0ULL) {
+        return 0ULL;
+    }
+    uint64_t p = 1ULL;
+    while ((p << 1U) <= x) {
+        p <<= 1U;
+    }
+    return p;
+}
 
 static void build_latency_threshold_table(void) {
     uint64_t acc = 0ULL;
@@ -201,6 +221,53 @@ static uint32_t duration_us_to_ms(uint64_t duration_us) {
     return (uint32_t)ms;
 }
 
+static void update_advanced_life_cycle_hist_locked(uint64_t begin_idx,
+                                                   uint64_t end_exclusive,
+                                                   uint16_t life_code) {
+    if (g_advanced_hist == NULL || begin_idx >= end_exclusive) {
+        return;
+    }
+    uint64_t cur = begin_idx;
+    while (cur < end_exclusive) {
+        uint64_t remain = end_exclusive - cur;
+        uint64_t size = floor_pow2_u64(remain);
+        while ((cur & (size - 1ULL)) != 0ULL) {
+            size >>= 1U;
+        }
+        if (size == 0ULL) {
+            break;
+        }
+        uint32_t scale_idx = 0U;
+        uint64_t s = size;
+        while (s > 1ULL) {
+            s >>= 1U;
+            ++scale_idx;
+        }
+        if (scale_idx > g_advanced_max_scale) {
+            scale_idx = g_advanced_max_scale;
+        }
+        uint64_t hist_idx = advanced_hist_index(scale_idx, life_code);
+        if (hist_idx < g_advanced_hist_size) {
+            ++g_advanced_hist[hist_idx];
+        }
+        cur += size;
+    }
+}
+
+static uint64_t max_advanced_group_buckets_locked(void) {
+    if (g_mdts_bytes == 0ULL) {
+        return g_bucket_count;
+    }
+    uint64_t b = g_mdts_bytes / NVME_POST_ACTION_STATS_BLOCK_BYTES;
+    if (b == 0ULL) {
+        b = 1ULL;
+    }
+    if (b > g_bucket_count) {
+        b = g_bucket_count;
+    }
+    return b;
+}
+
 int nvme_post_action_stats_init(uint32_t sector_size) {
     pthread_mutex_lock(&g_stats_mutex);
     if (g_stats_inited != 0) {
@@ -239,11 +306,42 @@ int nvme_post_action_stats_init(uint32_t sector_size) {
         return -1;
     }
 
+    uint32_t max_scale = 0U;
+    uint64_t tmp = bucket_count;
+    while (tmp > 1ULL) {
+        tmp >>= 1U;
+        ++max_scale;
+    }
+    uint64_t hist_size = ((uint64_t)max_scale + 1ULL) *
+                         ((uint64_t)NVME_POST_ACTION_LATENCY_CODE_MAX + 1ULL);
+    uint64_t *advanced_hist = (uint64_t *)calloc((size_t)hist_size, sizeof(uint64_t));
+    if (advanced_hist == NULL) {
+        munmap(mem, (size_t)total_bytes);
+        free(g_active_writes);
+        g_active_writes = NULL;
+        g_active_writes_cap = 0ULL;
+        g_active_writes_count = 0ULL;
+        g_stats_enabled = 0;
+        g_stats_inited = 1;
+        pthread_mutex_unlock(&g_stats_mutex);
+        return -1;
+    }
+
     g_stats = (nvme_post_action_lba_stat_t *)mem;
     g_bucket_count = bucket_count;
     g_total_bytes = total_bytes;
+    g_advanced_max_scale = max_scale;
+    g_advanced_hist = advanced_hist;
+    g_advanced_hist_size = hist_size;
     g_stats_enabled = 1;
     g_stats_inited = 1;
+    pthread_mutex_unlock(&g_stats_mutex);
+    return 0;
+}
+
+int nvme_post_action_stats_set_mdts_bytes(uint64_t mdts_bytes) {
+    pthread_mutex_lock(&g_stats_mutex);
+    g_mdts_bytes = mdts_bytes;
     pthread_mutex_unlock(&g_stats_mutex);
     return 0;
 }
@@ -271,7 +369,9 @@ void nvme_post_action_stats_update_write(uint64_t start_lba,
         }
         if (!is_new && w->last_write_abs_us > 0ULL && abs_time_us >= w->last_write_abs_us) {
             uint32_t d_ms = duration_us_to_ms(abs_time_us - w->last_write_abs_us);
-            s->life_cycle_latency = encode_duration_ms_non_linear(d_ms);
+            uint16_t life_code = encode_duration_ms_non_linear(d_ms);
+            s->life_cycle_latency = life_code;
+            update_advanced_life_cycle_hist_locked(idx, idx + 1ULL, life_code);
         }
         w->last_write_abs_us = abs_time_us;
         w->first_read_seen = 0U;
@@ -337,6 +437,78 @@ void nvme_post_action_stats_print_summary_debug(int debug_enabled) {
             (unsigned long long)touched,
             (unsigned long long)non_zero_reads,
             (unsigned long long)g_total_bytes);
+    if (g_advanced_hist != NULL) {
+        fprintf(stderr, "advanced life-cycle stats (4K..):\n");
+        for (uint32_t scale = 0U; scale <= g_advanced_max_scale; ++scale) {
+            uint64_t total = 0ULL;
+            for (uint32_t code = 0U; code <= NVME_POST_ACTION_LATENCY_CODE_MAX; ++code) {
+                total += g_advanced_hist[advanced_hist_index(scale, (uint16_t)code)];
+            }
+            if (total == 0ULL) {
+                continue;
+            }
+            uint64_t range_kib = 4ULL << scale;
+            fprintf(stderr, "  range=%lluKiB count=%llu\n",
+                    (unsigned long long)range_kib,
+                    (unsigned long long)total);
+        }
+    }
+    pthread_mutex_unlock(&g_stats_mutex);
+}
+
+void nvme_post_action_stats_advanced_record_overwrite(uint64_t start_lba,
+                                                      uint64_t len_lba,
+                                                      uint64_t abs_time_us) {
+    pthread_mutex_lock(&g_stats_mutex);
+    if (g_stats_enabled == 0 || len_lba == 0ULL || g_advanced_hist == NULL) {
+        pthread_mutex_unlock(&g_stats_mutex);
+        return;
+    }
+
+    uint64_t begin = 0ULL;
+    uint64_t end_exclusive = 0ULL;
+    if (stats_index_for_lba_range_locked(start_lba, len_lba, &begin, &end_exclusive) != 0) {
+        pthread_mutex_unlock(&g_stats_mutex);
+        return;
+    }
+    uint64_t bucket_count = end_exclusive - begin;
+    uint64_t max_group_buckets = max_advanced_group_buckets_locked();
+    if (bucket_count > max_group_buckets) {
+        bucket_count = max_group_buckets;
+    }
+    uint64_t aligned_count = floor_pow2_u64(bucket_count);
+    if (aligned_count == 0ULL) {
+        pthread_mutex_unlock(&g_stats_mutex);
+        return;
+    }
+    uint64_t aligned_end = begin + aligned_count;
+
+    uint16_t life_code = 0U;
+    int all_same = 1;
+    uint64_t first_prev_write = 0ULL;
+    for (uint64_t idx = begin; idx < aligned_end; ++idx) {
+        lba_active_write_entry_t *w = active_writes_lookup(idx);
+        if (w == NULL || w->last_write_abs_us == 0ULL || abs_time_us < w->last_write_abs_us) {
+            all_same = 0;
+            break;
+        }
+        nvme_post_action_lba_stat_t *s = &g_stats[idx];
+        uint32_t d_ms = duration_us_to_ms(abs_time_us - w->last_write_abs_us);
+        uint16_t c = encode_duration_ms_non_linear(d_ms);
+        if (idx == begin) {
+            life_code = c;
+            first_prev_write = w->last_write_abs_us;
+        } else if (c != life_code) {
+            all_same = 0;
+            break;
+        }
+        (void)first_prev_write;
+        (void)s;
+    }
+
+    if (all_same != 0) {
+        update_advanced_life_cycle_hist_locked(begin, aligned_end, life_code);
+    }
     pthread_mutex_unlock(&g_stats_mutex);
 }
 

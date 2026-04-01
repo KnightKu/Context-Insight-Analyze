@@ -20,6 +20,12 @@ _Static_assert(sizeof(nvme_post_action_lba_stat_t) == NVME_POST_ACTION_STATS_ENT
 
 int nvme_post_action_stats_init(uint32_t sector_size);
 
+int nvme_post_action_stats_set_mdts_bytes(uint64_t mdts_bytes);
+
+void nvme_post_action_stats_advanced_record_overwrite(uint64_t start_lba,
+                                                      uint64_t len_lba,
+                                                      uint64_t abs_time_us);
+
 void nvme_post_action_stats_update_write(uint64_t start_lba,
                                          uint64_t len_lba,
                                          uint64_t abs_time_us);

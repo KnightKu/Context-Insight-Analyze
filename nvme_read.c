@@ -350,6 +350,10 @@ int nvme_read_set_latency(int enabled) {
     return 0;
 }
 
+int nvme_read_set_mdts_bytes(uint64_t mdts_bytes) {
+    return nvme_post_action_stats_set_mdts_bytes(mdts_bytes);
+}
+
 static uint64_t get_mdts_chunk_bytes_or_default(int nvme_fd) {
     unsigned char *id_ctrl = NULL;
     if (posix_memalign((void **)&id_ctrl, 4096, 4096) != 0) {
@@ -474,6 +478,7 @@ int nvme_read(const char *device_name,
     }
 
     uint64_t read_chunk_bytes = get_mdts_chunk_bytes_or_default(nvme_fd);
+    (void)nvme_read_set_mdts_bytes(read_chunk_bytes);
     if ((read_chunk_bytes % (uint64_t)sector_size) != 0ULL) {
         errno = EINVAL;
         fprintf(stderr, "read chunk must be %u-byte aligned, got %llu\n",
