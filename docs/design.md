@@ -154,6 +154,15 @@ Compile-time macro `NVME_POST_ACTION_DEBUG` controls debug logs:
 - When termination marker is hit, a debug line is printed (in debug mode)
 - Invalid record count is reported in final debug read stats (`invalid_records=...`)
 
+Compile-time macro `NVME_POST_ACTION_SKIP_STAT` controls whether Stat (`0x0F`) records
+are parsed:
+
+- Default: `0` (off), Stat records are parsed and validated as before.
+- Set to `1` to skip Stat processing in post action:
+  - Stat records are consumed as 8-byte units
+  - No Stat field validation is performed
+  - No invalid-record count is added for skipped Stat records
+
 ## 7. LBA Post-Action Statistics (5-Byte Bucket Model)
 
 The post-action path now includes an in-memory LBA statistics engine.

@@ -19,6 +19,10 @@
 #define NVME_POST_ACTION_DEBUG 0
 #endif
 
+#ifndef NVME_POST_ACTION_SKIP_STAT
+#define NVME_POST_ACTION_SKIP_STAT 0
+#endif
+
 #define NVME_POST_ACTION_RECORD_BYTES_SHORT 8U
 #define NVME_POST_ACTION_RECORD_BYTES_LONG 16U
 
@@ -1037,6 +1041,7 @@ static int parse_trim_group(const unsigned char *bytes,
     return 0;
 }
 
+#if !NVME_POST_ACTION_SKIP_STAT
 static int parse_stat_record(uint64_t record_lo,
                              uint64_t offset_bytes,
                              uint32_t record_index,
@@ -1083,6 +1088,7 @@ static int parse_stat_record(uint64_t record_lo,
 #endif
     return 0;
 }
+#endif
 
 static int parse_marker_record(uint64_t record_lo,
                                uint64_t offset_bytes,
@@ -1194,7 +1200,17 @@ static int default_post_action(void *ctx, void *data, uint32_t data_len, uint64_
             cursor += consumed_bytes;
             record_index += consumed_records;
         } else if (op == NVME_POST_ACTION_OP_STAT) {
+#if NVME_POST_ACTION_SKIP_STAT
+#if NVME_POST_ACTION_DEBUG
+            fprintf(stderr,
+                    "post action stat skipped: offset=%llu record=%u\n",
+                    (unsigned long long)record_offset,
+                    (unsigned int)record_index);
+#endif
+            rc = 0;
+#else
             rc = parse_stat_record(record_lo, record_offset, record_index, &time_ref);
+#endif
             cursor += NVME_POST_ACTION_RECORD_BYTES_SHORT;
             ++record_index;
         } else if (op == NVME_POST_ACTION_OP_MARKER) {

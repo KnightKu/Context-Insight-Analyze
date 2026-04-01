@@ -111,6 +111,18 @@ File: `nvme_read.c`
 #endif
 ```
 
+Optional stat-skip macro:
+
+```c
+#ifndef NVME_POST_ACTION_SKIP_STAT
+#define NVME_POST_ACTION_SKIP_STAT 0
+#endif
+```
+
+When `NVME_POST_ACTION_SKIP_STAT` is set to `1`, post action still consumes 8-byte
+`Stat (0x0F)` records to keep stream alignment, but skips stat field parsing/validation
+and directly continues with the next record.
+
 Set it to `1` to enable debug logs:
 
 - Prints parsed fields for each record type
