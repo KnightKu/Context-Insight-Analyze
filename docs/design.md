@@ -233,7 +233,7 @@ Behavior:
 - If range exceeds available buckets, export is clamped to the valid tail.
 - Returns `0` on success, `-1` on failure (`errno` set).
 
-## 7. Extensibility
+## 8. Extensibility
 
 To add a new opcode:
 
@@ -243,7 +243,7 @@ To add a new opcode:
 
 For future variable-length records, parse a minimal header first, then compute dynamic record size.
 
-## 8. Trim Group Aggregation Model
+## 9. Trim Group Aggregation Model
 
 `Trim (0x03)` records are aggregated into one logical object:
 
@@ -269,7 +269,7 @@ Consistency checks during aggregation:
 - Every grouped record must have consistent `total_ranges`
 - Every grouped record must satisfy reserved-field constraints
 
-## 9. Known Limits and Recommendations
+## 10. Known Limits and Recommendations
 
 - Current implementation validates structure and reserved fields only; it does not enforce cross-record semantics (for example, Trim range sequence consistency).
 - Recommended next steps:

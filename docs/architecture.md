@@ -57,16 +57,26 @@ The project follows a layered structure:
 - Capability probing:
   - `get_sector_size_or_default(...)`
   - `get_mdts_chunk_bytes_or_default(...)`
+- Producer-consumer read pipeline orchestration
+- Public API glue for read entrypoint and post-action callbacks
 
-- Default post action:
-  - Record parsing and format validation
-  - Typed parsed-object storage (`rw`, `trim`, `stat`, `marker`)
-  - Trim group aggregation (`parse_trim_group`) for multi-range Trim commands
-  - Early termination marker handling (`16B` where both 8B heads are `0x00`)
-  - Optional debug logs (`NVME_POST_ACTION_DEBUG`)
+### 2.4 `post_action.c`
 
-- Main read function:
-  - `nvme_read(...)`
+- Owns default post-action parser and callback dispatch
+- Implements record parsing/validation (`rw`, `trim`, `stat`, `marker`)
+- Handles termination marker and invalid-record counting
+- Supports stat-skip compile-time macro (`NVME_POST_ACTION_SKIP_STAT`)
+
+### 2.5 `post_action_stats.c`
+
+- Owns per-bucket statistics state and update logic
+- Manages 5-byte bucket model / non-linear latency encoding
+- Provides stats summary and bucket access interfaces
+
+### 2.6 `post_action_export.c`
+
+- Owns CSV export API implementation
+- Exports specified bucket ranges using stats module accessors
 
 ---
 
@@ -79,7 +89,7 @@ Main read sequence:
 3. Detect logical sector size (`BLKSSZGET`)
 4. Query MDTS and determine chunk size
 5. Submit `NVME_IOCTL_IO_CMD` in a loop
-6. Run `g_post_action(...)` after each chunk
+6. Run `nvme_post_action_process(...)` after each chunk
 7. Print statistics and release resources
 
 ---

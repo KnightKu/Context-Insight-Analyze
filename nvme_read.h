@@ -25,6 +25,8 @@ int nvme_post_action_export_stats_csv(const char *csv_path,
                                       uint64_t start_bucket,
                                       uint64_t bucket_count);
 
+int nvme_post_action_set_sector_size(uint32_t sector_size);
+
 int nvme_read(const char *device_name,
               uint64_t slba,
               uint64_t data_len,

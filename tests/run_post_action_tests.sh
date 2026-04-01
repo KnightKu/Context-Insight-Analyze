@@ -29,7 +29,9 @@ SKIP_CASES=(
 echo "[3/4] run pass cases"
 for f in "${PASS_CASES[@]}"; do
   echo "  PASS expected: ${f}"
-  ./post_action_file_tester "${f}" >/dev/null 2>&1
+  csv_out="tests/fixtures/$(basename "${f}").csv"
+  ./post_action_file_tester "${f}" 0 "${csv_out}" 0 64 >/dev/null 2>&1
+  test -s "${csv_out}"
 done
 
 echo "[4/4] run invalid-data skip cases"

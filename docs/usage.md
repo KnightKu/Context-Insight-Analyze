@@ -122,7 +122,10 @@ This design helps reduce idle time by allowing I/O and parsing to run concurrent
 
 ## 6. Debug Macro
 
-File: `nvme_read.c`
+Files:
+
+- `post_action.c` (parser/debug macros)
+- `post_action_stats.c` (statistics backend)
 
 ```c
 #ifndef NVME_POST_ACTION_DEBUG
@@ -142,7 +145,7 @@ When `NVME_POST_ACTION_SKIP_STAT` is set to `1`, post action still consumes 8-by
 `Stat (0x0F)` records to keep stream alignment, but skips stat field parsing/validation
 and directly continues with the next record.
 
-Set it to `1` to enable debug logs:
+Set `NVME_POST_ACTION_DEBUG` to `1` to enable debug logs:
 
 - Prints parsed fields for each record type
 - Prints a message when `data_len < 8` (no complete 8-byte record)
@@ -213,18 +216,20 @@ git status --short
 git push -u origin dev
 ```
 
-## 8. Post-Action Test Program
+## 9. Post-Action Test Program
 
 The repository includes a dedicated test binary that feeds file data into the post-action interface:
 
 ```bash
-./post_action_file_tester <input_file> [offset_bytes]
+./post_action_file_tester <input_file> [offset_bytes] [csv_path start_bucket bucket_count]
 ```
 
 Behavior:
 
 - Reads all bytes from `input_file`
 - Calls `nvme_post_action_process(data, data_len, offset_bytes)`
+- Optionally exports stats CSV by bucket range when
+  `csv_path start_bucket bucket_count` are provided
 - Returns:
   - `0` on success
   - `1` on post-action validation failure
