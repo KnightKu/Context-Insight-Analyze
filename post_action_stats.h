@@ -26,6 +26,12 @@ void nvme_post_action_stats_advanced_record_overwrite(uint64_t start_lba,
                                                       uint64_t len_lba,
                                                       uint64_t abs_time_us);
 
+int nvme_post_action_stats_get_advanced_max_range_kib(uint64_t *max_range_kib_out);
+
+int nvme_post_action_stats_get_advanced_life_count(uint64_t range_kib,
+                                                   uint16_t life_code,
+                                                   uint64_t *count_out);
+
 void nvme_post_action_stats_update_write(uint64_t start_lba,
                                          uint64_t len_lba,
                                          uint64_t abs_time_us);
@@ -40,5 +46,11 @@ int nvme_post_action_stats_get_bucket_count(uint64_t *bucket_count_out);
 
 int nvme_post_action_stats_get_bucket(uint64_t bucket_index,
                                       nvme_post_action_lba_stat_t *out);
+
+int nvme_post_action_stats_get_advanced_max_scale(uint32_t *max_scale_out);
+
+int nvme_post_action_stats_get_advanced_count(uint32_t scale_idx,
+                                              uint16_t life_code,
+                                              uint64_t *count_out);
 
 #endif  // POST_ACTION_STATS_H

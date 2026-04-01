@@ -346,6 +346,51 @@ int nvme_post_action_stats_set_mdts_bytes(uint64_t mdts_bytes) {
     return 0;
 }
 
+int nvme_post_action_stats_get_advanced_max_scale(uint32_t *max_scale_out) {
+    if (max_scale_out == NULL) {
+        errno = EINVAL;
+        return -1;
+    }
+    pthread_mutex_lock(&g_stats_mutex);
+    if (g_stats_enabled == 0 || g_advanced_hist == NULL) {
+        pthread_mutex_unlock(&g_stats_mutex);
+        errno = ENODEV;
+        return -1;
+    }
+    *max_scale_out = g_advanced_max_scale;
+    pthread_mutex_unlock(&g_stats_mutex);
+    return 0;
+}
+
+int nvme_post_action_stats_get_advanced_count(uint32_t scale_idx,
+                                              uint16_t life_code,
+                                              uint64_t *count_out) {
+    if (count_out == NULL) {
+        errno = EINVAL;
+        return -1;
+    }
+    pthread_mutex_lock(&g_stats_mutex);
+    if (g_stats_enabled == 0 || g_advanced_hist == NULL) {
+        pthread_mutex_unlock(&g_stats_mutex);
+        errno = ENODEV;
+        return -1;
+    }
+    if (scale_idx > g_advanced_max_scale) {
+        pthread_mutex_unlock(&g_stats_mutex);
+        errno = ERANGE;
+        return -1;
+    }
+    uint64_t idx = advanced_hist_index(scale_idx, life_code);
+    if (idx >= g_advanced_hist_size) {
+        pthread_mutex_unlock(&g_stats_mutex);
+        errno = ERANGE;
+        return -1;
+    }
+    *count_out = g_advanced_hist[idx];
+    pthread_mutex_unlock(&g_stats_mutex);
+    return 0;
+}
+
 void nvme_post_action_stats_update_write(uint64_t start_lba,
                                          uint64_t len_lba,
                                          uint64_t abs_time_us) {
@@ -546,6 +591,57 @@ int nvme_post_action_stats_get_bucket(uint64_t bucket_index,
         return -1;
     }
     *out = g_stats[bucket_index];
+    pthread_mutex_unlock(&g_stats_mutex);
+    return 0;
+}
+
+int nvme_post_action_stats_get_advanced_life_count(uint64_t range_kib,
+                                                   uint16_t life_code,
+                                                   uint64_t *count_out) {
+    if (count_out == NULL) {
+        errno = EINVAL;
+        return -1;
+    }
+    if (range_kib == 0ULL) {
+        errno = EINVAL;
+        return -1;
+    }
+    if ((range_kib & (range_kib - 1ULL)) != 0ULL) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    pthread_mutex_lock(&g_stats_mutex);
+    if (g_stats_enabled == 0 || g_advanced_hist == NULL) {
+        pthread_mutex_unlock(&g_stats_mutex);
+        errno = ENODEV;
+        return -1;
+    }
+
+    uint64_t buckets = range_kib / 4ULL;
+    if (buckets == 0ULL || (buckets & (buckets - 1ULL)) != 0ULL) {
+        pthread_mutex_unlock(&g_stats_mutex);
+        errno = EINVAL;
+        return -1;
+    }
+    uint32_t scale = 0U;
+    while (buckets > 1ULL) {
+        buckets >>= 1U;
+        ++scale;
+    }
+    if (scale > g_advanced_max_scale) {
+        pthread_mutex_unlock(&g_stats_mutex);
+        errno = ERANGE;
+        return -1;
+    }
+
+    uint64_t idx = advanced_hist_index(scale, life_code);
+    if (idx >= g_advanced_hist_size) {
+        pthread_mutex_unlock(&g_stats_mutex);
+        errno = ERANGE;
+        return -1;
+    }
+    *count_out = g_advanced_hist[idx];
     pthread_mutex_unlock(&g_stats_mutex);
     return 0;
 }

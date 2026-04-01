@@ -28,7 +28,7 @@ Binary output:
 Current command format:
 
 ```bash
-./sfx_ctx_insight_analyze [-D|--debug] [-l|--latency] <device_name> <slba[K|M|G|T]> <data_len[K|M|G|T]>
+./sfx_ctx_insight_analyze [-D|--debug] [-l|--latency] [--export-bucket-csv <path> <start_bucket> <bucket_count>] [--export-advanced-csv <path>] <device_name> <slba[K|M|G|T]> <data_len[K|M|G|T]>
 ```
 
 Argument details:
@@ -38,6 +38,8 @@ Argument details:
 - `data_len`: read size in bytes, supports unit suffix `K/M/G/T` (case-insensitive)
 - `-D` / `--debug`: enables runtime debug mode
 - `-l` / `--latency`: enables fio-style latency summary output for post-action `read/write/trim`
+- `--export-bucket-csv <path> <start_bucket> <bucket_count>`: export per-4K bucket stats CSV
+- `--export-advanced-csv <path>`: export advanced life-cycle histogram CSV
 
 Examples:
 
@@ -48,6 +50,8 @@ Examples:
 ./sfx_ctx_insight_analyze --debug /dev/nvme0n1 0 64M
 ./sfx_ctx_insight_analyze --latency /dev/nvme0n1 0 64M
 ./sfx_ctx_insight_analyze -D -l /dev/nvme0n1 0 64M
+./sfx_ctx_insight_analyze --export-bucket-csv /tmp/bucket.csv 0 1024 /dev/nvme0n1 0 64M
+./sfx_ctx_insight_analyze --export-advanced-csv /tmp/advanced.csv /dev/nvme0n1 0 64M
 ```
 
 Notes:
@@ -108,6 +112,18 @@ int nvme_post_action_export_stats_csv(const char *csv_path,
   - `read_count`
   - `write_to_first_read_latency_code`
   - `life_cycle_latency_code`
+
+Advanced life-cycle histogram export API:
+
+```c
+int nvme_post_action_export_advanced_life_cycle_csv(const char *csv_path);
+```
+
+- Exports advanced overwrite life-cycle histogram
+- CSV columns:
+  - `range_kib`
+  - `life_cycle_code`
+  - `count`
 
 ## 5. Read/Process Pipeline
 
