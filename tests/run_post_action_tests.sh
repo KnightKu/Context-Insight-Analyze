@@ -28,6 +28,7 @@ SKIP_CASES=(
 
 FAIL_CASES=(
   "tests/fixtures/invalid_marker_overwrite.bin"
+  "tests/fixtures/invalid_marker_nonincreasing.bin"
 )
 
 echo "[3/4] run pass cases"

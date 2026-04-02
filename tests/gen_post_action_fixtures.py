@@ -78,10 +78,14 @@ def main() -> None:
     invalid_missing_marker = rec_stat(2, 7, 1, 0, 1, 0)
     (fixture_dir / "invalid_missing_marker.bin").write_bytes(invalid_missing_marker)
 
-    # Invalid: marker timestamp goes backwards, indicating overwrite.
+    # Invalid: marker timestamp is not strictly increasing, indicating overwrite.
     # Marker is 8 bytes each: first at offset 0, second at offset 8.
     invalid_marker_overwrite = rec_marker(2_000_000) + rec_marker(1_999_999)
     (fixture_dir / "invalid_marker_overwrite.bin").write_bytes(invalid_marker_overwrite)
+
+    # Invalid: equal marker timestamp is also treated as non-increasing overwrite.
+    invalid_marker_nonincreasing = rec_marker(3_000_000) + rec_marker(3_000_000)
+    (fixture_dir / "invalid_marker_nonincreasing.bin").write_bytes(invalid_marker_nonincreasing)
 
     # Invalid: RW reserved non-zero
     invalid_rw_reserved = rec_rw(0x02, 0xABCDE, 0x10, 0x0001, 1, 2)

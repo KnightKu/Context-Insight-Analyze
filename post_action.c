@@ -409,12 +409,12 @@ static int parse_marker_record(uint64_t record_lo,
 
     pthread_mutex_lock(&g_post_action_marker_mutex);
     if (g_post_action_has_last_marker != 0 &&
-        parsed.abs_time < g_post_action_last_marker_abs_time_us) {
+        parsed.abs_time <= g_post_action_last_marker_abs_time_us) {
         uint64_t overwrite_lba = marker_record_to_lba_locked(offset_bytes);
         uint64_t prev_abs_time = g_post_action_last_marker_abs_time_us;
         pthread_mutex_unlock(&g_post_action_marker_mutex);
         fprintf(stderr,
-                "post action warning: overwrite detected, marker timestamp reversed: "
+                "post action warning: overwrite detected, marker timestamp not increasing: "
                 "prev_abs_time_us=%llu curr_abs_time_us=%llu lba=%llu offset=%llu record=%u\n",
                 (unsigned long long)prev_abs_time,
                 (unsigned long long)parsed.abs_time,
