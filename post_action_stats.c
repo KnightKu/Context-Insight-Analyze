@@ -2,11 +2,13 @@
 #include "post_action_stats.h"
 
 #include <errno.h>
+#include <fcntl.h>
 #include <pthread.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/mman.h>
+#include <unistd.h>
 
 typedef struct {
     uint64_t key;
@@ -286,11 +288,28 @@ int nvme_post_action_stats_init(uint32_t sector_size) {
 
     uint64_t bucket_count = NVME_POST_ACTION_DEFAULT_TOTAL_LBA_BYTES / NVME_POST_ACTION_STATS_BLOCK_BYTES;
     uint64_t total_bytes = bucket_count * NVME_POST_ACTION_STATS_ENTRY_BYTES;
-    int flags = MAP_PRIVATE | MAP_ANONYMOUS;
+    int flags = MAP_PRIVATE;
+    int mmap_fd = -1;
+#if defined(MAP_ANONYMOUS)
+    flags |= MAP_ANONYMOUS;
+#elif defined(MAP_ANON)
+    flags |= MAP_ANON;
+#else
+    mmap_fd = open("/dev/zero", O_RDWR);
+    if (mmap_fd < 0) {
+        g_stats_enabled = 0;
+        g_stats_inited = 1;
+        pthread_mutex_unlock(&g_stats_mutex);
+        return -1;
+    }
+#endif
 #ifdef MAP_NORESERVE
     flags |= MAP_NORESERVE;
 #endif
-    void *mem = mmap(NULL, (size_t)total_bytes, PROT_READ | PROT_WRITE, flags, -1, 0);
+    void *mem = mmap(NULL, (size_t)total_bytes, PROT_READ | PROT_WRITE, flags, mmap_fd, 0);
+#if !defined(MAP_ANONYMOUS) && !defined(MAP_ANON)
+    close(mmap_fd);
+#endif
     if (mem == MAP_FAILED) {
         g_stats_enabled = 0;
         g_stats_inited = 1;
