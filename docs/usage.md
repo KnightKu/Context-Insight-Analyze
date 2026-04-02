@@ -285,18 +285,22 @@ git push -u origin dev
 The repository includes a dedicated test binary that feeds file data into the post-action interface:
 
 ```bash
-./post_action_file_tester <input_file> [offset_bytes] [csv_path start_bucket bucket_count] [latency]
+./post_action_file_tester [-D|--debug] [-l|--latency] [--export-bucket-csv <path> <start_bucket> <bucket_count>] [--export-advanced-csv <path>] [--export-stat-qd-csv <path>] [--export-stat-wa-csv <path>] <input_file> [offset_bytes]
 ```
 
 Behavior:
 
 - Reads all bytes from `input_file`
 - Calls `nvme_post_action_process(data, data_len, offset_bytes)`
-- Optionally exports stats CSV by bucket range when
-  `csv_path start_bucket bucket_count` are provided
-- Optional last argument `latency`:
-  - `0` disable latency summary
-  - `1` enable latency summary output
+- Supports the same option set as the main binary:
+  - `-D` / `--debug`
+  - `-l` / `--latency`
+  - `--export-bucket-csv <path> <start_bucket> <bucket_count>`
+  - `--export-advanced-csv <path>`
+  - `--export-stat-qd-csv <path>`
+  - `--export-stat-wa-csv <path>`
+- The only behavior difference from the main binary:
+  - data source is `input_file` instead of NVMe device read
 - Returns:
   - `0` on success
   - `1` on post-action validation failure
