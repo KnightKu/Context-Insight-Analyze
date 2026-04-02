@@ -80,6 +80,10 @@ The default post action:
 - Aggregates consecutive Trim ranges into a single logical Trim group object
 - Treats marker (`0xFF`) `abs_time` as absolute time in microseconds
 - Interprets `time` fields in `read/write/trim/stat` as relative offsets (3B) from the latest previous marker
+- Requires marker timestamps to be strictly increasing:
+  - if marker `abs_time` is non-increasing (`<=` previous marker), it is treated as overwrite
+  - post-action parsing stops immediately and read pipeline aborts
+  - warning log includes overwrite context and LBA location (`lba`, `offset`, marker timestamps)
 - Supports an early termination marker:
   - if a 16-byte window has first-byte `0x00` in both 8-byte halves,
     post-action parsing stops successfully

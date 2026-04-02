@@ -76,6 +76,12 @@ The current parser supports 5 opcodes and two record lengths:
 - Effective timestamp:
   - `abs_time_us = last_marker_abs_time_us + time_rel`
 - If a non-marker record appears before any marker, the record is treated as invalid by parser rules.
+- Marker monotonic rule:
+  - marker timestamps must be strictly increasing across the stream.
+  - if a marker timestamp is non-increasing (`current <= previous`), it is treated as overwrite.
+  - on overwrite detection, post-action parsing aborts immediately and returns failure.
+  - warning log includes overwrite context and LBA location (for example: previous/current marker time,
+    `lba`, `offset`, and record index).
 
 ## 4. Core Algorithm
 
@@ -136,6 +142,7 @@ Implementation notes:
 - Missing marker reference for relative timestamp -> counted as invalid and skipped
 - Non-8-byte-aligned tail bytes -> counted as invalid tail fragment
 - Truncated record/group -> counted as invalid and skipped conservatively
+- Marker timestamp non-increasing (`current <= previous`) -> treated as overwrite and fail-fast
 
 ## 5. Error Handling Strategy
 
