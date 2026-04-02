@@ -136,6 +136,8 @@ int nvme_post_action_export_stat_qd_csv(const char *csv_path);
 ```
 
 - Exports `Stat(0x0F)` samples for queue depth timeline.
+- Filters:
+  - Ignore samples where `qd == 0`
 - CSV columns:
   - `sample_index`
   - `abs_time_us`
@@ -151,12 +153,11 @@ int nvme_post_action_export_stat_wa_csv(const char *csv_path);
 - WA formula:
   - `wa = (folding_write_4k + hot_write_4k) / hot_write_4k`
   - keep one decimal place
-  - if `hot_write_4k == 0`, output `wa=0.0` to avoid division by zero.
+- Filters:
+  - Ignore samples where `hot_write_4k == 0`
 - CSV columns:
   - `sample_index`
   - `abs_time_us`
-  - `hot_write_4k`
-  - `folding_write_4k`
   - `wa`
 
 ## 5. Read/Process Pipeline
