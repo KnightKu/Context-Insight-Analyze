@@ -200,9 +200,15 @@ int main(int argc, char *argv[]) {
     nvme_read_set_latency(latency_enabled);
     int rc = nvme_post_action_process(buf, (uint32_t)len, offset_bytes);
     if (rc != 0) {
-        fprintf(stderr, "post action failed: %s\n", strerror(errno));
-        free(buf);
-        return 1;
+        if (errno == ECANCELED) {
+            fprintf(stderr,
+                    "post action soft-stop: overwrite detected, stop further parse at offset=%" PRIu64 "\n",
+                    offset_bytes);
+        } else {
+            fprintf(stderr, "post action failed: %s\n", strerror(errno));
+            free(buf);
+            return 1;
+        }
     }
 
     if (bucket_csv_path != NULL) {

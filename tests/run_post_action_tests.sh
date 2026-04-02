@@ -26,7 +26,7 @@ SKIP_CASES=(
   "tests/fixtures/invalid_missing_marker.bin"
 )
 
-FAIL_CASES=(
+SOFT_STOP_CASES=(
   "tests/fixtures/invalid_marker_overwrite.bin"
   "tests/fixtures/invalid_marker_nonincreasing.bin"
 )
@@ -53,10 +53,10 @@ for f in "${SKIP_CASES[@]}"; do
   ./post_action_file_tester "${f}" >/dev/null 2>&1
 done
 
-for f in "${FAIL_CASES[@]}"; do
-  echo "  FAIL expected (overwrite should stop parsing): ${f}"
-  if ./post_action_file_tester "${f}" >/tmp/post_action_overwrite.log 2>&1; then
-    echo "unexpected success for ${f}" >&2
+for f in "${SOFT_STOP_CASES[@]}"; do
+  echo "  SOFT-STOP expected (overwrite should stop parse/read but not fail): ${f}"
+  if ! ./post_action_file_tester "${f}" >/tmp/post_action_overwrite.log 2>&1; then
+    echo "unexpected failure for ${f}" >&2
     exit 1
   fi
   if ! rg -i "overwrite.*lba|lba.*overwrite" "/tmp/post_action_overwrite.log" >/dev/null; then
