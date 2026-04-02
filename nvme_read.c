@@ -460,6 +460,7 @@ int nvme_read(const char *device_name,
         return -1;
     }
     (void)nvme_post_action_set_sector_size(sector_size);
+    (void)nvme_post_action_set_base_lba(slba);
 
     if (data_len % (uint64_t)sector_size != 0ULL) {
         errno = EINVAL;

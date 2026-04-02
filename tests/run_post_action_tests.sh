@@ -26,6 +26,10 @@ SKIP_CASES=(
   "tests/fixtures/invalid_missing_marker.bin"
 )
 
+FAIL_CASES=(
+  "tests/fixtures/invalid_marker_overwrite.bin"
+)
+
 echo "[3/4] run pass cases"
 for f in "${PASS_CASES[@]}"; do
   echo "  PASS expected: ${f}"
@@ -46,6 +50,18 @@ echo "[4/4] run invalid-data skip cases"
 for f in "${SKIP_CASES[@]}"; do
   echo "  SKIP expected (success with invalid-count in debug): ${f}"
   ./post_action_file_tester "${f}" >/dev/null 2>&1
+done
+
+for f in "${FAIL_CASES[@]}"; do
+  echo "  FAIL expected (overwrite should stop parsing): ${f}"
+  if ./post_action_file_tester "${f}" >/tmp/post_action_overwrite.log 2>&1; then
+    echo "unexpected success for ${f}" >&2
+    exit 1
+  fi
+  if ! rg -i "overwrite.*lba|lba.*overwrite" "/tmp/post_action_overwrite.log" >/dev/null; then
+    echo "missing overwrite+lba warning for ${f}" >&2
+    exit 1
+  fi
 done
 
 echo "all post-action tests passed"
