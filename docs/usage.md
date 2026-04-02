@@ -28,7 +28,7 @@ Binary output:
 Current command format:
 
 ```bash
-./sfx_ctx_insight_analyze [-D|--debug] <device_name> <slba[K|M|G|T]> <data_len[K|M|G|T]>
+./sfx_ctx_insight_analyze [-D|--debug] [-l|--latency] [--export-bucket-csv <path> <start_bucket> <bucket_count>] [--export-advanced-csv <path>] [--export-stat-qd-csv <path>] [--export-stat-wa-csv <path>] <device_name> <slba[K|M|G|T]> <data_len[K|M|G|T]>
 ```
 
 Argument details:
@@ -37,6 +37,11 @@ Argument details:
 - `slba`: start LBA, supports unit suffix `K/M/G/T` (case-insensitive)
 - `data_len`: read size in bytes, supports unit suffix `K/M/G/T` (case-insensitive)
 - `-D` / `--debug`: enables runtime debug mode
+- `-l` / `--latency`: enables fio-style latency summary output for post-action `read/write/trim`
+- `--export-bucket-csv <path> <start_bucket> <bucket_count>`: export per-4K bucket stats CSV
+- `--export-advanced-csv <path>`: export advanced life-cycle histogram CSV
+- `--export-stat-qd-csv <path>`: export `Stat(0x0F)` queue depth samples CSV
+- `--export-stat-wa-csv <path>`: export `Stat(0x0F)` write amplification CSV (`wa=(folding_write+hot_write)/hot_write`, one decimal)
 
 Examples:
 
@@ -45,6 +50,12 @@ Examples:
 ./sfx_ctx_insight_analyze /dev/nvme0n1 1G 256M
 ./sfx_ctx_insight_analyze /dev/nvme0n1 1024K 1T
 ./sfx_ctx_insight_analyze --debug /dev/nvme0n1 0 64M
+./sfx_ctx_insight_analyze --latency /dev/nvme0n1 0 64M
+./sfx_ctx_insight_analyze -D -l /dev/nvme0n1 0 64M
+./sfx_ctx_insight_analyze --export-bucket-csv /tmp/bucket.csv 0 1024 /dev/nvme0n1 0 64M
+./sfx_ctx_insight_analyze --export-advanced-csv /tmp/advanced.csv /dev/nvme0n1 0 64M
+./sfx_ctx_insight_analyze --export-stat-qd-csv /tmp/stat_qd.csv /dev/nvme0n1 0 64M
+./sfx_ctx_insight_analyze --export-stat-wa-csv /tmp/stat_wa.csv /dev/nvme0n1 0 64M
 ```
 
 Notes:
@@ -67,14 +78,118 @@ The default post action:
 - Focuses on format validation and observability
 - Parses records using a fast 64-bit load path (`load_le64_u`)
 - Aggregates consecutive Trim ranges into a single logical Trim group object
+- Treats marker (`0xFF`) `abs_time` as absolute time in microseconds
+- Interprets `time` fields in `read/write/trim/stat` as relative offsets (3B) from the latest previous marker
 - Supports an early termination marker:
   - if a 16-byte window has first-byte `0x00` in both 8-byte halves,
     post-action parsing stops successfully
+- Maintains in-memory per-4KB LBA statistics:
+  - 1B saturated read count (`0..255`) for write-then-read events
+  - 2B non-linear encoded write-to-first-read latency
+  - 2B non-linear encoded write life-cycle latency (write to next overwrite)
+  - LBA and length units are sectors; sector size defaults to `512B`
+  - Advanced life-cycle overwrite statistics:
+    - Tracks overwrite-write segments by size bins: `4K, 8K, 16K, ...` up to MDTS-aligned cap
+    - Requires all covered 4K buckets in a segment to share the same life-cycle code
+    - Uses the same non-linear life-cycle code as grouping key
+    - Non-4K-aligned overwrite lengths are rounded down to 4K powers (example: `12K -> 8K`)
+- Optional latency summary (`-l/--latency`) for post-action records:
+  - `read`, `write`: use protocol `latency` field (3B)
+  - `trim`: use per-range relative `time` delta as trim latency sample
+  - Output includes `samples/min/max/avg/p50/p90/p99`
+
+CSV export API (bucket range):
+
+```c
+int nvme_post_action_export_stats_csv(const char *csv_path,
+                                      uint64_t start_bucket,
+                                      uint64_t bucket_count);
+```
+
+- Exports current in-memory post-action stats to a CSV file
+- Bucket granularity is `4KB` per row
+- `start_bucket` is inclusive
+- `bucket_count` controls exported rows (`0` is invalid and returns error)
+- If `start_bucket + bucket_count` exceeds available buckets, export is clamped to the valid tail.
+- CSV columns:
+  - `bucket_index`
+  - `read_count`
+  - `write_to_first_read_latency_code`
+  - `life_cycle_latency_code`
+
+Advanced life-cycle histogram export API:
+
+```c
+int nvme_post_action_export_advanced_life_cycle_csv(const char *csv_path);
+```
+
+- Exports advanced overwrite life-cycle histogram
+- CSV columns:
+  - `range_kib`
+  - `life_cycle_code`
+  - `count`
+
+Stat QD export API:
+
+```c
+int nvme_post_action_export_stat_qd_csv(const char *csv_path);
+```
+
+- Exports `Stat(0x0F)` samples for queue depth timeline.
+- Filters:
+  - Ignore samples where `qd == 0`
+- CSV columns:
+  - `sample_index`
+  - `abs_time_us`
+  - `qd`
+
+Stat WA export API:
+
+```c
+int nvme_post_action_export_stat_wa_csv(const char *csv_path);
+```
+
+- Exports `Stat(0x0F)` write amplification timeline.
+- WA formula:
+  - `wa = (folding_write_4k + hot_write_4k) / hot_write_4k`
+  - keep one decimal place
+- Filters:
+  - Ignore samples where `hot_write_4k == 0`
+- CSV columns:
+  - `sample_index`
+  - `abs_time_us`
+  - `wa`
+
+## 5. Read/Process Pipeline
+
+The main read path uses a producer-consumer pipeline to overlap device reads and post-action processing:
+
+- **Reader thread (producer)**:
+  - issues NVMe read commands
+  - writes chunks into ring-buffer slots
+- **Worker thread (consumer)**:
+  - consumes ready slots
+  - runs `nvme_post_action_process(...)`
+
+Current default settings:
+
+- ring-buffer slots: `4` (`NVME_READ_PIPELINE_SLOTS`)
+- one reader thread + one worker thread
+- stats bucket size: `4KB` per bucket
+- stats storage: `5 bytes` per bucket (`ReadCount[1] + W2FR[2] + LifeCycle[2]`)
+- default total LBA span: `4TB` (`~1,073,741,824` buckets, ~`5GB` virtual memory)
+
+This design helps reduce idle time by allowing I/O and parsing to run concurrently.
 - Prints read bandwidth statistics only when debug mode is enabled (`-D` / `--debug`)
+- In debug mode, prints post-action stats summary (`buckets`, `touched`, `read_count_nonzero`, `bytes`)
+- Prints fio-style latency summary only when latency mode is enabled (`-l` / `--latency`)
 
-## 5. Debug Macro
+## 6. Debug Macro
 
-File: `nvme_read.c`
+Files:
+
+- `post_action.c` (parser/debug macros)
+- `post_action_stats.c` (statistics backend)
 
 ```c
 #ifndef NVME_POST_ACTION_DEBUG
@@ -82,7 +197,19 @@ File: `nvme_read.c`
 #endif
 ```
 
-Set it to `1` to enable debug logs:
+Optional stat-skip macro:
+
+```c
+#ifndef NVME_POST_ACTION_SKIP_STAT
+#define NVME_POST_ACTION_SKIP_STAT 0
+#endif
+```
+
+When `NVME_POST_ACTION_SKIP_STAT` is set to `1`, post action still consumes 16-byte
+`Stat (0x0F)` records to keep stream alignment, but skips stat field parsing/validation
+and directly continues with the next record.
+
+Set `NVME_POST_ACTION_DEBUG` to `1` to enable debug logs:
 
 - Prints parsed fields for each record type
 - Prints a message when `data_len < 8` (no complete 8-byte record)
@@ -96,7 +223,7 @@ How to enable:
 make clean && make
 ```
 
-## 6. Troubleshooting
+## 7. Troubleshooting
 
 ### 6.1 Invalid CLI Arguments
 
@@ -136,7 +263,7 @@ Checks:
 - Verify record layout against `docs/design.md`
 - Verify opcode and record size mapping (8-byte vs 16-byte records)
 
-## 7. Common Development Commands
+## 8. Common Development Commands
 
 ```bash
 # Build
@@ -153,18 +280,27 @@ git status --short
 git push -u origin dev
 ```
 
-## 8. Post-Action Test Program
+## 9. Post-Action Test Program
 
 The repository includes a dedicated test binary that feeds file data into the post-action interface:
 
 ```bash
-./post_action_file_tester <input_file> [offset_bytes]
+./post_action_file_tester [-D|--debug] [-l|--latency] [--export-bucket-csv <path> <start_bucket> <bucket_count>] [--export-advanced-csv <path>] [--export-stat-qd-csv <path>] [--export-stat-wa-csv <path>] <input_file> [offset_bytes]
 ```
 
 Behavior:
 
 - Reads all bytes from `input_file`
 - Calls `nvme_post_action_process(data, data_len, offset_bytes)`
+- Supports the same option set as the main binary:
+  - `-D` / `--debug`
+  - `-l` / `--latency`
+  - `--export-bucket-csv <path> <start_bucket> <bucket_count>`
+  - `--export-advanced-csv <path>`
+  - `--export-stat-qd-csv <path>`
+  - `--export-stat-wa-csv <path>`
+- The only behavior difference from the main binary:
+  - data source is `input_file` instead of NVMe device read
 - Returns:
   - `0` on success
   - `1` on post-action validation failure

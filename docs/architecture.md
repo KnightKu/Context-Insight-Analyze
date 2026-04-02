@@ -57,16 +57,32 @@ The project follows a layered structure:
 - Capability probing:
   - `get_sector_size_or_default(...)`
   - `get_mdts_chunk_bytes_or_default(...)`
+- Producer-consumer read pipeline orchestration
+- Public API glue for read entrypoint and post-action callbacks
 
-- Default post action:
-  - Record parsing and format validation
-  - Typed parsed-object storage (`rw`, `trim`, `stat`, `marker`)
-  - Trim group aggregation (`parse_trim_group`) for multi-range Trim commands
-  - Early termination marker handling (`16B` where both 8B heads are `0x00`)
-  - Optional debug logs (`NVME_POST_ACTION_DEBUG`)
+### 2.4 `post_action.c`
 
-- Main read function:
-  - `nvme_read(...)`
+- Owns default post-action parser and callback dispatch
+- Implements record parsing/validation (`rw`, `trim`, `stat`, `marker`)
+- Handles termination marker and invalid-record counting
+- Supports stat-skip compile-time macro (`NVME_POST_ACTION_SKIP_STAT`)
+
+### 2.5 `post_action_stats.c`
+
+- Owns per-bucket statistics state and update logic
+- Manages 5-byte bucket model / non-linear latency encoding
+- Provides stats summary and bucket access interfaces
+
+### 2.6 `post_action_export.c`
+
+- Owns CSV export API implementation
+- Exports specified bucket ranges using stats module accessors
+
+### 2.7 `post_action_latency.c`
+
+- Owns read/write/trim latency statistics aggregation
+- Prints fio-style latency summary with count/min/max/avg and percentiles
+- Runtime controlled by CLI option `-l` / `--latency`
 
 ---
 
@@ -79,7 +95,7 @@ Main read sequence:
 3. Detect logical sector size (`BLKSSZGET`)
 4. Query MDTS and determine chunk size
 5. Submit `NVME_IOCTL_IO_CMD` in a loop
-6. Run `g_post_action(...)` after each chunk
+6. Run `nvme_post_action_process(...)` after each chunk
 7. Print statistics and release resources
 
 ---
@@ -93,6 +109,13 @@ Main read sequence:
    - Device -> `chunk_buf` (memory)
    - `chunk_buf` -> post action (parse/validate)
    - Trim multi-range records -> one grouped in-memory Trim object with `ranges[]`
+   - Optional LBA statistics path:
+     - Bucket granularity: 4KiB (`4096B`)
+     - Per-bucket footprint: 5 bytes (`read_count`, `write_to_first_read_latency`, `life_cycle_latency`)
+     - Default logical coverage: 4TiB with default sector size `512B`
+     - Total footprint: 5GiB (allocated via anonymous mmap)
+     - `read_count` uses saturating counter (`max=255`)
+     - Latency fields use non-linear encoding via lookup table
 
 3. Diagnostic output flow
    - Errors printed to `stderr`
@@ -152,3 +175,26 @@ This allows custom parsing, aggregation, filtering, or external export logic.
 - Record decode uses unaligned 64-bit little-endian loads (`load_le64_u`) and bit extraction.
 - 8B records use one 64-bit load; 16B records use two 64-bit loads.
 - Trim groups are parsed as one logical object, reducing repeated per-record orchestration overhead.
+
+## 9. Read/Post-Action Pipeline
+
+The current read path uses a producer-consumer pipeline to overlap I/O and parsing:
+
+- Reader thread (producer):
+  - reads NVMe chunks into a slot pool
+  - enqueues ready slots
+- Post-action thread (consumer):
+  - dequeues ready slots
+  - runs `nvme_post_action_process(...)`
+  - returns slots to free queue
+
+Implementation characteristics:
+
+- Double-ended queues implemented with fixed-size ring buffers
+- 4 in-flight slots (`NVME_READ_PIPELINE_SLOTS`)
+- Thread synchronization via `pthread_mutex_t` + `pthread_cond_t`
+- Unified error propagation (`producer_failed` / `worker_failed`), with coordinated stop
+
+Benefit:
+
+- Overlaps device read latency with CPU-side parsing to improve throughput on mixed I/O+CPU workloads.
