@@ -29,6 +29,10 @@ int nvme_post_action_export_stats_csv(const char *csv_path,
 
 int nvme_post_action_export_advanced_life_cycle_csv(const char *csv_path);
 
+int nvme_post_action_export_stat_qd_csv(const char *csv_path);
+
+int nvme_post_action_export_stat_wa_csv(const char *csv_path);
+
 int nvme_post_action_set_sector_size(uint32_t sector_size);
 
 int nvme_read(const char *device_name,

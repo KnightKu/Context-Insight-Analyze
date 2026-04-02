@@ -137,3 +137,112 @@ int nvme_post_action_export_advanced_life_csv(const char *csv_path,
 int nvme_post_action_export_advanced_life_cycle_csv(const char *csv_path) {
     return nvme_post_action_export_advanced_life_csv(csv_path, 4ULL, UINT64_MAX);
 }
+
+int nvme_post_action_export_stat_qd_csv(const char *csv_path) {
+    if (csv_path == NULL) {
+        errno = EINVAL;
+        return -1;
+    }
+    if (nvme_post_action_stats_init(0U) != 0) {
+        errno = ENODEV;
+        return -1;
+    }
+
+    uint64_t count = 0ULL;
+    if (nvme_post_action_stats_get_stat_sample_count(&count) != 0) {
+        errno = ENODEV;
+        return -1;
+    }
+
+    FILE *fp = fopen(csv_path, "w");
+    if (fp == NULL) {
+        return -1;
+    }
+    if (fprintf(fp, "sample_index,abs_time_us,qd\n") < 0) {
+        int saved_errno = errno == 0 ? EIO : errno;
+        fclose(fp);
+        errno = saved_errno;
+        return -1;
+    }
+
+    for (uint64_t i = 0ULL; i < count; ++i) {
+        nvme_post_action_stat_sample_t s;
+        if (nvme_post_action_stats_get_stat_sample(i, &s) != 0) {
+            int saved_errno = errno == 0 ? EIO : errno;
+            fclose(fp);
+            errno = saved_errno;
+            return -1;
+        }
+        if (fprintf(fp, "%llu,%llu,%u\n",
+                    (unsigned long long)i,
+                    (unsigned long long)s.abs_time_us,
+                    (unsigned int)s.qd) < 0) {
+            int saved_errno = errno == 0 ? EIO : errno;
+            fclose(fp);
+            errno = saved_errno;
+            return -1;
+        }
+    }
+    if (fclose(fp) != 0) {
+        return -1;
+    }
+    return 0;
+}
+
+int nvme_post_action_export_stat_wa_csv(const char *csv_path) {
+    if (csv_path == NULL) {
+        errno = EINVAL;
+        return -1;
+    }
+    if (nvme_post_action_stats_init(0U) != 0) {
+        errno = ENODEV;
+        return -1;
+    }
+
+    uint64_t count = 0ULL;
+    if (nvme_post_action_stats_get_stat_sample_count(&count) != 0) {
+        errno = ENODEV;
+        return -1;
+    }
+
+    FILE *fp = fopen(csv_path, "w");
+    if (fp == NULL) {
+        return -1;
+    }
+    if (fprintf(fp, "sample_index,abs_time_us,hot_write_4k,folding_write_4k,wa\n") < 0) {
+        int saved_errno = errno == 0 ? EIO : errno;
+        fclose(fp);
+        errno = saved_errno;
+        return -1;
+    }
+
+    for (uint64_t i = 0ULL; i < count; ++i) {
+        nvme_post_action_stat_sample_t s;
+        if (nvme_post_action_stats_get_stat_sample(i, &s) != 0) {
+            int saved_errno = errno == 0 ? EIO : errno;
+            fclose(fp);
+            errno = saved_errno;
+            return -1;
+        }
+        // WA = (folding_write + hot_write) / hot_write, keep one decimal place in CSV.
+        double wa = 0.0;
+        if (s.hot_write_4k != 0U) {
+            wa = (double)(s.hot_write_4k + s.folding_write_4k) / (double)s.hot_write_4k;
+        }
+        if (fprintf(fp, "%llu,%llu,%u,%u,%.1f\n",
+                    (unsigned long long)i,
+                    (unsigned long long)s.abs_time_us,
+                    (unsigned int)s.hot_write_4k,
+                    (unsigned int)s.folding_write_4k,
+                    wa) < 0) {
+            int saved_errno = errno == 0 ? EIO : errno;
+            fclose(fp);
+            errno = saved_errno;
+            return -1;
+        }
+    }
+    if (fclose(fp) != 0) {
+        return -1;
+    }
+    return 0;
+}

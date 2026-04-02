@@ -18,6 +18,13 @@ typedef struct {
 _Static_assert(sizeof(nvme_post_action_lba_stat_t) == NVME_POST_ACTION_STATS_ENTRY_BYTES,
                "nvme_post_action_lba_stat_t must be 5 bytes");
 
+typedef struct {
+    uint64_t abs_time_us;
+    uint16_t qd;
+    uint32_t hot_write_4k;
+    uint32_t folding_write_4k;
+} nvme_post_action_stat_sample_t;
+
 int nvme_post_action_stats_init(uint32_t sector_size);
 
 int nvme_post_action_stats_set_mdts_bytes(uint64_t mdts_bytes);
@@ -52,5 +59,15 @@ int nvme_post_action_stats_get_advanced_max_scale(uint32_t *max_scale_out);
 int nvme_post_action_stats_get_advanced_count(uint32_t scale_idx,
                                               uint16_t life_code,
                                               uint64_t *count_out);
+
+int nvme_post_action_stats_record_stat(uint64_t abs_time_us,
+                                       uint16_t qd,
+                                       uint32_t hot_write_4k,
+                                       uint32_t folding_write_4k);
+
+int nvme_post_action_stats_get_stat_sample_count(uint64_t *count_out);
+
+int nvme_post_action_stats_get_stat_sample(uint64_t sample_index,
+                                           nvme_post_action_stat_sample_t *out);
 
 #endif  // POST_ACTION_STATS_H

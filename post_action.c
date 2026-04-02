@@ -351,6 +351,12 @@ static int parse_stat_record(uint64_t record_lo,
     if (resolve_abs_time_us(parsed.time_rel, time_ref, &abs_time_us) != 0) {
         return -1;
     }
+    if (nvme_post_action_stats_record_stat(abs_time_us,
+                                           parsed.qd,
+                                           parsed.hot_write,
+                                           parsed.folding_write) != 0) {
+        return -1;
+    }
 #if NVME_POST_ACTION_DEBUG
     fprintf(stderr,
             "post action stat: offset=%llu record=%u qd=%u time_rel=%u abs_time_us=%llu "

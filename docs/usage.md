@@ -28,7 +28,7 @@ Binary output:
 Current command format:
 
 ```bash
-./sfx_ctx_insight_analyze [-D|--debug] [-l|--latency] [--export-bucket-csv <path> <start_bucket> <bucket_count>] [--export-advanced-csv <path>] <device_name> <slba[K|M|G|T]> <data_len[K|M|G|T]>
+./sfx_ctx_insight_analyze [-D|--debug] [-l|--latency] [--export-bucket-csv <path> <start_bucket> <bucket_count>] [--export-advanced-csv <path>] [--export-stat-qd-csv <path>] [--export-stat-wa-csv <path>] <device_name> <slba[K|M|G|T]> <data_len[K|M|G|T]>
 ```
 
 Argument details:
@@ -40,6 +40,8 @@ Argument details:
 - `-l` / `--latency`: enables fio-style latency summary output for post-action `read/write/trim`
 - `--export-bucket-csv <path> <start_bucket> <bucket_count>`: export per-4K bucket stats CSV
 - `--export-advanced-csv <path>`: export advanced life-cycle histogram CSV
+- `--export-stat-qd-csv <path>`: export `Stat(0x0F)` queue depth samples CSV
+- `--export-stat-wa-csv <path>`: export `Stat(0x0F)` write amplification CSV (`wa=(folding_write+hot_write)/hot_write`, one decimal)
 
 Examples:
 
@@ -52,6 +54,8 @@ Examples:
 ./sfx_ctx_insight_analyze -D -l /dev/nvme0n1 0 64M
 ./sfx_ctx_insight_analyze --export-bucket-csv /tmp/bucket.csv 0 1024 /dev/nvme0n1 0 64M
 ./sfx_ctx_insight_analyze --export-advanced-csv /tmp/advanced.csv /dev/nvme0n1 0 64M
+./sfx_ctx_insight_analyze --export-stat-qd-csv /tmp/stat_qd.csv /dev/nvme0n1 0 64M
+./sfx_ctx_insight_analyze --export-stat-wa-csv /tmp/stat_wa.csv /dev/nvme0n1 0 64M
 ```
 
 Notes:
@@ -124,6 +128,36 @@ int nvme_post_action_export_advanced_life_cycle_csv(const char *csv_path);
   - `range_kib`
   - `life_cycle_code`
   - `count`
+
+Stat QD export API:
+
+```c
+int nvme_post_action_export_stat_qd_csv(const char *csv_path);
+```
+
+- Exports `Stat(0x0F)` samples for queue depth timeline.
+- CSV columns:
+  - `sample_index`
+  - `abs_time_us`
+  - `qd`
+
+Stat WA export API:
+
+```c
+int nvme_post_action_export_stat_wa_csv(const char *csv_path);
+```
+
+- Exports `Stat(0x0F)` write amplification timeline.
+- WA formula:
+  - `wa = (folding_write_4k + hot_write_4k) / hot_write_4k`
+  - keep one decimal place
+  - if `hot_write_4k == 0`, output `wa=0.0` to avoid division by zero.
+- CSV columns:
+  - `sample_index`
+  - `abs_time_us`
+  - `hot_write_4k`
+  - `folding_write_4k`
+  - `wa`
 
 ## 5. Read/Process Pipeline
 

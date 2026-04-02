@@ -32,6 +32,9 @@ static uint32_t g_advanced_max_scale = 0U;
 static uint64_t *g_advanced_hist = NULL;
 static uint64_t g_advanced_hist_size = 0ULL;
 static uint64_t g_mdts_bytes = 0ULL;
+static nvme_post_action_stat_sample_t *g_stat_samples = NULL;
+static uint64_t g_stat_samples_count = 0ULL;
+static uint64_t g_stat_samples_cap = 0ULL;
 
 static inline uint64_t advanced_hist_index(uint32_t scale_idx, uint16_t life_code) {
     return ((uint64_t)scale_idx * ((uint64_t)NVME_POST_ACTION_LATENCY_CODE_MAX + 1ULL)) +
@@ -223,6 +226,34 @@ static uint32_t duration_us_to_ms(uint64_t duration_us) {
     return (uint32_t)ms;
 }
 
+static int stat_samples_ensure_capacity_locked(uint64_t want_count) {
+    if (want_count <= g_stat_samples_cap) {
+        return 0;
+    }
+    uint64_t new_cap = (g_stat_samples_cap == 0ULL) ? 1024ULL : g_stat_samples_cap;
+    while (new_cap < want_count) {
+        if (new_cap > (UINT64_MAX / 2ULL)) {
+            errno = ENOMEM;
+            return -1;
+        }
+        new_cap <<= 1U;
+    }
+    if (new_cap > ((uint64_t)SIZE_MAX / sizeof(nvme_post_action_stat_sample_t))) {
+        errno = ENOMEM;
+        return -1;
+    }
+    nvme_post_action_stat_sample_t *new_buf =
+        (nvme_post_action_stat_sample_t *)realloc(g_stat_samples,
+                                                  (size_t)new_cap * sizeof(nvme_post_action_stat_sample_t));
+    if (new_buf == NULL) {
+        errno = ENOMEM;
+        return -1;
+    }
+    g_stat_samples = new_buf;
+    g_stat_samples_cap = new_cap;
+    return 0;
+}
+
 static void update_advanced_life_cycle_hist_locked(uint64_t begin_idx,
                                                    uint64_t end_exclusive,
                                                    uint16_t life_code) {
@@ -352,6 +383,9 @@ int nvme_post_action_stats_init(uint32_t sector_size) {
     g_advanced_max_scale = max_scale;
     g_advanced_hist = advanced_hist;
     g_advanced_hist_size = hist_size;
+    g_stat_samples = NULL;
+    g_stat_samples_count = 0ULL;
+    g_stat_samples_cap = 0ULL;
     g_stats_enabled = 1;
     g_stats_inited = 1;
     pthread_mutex_unlock(&g_stats_mutex);
@@ -661,6 +695,69 @@ int nvme_post_action_stats_get_advanced_life_count(uint64_t range_kib,
         return -1;
     }
     *count_out = g_advanced_hist[idx];
+    pthread_mutex_unlock(&g_stats_mutex);
+    return 0;
+}
+
+int nvme_post_action_stats_record_stat(uint64_t abs_time_us,
+                                       uint16_t qd,
+                                       uint32_t hot_write_4k,
+                                       uint32_t folding_write_4k) {
+    pthread_mutex_lock(&g_stats_mutex);
+    if (g_stats_enabled == 0) {
+        pthread_mutex_unlock(&g_stats_mutex);
+        errno = ENODEV;
+        return -1;
+    }
+    if (stat_samples_ensure_capacity_locked(g_stat_samples_count + 1ULL) != 0) {
+        int saved_errno = errno == 0 ? ENOMEM : errno;
+        pthread_mutex_unlock(&g_stats_mutex);
+        errno = saved_errno;
+        return -1;
+    }
+    nvme_post_action_stat_sample_t *s = &g_stat_samples[g_stat_samples_count++];
+    s->abs_time_us = abs_time_us;
+    s->qd = qd;
+    s->hot_write_4k = hot_write_4k;
+    s->folding_write_4k = folding_write_4k;
+    pthread_mutex_unlock(&g_stats_mutex);
+    return 0;
+}
+
+int nvme_post_action_stats_get_stat_sample_count(uint64_t *count_out) {
+    if (count_out == NULL) {
+        errno = EINVAL;
+        return -1;
+    }
+    pthread_mutex_lock(&g_stats_mutex);
+    if (g_stats_enabled == 0) {
+        pthread_mutex_unlock(&g_stats_mutex);
+        errno = ENODEV;
+        return -1;
+    }
+    *count_out = g_stat_samples_count;
+    pthread_mutex_unlock(&g_stats_mutex);
+    return 0;
+}
+
+int nvme_post_action_stats_get_stat_sample(uint64_t sample_index,
+                                           nvme_post_action_stat_sample_t *out) {
+    if (out == NULL) {
+        errno = EINVAL;
+        return -1;
+    }
+    pthread_mutex_lock(&g_stats_mutex);
+    if (g_stats_enabled == 0) {
+        pthread_mutex_unlock(&g_stats_mutex);
+        errno = ENODEV;
+        return -1;
+    }
+    if (sample_index >= g_stat_samples_count) {
+        pthread_mutex_unlock(&g_stats_mutex);
+        errno = ERANGE;
+        return -1;
+    }
+    *out = g_stat_samples[sample_index];
     pthread_mutex_unlock(&g_stats_mutex);
     return 0;
 }

@@ -69,6 +69,8 @@ int main(int argc, char *argv[]) {
     uint64_t bucket_csv_start = 0ULL;
     uint64_t bucket_csv_count = 0ULL;
     const char *advanced_csv_path = NULL;
+    const char *stat_qd_csv_path = NULL;
+    const char *stat_wa_csv_path = NULL;
     while (argi < argc) {
         if (strcmp(argv[argi], "-D") == 0 || strcmp(argv[argi], "--debug") == 0) {
             debug_enabled = 1;
@@ -106,6 +108,24 @@ int main(int argc, char *argv[]) {
             argi += 2;
             continue;
         }
+        if (strcmp(argv[argi], "--export-stat-qd-csv") == 0) {
+            if ((argi + 1) >= argc) {
+                fprintf(stderr, "missing args for --export-stat-qd-csv <path>\n");
+                return 1;
+            }
+            stat_qd_csv_path = argv[argi + 1];
+            argi += 2;
+            continue;
+        }
+        if (strcmp(argv[argi], "--export-stat-wa-csv") == 0) {
+            if ((argi + 1) >= argc) {
+                fprintf(stderr, "missing args for --export-stat-wa-csv <path>\n");
+                return 1;
+            }
+            stat_wa_csv_path = argv[argi + 1];
+            argi += 2;
+            continue;
+        }
         break;
     }
 
@@ -114,6 +134,8 @@ int main(int argc, char *argv[]) {
                 "usage: %s [-D|--debug] [-l|--latency] "
                 "[--export-bucket-csv <path> <start_bucket> <bucket_count>] "
                 "[--export-advanced-csv <path>] "
+                "[--export-stat-qd-csv <path>] "
+                "[--export-stat-wa-csv <path>] "
                 "<device_name> <slba[K|M|G|T]> <data_len[K|M|G|T]>\n",
                 argv[0]);
         return 1;
@@ -156,6 +178,20 @@ int main(int argc, char *argv[]) {
             return 1;
         }
         fprintf(stderr, "advanced csv export success: path=%s\n", advanced_csv_path);
+    }
+    if (stat_qd_csv_path != NULL) {
+        if (nvme_post_action_export_stat_qd_csv(stat_qd_csv_path) != 0) {
+            fprintf(stderr, "stat qd csv export failed: %s\n", strerror(errno));
+            return 1;
+        }
+        fprintf(stderr, "stat qd csv export success: path=%s\n", stat_qd_csv_path);
+    }
+    if (stat_wa_csv_path != NULL) {
+        if (nvme_post_action_export_stat_wa_csv(stat_wa_csv_path) != 0) {
+            fprintf(stderr, "stat wa csv export failed: %s\n", strerror(errno));
+            return 1;
+        }
+        fprintf(stderr, "stat wa csv export success: path=%s\n", stat_wa_csv_path);
     }
 
     fprintf(stderr, "nvme passthru read done. slba=%" PRIu64 " data_len=%" PRIu64 "\n",
