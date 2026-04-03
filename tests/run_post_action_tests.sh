@@ -34,17 +34,7 @@ SOFT_STOP_CASES=(
 echo "[3/4] run pass cases"
 for f in "${PASS_CASES[@]}"; do
   echo "  PASS expected: ${f}"
-  csv_out="tests/fixtures/$(basename "${f}").csv"
-  qd_csv_out="tests/fixtures/$(basename "${f}").stat_qd.csv"
-  wa_csv_out="tests/fixtures/$(basename "${f}").stat_wa.csv"
-  ./post_action_file_tester \
-    --export-bucket-csv "${csv_out}" 0 64 \
-    --export-stat-qd-csv "${qd_csv_out}" \
-    --export-stat-wa-csv "${wa_csv_out}" \
-    "${f}" 0 >/dev/null 2>&1
-  test -s "${csv_out}"
-  test -s "${qd_csv_out}"
-  test -s "${wa_csv_out}"
+  ./post_action_file_tester "${f}" 0 >/dev/null 2>&1
 done
 
 echo "[4/4] run invalid-data skip cases"

@@ -28,7 +28,7 @@ Binary output:
 Current command format:
 
 ```bash
-./sfx_ctx_insight_analyze [-D|--debug] [-l|--latency] [--export-bucket-csv <path> <start_bucket> <bucket_count>] [--export-advanced-csv <path>] [--export-stat-qd-csv <path>] [--export-stat-wa-csv <path>] <device_name> <slba[K|M|G|T]> <data_len[K|M|G|T]>
+./sfx_ctx_insight_analyze [-D|--debug] [-l|--latency] <device_name> <slba[K|M|G|T]> <data_len[K|M|G|T]>
 ```
 
 Argument details:
@@ -38,10 +38,6 @@ Argument details:
 - `data_len`: read size in bytes, supports unit suffix `K/M/G/T` (case-insensitive)
 - `-D` / `--debug`: enables runtime debug mode
 - `-l` / `--latency`: enables fio-style latency summary output for post-action `read/write/trim`
-- `--export-bucket-csv <path> <start_bucket> <bucket_count>`: export per-4K bucket stats CSV
-- `--export-advanced-csv <path>`: export advanced life-cycle histogram CSV
-- `--export-stat-qd-csv <path>`: export `Stat(0x0F)` queue depth samples CSV
-- `--export-stat-wa-csv <path>`: export `Stat(0x0F)` write amplification CSV (`wa=(folding_write+hot_write)/hot_write`, one decimal)
 
 Examples:
 
@@ -52,10 +48,6 @@ Examples:
 ./sfx_ctx_insight_analyze --debug /dev/nvme0n1 0 64M
 ./sfx_ctx_insight_analyze --latency /dev/nvme0n1 0 64M
 ./sfx_ctx_insight_analyze -D -l /dev/nvme0n1 0 64M
-./sfx_ctx_insight_analyze --export-bucket-csv /tmp/bucket.csv 0 1024 /dev/nvme0n1 0 64M
-./sfx_ctx_insight_analyze --export-advanced-csv /tmp/advanced.csv /dev/nvme0n1 0 64M
-./sfx_ctx_insight_analyze --export-stat-qd-csv /tmp/stat_qd.csv /dev/nvme0n1 0 64M
-./sfx_ctx_insight_analyze --export-stat-wa-csv /tmp/stat_wa.csv /dev/nvme0n1 0 64M
 ```
 
 Notes:
@@ -88,7 +80,7 @@ The default post action:
 - Supports an early termination marker:
   - if a 16-byte window has first-byte `0x00` in both 8-byte halves,
     post-action parsing stops successfully
-- Maintains in-memory per-4KB LBA statistics:
+- Maintains in-memory per-4KB LBA statistics for runtime analysis:
   - 1B saturated read count (`0..255`) for write-then-read events
   - 2B non-linear encoded write-to-first-read latency
   - 2B non-linear encoded write life-cycle latency (write to next overwrite)
@@ -102,68 +94,6 @@ The default post action:
   - `read`, `write`: use protocol `latency` field (3B)
   - `trim`: use per-range relative `time` delta as trim latency sample
   - Output includes `samples/min/max/avg/p50/p90/p99`
-
-CSV export API (bucket range):
-
-```c
-int nvme_post_action_export_stats_csv(const char *csv_path,
-                                      uint64_t start_bucket,
-                                      uint64_t bucket_count);
-```
-
-- Exports current in-memory post-action stats to a CSV file
-- Bucket granularity is `4KB` per row
-- `start_bucket` is inclusive
-- `bucket_count` controls exported rows (`0` is invalid and returns error)
-- If `start_bucket + bucket_count` exceeds available buckets, export is clamped to the valid tail.
-- CSV columns:
-  - `bucket_index`
-  - `read_count`
-  - `write_to_first_read_latency_code`
-  - `life_cycle_latency_code`
-
-Advanced life-cycle histogram export API:
-
-```c
-int nvme_post_action_export_advanced_life_cycle_csv(const char *csv_path);
-```
-
-- Exports advanced overwrite life-cycle histogram
-- CSV columns:
-  - `range_kib`
-  - `life_cycle_code`
-  - `count`
-
-Stat QD export API:
-
-```c
-int nvme_post_action_export_stat_qd_csv(const char *csv_path);
-```
-
-- Exports `Stat(0x0F)` samples for queue depth timeline.
-- Filters:
-  - Ignore samples where `qd == 0`
-- CSV columns:
-  - `sample_index`
-  - `abs_time_us`
-  - `qd`
-
-Stat WA export API:
-
-```c
-int nvme_post_action_export_stat_wa_csv(const char *csv_path);
-```
-
-- Exports `Stat(0x0F)` write amplification timeline.
-- WA formula:
-  - `wa = (folding_write_4k + hot_write_4k) / hot_write_4k`
-  - keep one decimal place
-- Filters:
-  - Ignore samples where `hot_write_4k == 0`
-- CSV columns:
-  - `sample_index`
-  - `abs_time_us`
-  - `wa`
 
 ## 5. Read/Process Pipeline
 
@@ -290,7 +220,7 @@ git push -u origin dev
 The repository includes a dedicated test binary that feeds file data into the post-action interface:
 
 ```bash
-./post_action_file_tester [-D|--debug] [-l|--latency] [--export-bucket-csv <path> <start_bucket> <bucket_count>] [--export-advanced-csv <path>] [--export-stat-qd-csv <path>] [--export-stat-wa-csv <path>] <input_file> [offset_bytes]
+./post_action_file_tester [-D|--debug] [-l|--latency] <input_file> [offset_bytes]
 ```
 
 Behavior:
@@ -300,10 +230,6 @@ Behavior:
 - Supports the same option set as the main binary:
   - `-D` / `--debug`
   - `-l` / `--latency`
-  - `--export-bucket-csv <path> <start_bucket> <bucket_count>`
-  - `--export-advanced-csv <path>`
-  - `--export-stat-qd-csv <path>`
-  - `--export-stat-wa-csv <path>`
 - The only behavior difference from the main binary:
   - data source is `input_file` instead of NVMe device read
 - Returns:

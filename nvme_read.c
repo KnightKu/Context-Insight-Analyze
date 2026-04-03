@@ -1,7 +1,6 @@
 #define _POSIX_C_SOURCE 200809L
 #include "nvme_read.h"
 #include "post_action.h"
-#include "post_action_export.h"
 #include "post_action_latency.h"
 #include "post_action_stats.h"
 
