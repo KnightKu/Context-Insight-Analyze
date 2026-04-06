@@ -73,12 +73,7 @@ The project follows a layered structure:
 - Manages 5-byte bucket model / non-linear latency encoding
 - Provides stats summary and bucket access interfaces
 
-### 2.6 `post_action_export.c`
-
-- Owns CSV export API implementation
-- Exports specified bucket ranges using stats module accessors
-
-### 2.7 `post_action_latency.c`
+### 2.6 `post_action_latency.c`
 
 - Owns read/write/trim latency statistics aggregation
 - Prints fio-style latency summary with count/min/max/avg and percentiles

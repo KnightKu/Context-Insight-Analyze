@@ -76,6 +76,14 @@ The current parser supports 5 opcodes and two record lengths:
 - Effective timestamp:
   - `abs_time_us = last_marker_abs_time_us + time_rel`
 - If a non-marker record appears before any marker, the record is treated as invalid by parser rules.
+- Marker monotonic rule:
+  - marker timestamps must be strictly increasing across the stream.
+  - if a marker timestamp is non-increasing (`current <= previous`), it is treated as overwrite.
+  - on overwrite detection, post-action parsing aborts immediately and returns a soft-stop signal.
+  - the read/post-action pipeline stops reading and parsing subsequent log records in this run.
+  - already-processed records remain effective, and the main flow continues (no program abort).
+  - warning log includes overwrite context and LBA location (for example: previous/current marker time,
+    `lba`, `offset`, and record index).
 
 ## 4. Core Algorithm
 
@@ -136,6 +144,7 @@ Implementation notes:
 - Missing marker reference for relative timestamp -> counted as invalid and skipped
 - Non-8-byte-aligned tail bytes -> counted as invalid tail fragment
 - Truncated record/group -> counted as invalid and skipped conservatively
+- Marker timestamp non-increasing (`current <= previous`) -> treated as overwrite and soft-stop
 
 ## 5. Error Handling Strategy
 
@@ -225,26 +234,7 @@ The storage is initialized by `mmap` (with `MAP_NORESERVE` when available) to ke
   millisecond scale to multi-hour scale.
 - Values above the table upper bound are saturated to `65535`.
 
-### 7.5 Statistics Export API (CSV by Bucket Range)
-
-A public export API is available:
-
-```c
-int nvme_post_action_export_stats_csv(const char *csv_path,
-                                      uint64_t start_bucket,
-                                      uint64_t bucket_count);
-```
-
-Behavior:
-
-- Exports only the requested bucket range to CSV.
-- Header format:
-  - `bucket_index,read_count,write_to_first_read_latency_code,life_cycle_latency_code`
-- One row per bucket in `[start_bucket, start_bucket + bucket_count)`.
-- If range exceeds available buckets, export is clamped to the valid tail.
-- Returns `0` on success, `-1` on failure (`errno` set).
-
-### 7.6 Advanced LBA Life-Cycle Group Statistics
+### 7.5 Advanced LBA Life-Cycle Group Statistics
 
 Advanced overwrite life-cycle grouping is supported for covered write ranges:
 

@@ -91,6 +91,11 @@ typedef struct {
 
 static pthread_mutex_t g_post_action_invalid_mutex = PTHREAD_MUTEX_INITIALIZER;
 static uint64_t g_post_action_invalid_records = 0ULL;
+static pthread_mutex_t g_post_action_marker_mutex = PTHREAD_MUTEX_INITIALIZER;
+static uint64_t g_post_action_last_marker_abs_time_us = 0ULL;
+static int g_post_action_has_last_marker = 0;
+static uint64_t g_post_action_base_lba = 0ULL;
+static uint32_t g_post_action_sector_size = (uint32_t)NVME_LBA_SIZE_BYTES;
 
 static int default_post_action(void *ctx, void *data, uint32_t data_len, uint64_t offset_bytes);
 static nvme_read_post_action_t g_post_action = default_post_action;
@@ -101,6 +106,11 @@ void nvme_post_action_reset_invalid_count(void) {
     pthread_mutex_lock(&g_post_action_invalid_mutex);
     g_post_action_invalid_records = 0ULL;
     pthread_mutex_unlock(&g_post_action_invalid_mutex);
+
+    pthread_mutex_lock(&g_post_action_marker_mutex);
+    g_post_action_last_marker_abs_time_us = 0ULL;
+    g_post_action_has_last_marker = 0;
+    pthread_mutex_unlock(&g_post_action_marker_mutex);
 }
 
 static void post_action_add_invalid_count(uint64_t delta) {
@@ -110,6 +120,12 @@ static void post_action_add_invalid_count(uint64_t delta) {
     pthread_mutex_lock(&g_post_action_invalid_mutex);
     g_post_action_invalid_records += delta;
     pthread_mutex_unlock(&g_post_action_invalid_mutex);
+}
+
+static uint64_t marker_record_to_lba_locked(uint64_t record_offset_bytes) {
+    uint32_t sector_size = g_post_action_sector_size == 0U ?
+        (uint32_t)NVME_LBA_SIZE_BYTES : g_post_action_sector_size;
+    return g_post_action_base_lba + (record_offset_bytes / (uint64_t)sector_size);
 }
 
 uint64_t nvme_post_action_get_invalid_count(void) {
@@ -390,6 +406,28 @@ static int parse_marker_record(uint64_t record_lo,
         errno = EINVAL;
         return -1;
     }
+
+    pthread_mutex_lock(&g_post_action_marker_mutex);
+    if (g_post_action_has_last_marker != 0 &&
+        parsed.abs_time <= g_post_action_last_marker_abs_time_us) {
+        uint64_t overwrite_lba = marker_record_to_lba_locked(offset_bytes);
+        uint64_t prev_abs_time = g_post_action_last_marker_abs_time_us;
+        pthread_mutex_unlock(&g_post_action_marker_mutex);
+        fprintf(stderr,
+                "post action warning: overwrite detected, marker timestamp not increasing: "
+                "prev_abs_time_us=%llu curr_abs_time_us=%llu lba=%llu offset=%llu record=%u\n",
+                (unsigned long long)prev_abs_time,
+                (unsigned long long)parsed.abs_time,
+                (unsigned long long)overwrite_lba,
+                (unsigned long long)offset_bytes,
+                (unsigned int)record_index);
+        errno = ECANCELED;
+        return -1;
+    }
+    g_post_action_last_marker_abs_time_us = parsed.abs_time;
+    g_post_action_has_last_marker = 1;
+    pthread_mutex_unlock(&g_post_action_marker_mutex);
+
     time_ref->marker_abs_time_us = parsed.abs_time;
     time_ref->has_marker = 1;
     return 0;
@@ -448,6 +486,10 @@ static int default_post_action(void *ctx, void *data, uint32_t data_len, uint64_
             rc = parse_trim_group(bytes, parse_len, cursor, offset_bytes, record_index, &time_ref,
                                   &consumed_bytes, &consumed_records);
             if (rc != 0) {
+                if (errno == ECANCELED) {
+                    post_action_add_invalid_count(local_invalid_records);
+                    return -1;
+                }
                 ++local_invalid_records;
                 cursor += NVME_POST_ACTION_RECORD_BYTES_LONG;
                 ++record_index;
@@ -479,6 +521,10 @@ static int default_post_action(void *ctx, void *data, uint32_t data_len, uint64_
             continue;
         }
         if (rc != 0) {
+            if (errno == ECANCELED) {
+                post_action_add_invalid_count(local_invalid_records);
+                return -1;
+            }
             ++local_invalid_records;
             continue;
         }
@@ -519,7 +565,23 @@ int nvme_post_action_get_debug(void) {
 }
 
 int nvme_post_action_set_sector_size(uint32_t sector_size) {
+    if (sector_size == 0U) {
+        errno = EINVAL;
+        return -1;
+    }
+    pthread_mutex_lock(&g_post_action_marker_mutex);
+    g_post_action_sector_size = sector_size;
+    pthread_mutex_unlock(&g_post_action_marker_mutex);
     return nvme_post_action_stats_init(sector_size);
+}
+
+int nvme_post_action_set_base_lba(uint64_t base_lba) {
+    pthread_mutex_lock(&g_post_action_marker_mutex);
+    g_post_action_base_lba = base_lba;
+    g_post_action_last_marker_abs_time_us = 0ULL;
+    g_post_action_has_last_marker = 0;
+    pthread_mutex_unlock(&g_post_action_marker_mutex);
+    return 0;
 }
 
 int nvme_post_action_set_latency_enabled(int enabled) {

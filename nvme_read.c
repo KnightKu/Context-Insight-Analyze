@@ -1,7 +1,6 @@
 #define _POSIX_C_SOURCE 200809L
 #include "nvme_read.h"
 #include "post_action.h"
-#include "post_action_export.h"
 #include "post_action_latency.h"
 #include "post_action_stats.h"
 
@@ -45,6 +44,8 @@ typedef struct {
     int producer_errno;
     int worker_failed;
     int worker_errno;
+    int worker_soft_stop;
+    int worker_soft_stop_errno;
     uint64_t processed_bytes;
 } nvme_pipeline_state_t;
 
@@ -237,6 +238,21 @@ static void *pipeline_worker_thread(void *arg) {
         nvme_pipeline_slot_t *slot = &state->slots[slot_idx];
         if (nvme_post_action_process(slot->buf, slot->len, slot->offset) != 0) {
             int saved_errno = errno == 0 ? EIO : errno;
+            if (saved_errno == ECANCELED) {
+                fprintf(stderr,
+                        "post action soft-stop at offset=%llu: overwrite detected, "
+                        "stop further log read/parse\n",
+                        (unsigned long long)slot->offset);
+                pthread_mutex_lock(&state->mutex);
+                state->worker_soft_stop = 1;
+                state->worker_soft_stop_errno = saved_errno;
+                state->stop = 1;
+                pipeline_push_free_locked(state, slot_idx);
+                pthread_cond_broadcast(&state->cv_free);
+                pthread_cond_broadcast(&state->cv_ready);
+                pthread_mutex_unlock(&state->mutex);
+                return NULL;
+            }
             fprintf(stderr, "post action failed at offset=%llu: %s\n",
                     (unsigned long long)slot->offset, strerror(saved_errno));
             pthread_mutex_lock(&state->mutex);
@@ -315,6 +331,7 @@ static int run_read_post_pipeline(int nvme_fd,
 
     int failed = 0;
     int saved_errno = 0;
+    int soft_stopped = 0;
     pthread_mutex_lock(&state.mutex);
     if (state.worker_failed != 0) {
         failed = 1;
@@ -322,6 +339,8 @@ static int run_read_post_pipeline(int nvme_fd,
     } else if (state.producer_failed != 0) {
         failed = 1;
         saved_errno = state.producer_errno;
+    } else if (state.worker_soft_stop != 0) {
+        soft_stopped = 1;
     }
     *processed_bytes_out = state.processed_bytes;
     pthread_mutex_unlock(&state.mutex);
@@ -330,6 +349,9 @@ static int run_read_post_pipeline(int nvme_fd,
     if (failed != 0) {
         errno = (saved_errno == 0) ? EIO : saved_errno;
         return -1;
+    }
+    if (soft_stopped != 0) {
+        return 0;
     }
     return 0;
 }
@@ -460,6 +482,7 @@ int nvme_read(const char *device_name,
         return -1;
     }
     (void)nvme_post_action_set_sector_size(sector_size);
+    (void)nvme_post_action_set_base_lba(slba);
 
     if (data_len % (uint64_t)sector_size != 0ULL) {
         errno = EINVAL;
