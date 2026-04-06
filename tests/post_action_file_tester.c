@@ -181,6 +181,9 @@ int main(int argc, char *argv[]) {
 
     fprintf(stderr, "post action success: file=%s bytes=%zu offset=%" PRIu64 "\n",
             input_file, len, offset_bytes);
+    if (latency_enabled != 0) {
+        nvme_post_action_print_latency_report();
+    }
     if (read_count_stats_enabled != 0 ||
         w2fr_stats_enabled != 0 ||
         life_cycle_stats_enabled != 0) {
