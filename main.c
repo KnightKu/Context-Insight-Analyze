@@ -65,6 +65,7 @@ int main(int argc, char *argv[]) {
     int argi = 1;
     int debug_enabled = 0;
     int latency_enabled = 0;
+    int lba_stats_enabled = 0;
     while (argi < argc) {
         if (strcmp(argv[argi], "-D") == 0 || strcmp(argv[argi], "--debug") == 0) {
             debug_enabled = 1;
@@ -76,12 +77,17 @@ int main(int argc, char *argv[]) {
             ++argi;
             continue;
         }
+        if (strcmp(argv[argi], "--lba-stats") == 0) {
+            lba_stats_enabled = 1;
+            ++argi;
+            continue;
+        }
         break;
     }
 
     if ((argc - argi) != 3) {
         fprintf(stderr,
-                "usage: %s [-D|--debug] [-l|--latency] "
+                "usage: %s [-D|--debug] [-l|--latency] [--lba-stats] "
                 "<device_name> <slba[K|M|G|T]> <data_len[K|M|G|T]>\n",
                 argv[0]);
         return 1;
@@ -103,6 +109,7 @@ int main(int argc, char *argv[]) {
 
     nvme_read_set_debug(debug_enabled);
     nvme_read_set_latency(latency_enabled);
+    nvme_read_set_lba_stats(lba_stats_enabled);
 
     if (nvme_read(device_name, slba, data_len, NULL) != 0) {
         fprintf(stderr, "nvme_read failed: %s\n", strerror(errno));

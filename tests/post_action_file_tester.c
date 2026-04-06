@@ -1,4 +1,5 @@
 #include "nvme_read.h"
+#include "post_action.h"
 
 #include <ctype.h>
 #include <errno.h>
@@ -63,6 +64,7 @@ int main(int argc, char *argv[]) {
     int argi = 1;
     int debug_enabled = 0;
     int latency_enabled = 0;
+    int lba_stats_enabled = 0;
     while (argi < argc) {
         if (strcmp(argv[argi], "-D") == 0 || strcmp(argv[argi], "--debug") == 0) {
             debug_enabled = 1;
@@ -74,12 +76,17 @@ int main(int argc, char *argv[]) {
             ++argi;
             continue;
         }
+        if (strcmp(argv[argi], "--lba-stats") == 0) {
+            lba_stats_enabled = 1;
+            ++argi;
+            continue;
+        }
         break;
     }
 
     if ((argc - argi) != 1 && (argc - argi) != 2) {
         fprintf(stderr,
-                "usage: %s [-D|--debug] [-l|--latency] <input_file> [offset_bytes]\n",
+                "usage: %s [-D|--debug] [-l|--latency] [--lba-stats] <input_file> [offset_bytes]\n",
                 argv[0]);
         return 2;
     }
@@ -143,6 +150,7 @@ int main(int argc, char *argv[]) {
 
     nvme_read_set_debug(debug_enabled);
     nvme_read_set_latency(latency_enabled);
+    nvme_read_set_lba_stats(lba_stats_enabled);
     int rc = nvme_post_action_process(buf, (uint32_t)len, offset_bytes);
     if (rc != 0) {
         if (errno == ECANCELED) {
@@ -158,6 +166,9 @@ int main(int argc, char *argv[]) {
 
     fprintf(stderr, "post action success: file=%s bytes=%zu offset=%" PRIu64 "\n",
             input_file, len, offset_bytes);
+    if (lba_stats_enabled != 0) {
+        nvme_post_action_print_lba_stats_report();
+    }
     free(buf);
     return 0;
 }

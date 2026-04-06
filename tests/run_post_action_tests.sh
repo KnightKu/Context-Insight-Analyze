@@ -44,6 +44,16 @@ for f in "${SKIP_CASES[@]}"; do
   ./post_action_file_tester "${f}" >/dev/null 2>&1
 done
 
+echo "  LBA-STATS expected: segmented distribution output"
+if ! ./post_action_file_tester --lba-stats "tests/fixtures/valid_mixed.bin" >/tmp/post_action_lba_stats.log 2>&1; then
+  echo "unexpected failure for --lba-stats output case" >&2
+  exit 1
+fi
+if ! rg -i "Read Count distribution|Write-to-First-Read Latency\\(real ms\\) distribution|LBA Life Cycle\\(real ms\\) distribution" "/tmp/post_action_lba_stats.log" >/dev/null; then
+  echo "missing segmented lba-stats output sections" >&2
+  exit 1
+fi
+
 for f in "${SOFT_STOP_CASES[@]}"; do
   echo "  SOFT-STOP expected (overwrite should stop parse/read but not fail): ${f}"
   if ! ./post_action_file_tester "${f}" >/tmp/post_action_overwrite.log 2>&1; then

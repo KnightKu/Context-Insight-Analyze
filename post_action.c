@@ -101,6 +101,7 @@ static int default_post_action(void *ctx, void *data, uint32_t data_len, uint64_
 static nvme_read_post_action_t g_post_action = default_post_action;
 static void *g_post_action_ctx = NULL;
 static int g_post_action_debug_enabled = 0;
+static int g_post_action_lba_stats_enabled = 0;
 
 void nvme_post_action_reset_invalid_count(void) {
     pthread_mutex_lock(&g_post_action_invalid_mutex);
@@ -599,4 +600,20 @@ void nvme_post_action_reset_latency_stats(void) {
 
 void nvme_post_action_print_latency_report(void) {
     nvme_post_action_latency_print_summary();
+}
+
+int nvme_post_action_set_lba_stats_enabled(int enabled) {
+    g_post_action_lba_stats_enabled = (enabled != 0) ? 1 : 0;
+    return 0;
+}
+
+int nvme_post_action_get_lba_stats_enabled(void) {
+    return g_post_action_lba_stats_enabled;
+}
+
+void nvme_post_action_print_lba_stats_report(void) {
+    if (g_post_action_lba_stats_enabled == 0) {
+        return;
+    }
+    nvme_post_action_stats_print_ratio_summary();
 }
