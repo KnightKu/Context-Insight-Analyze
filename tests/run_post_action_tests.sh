@@ -45,12 +45,30 @@ for f in "${SKIP_CASES[@]}"; do
 done
 
 echo "  LBA-STATS expected: segmented distribution output"
-if ! ./post_action_file_tester --lba-stats "tests/fixtures/valid_mixed.bin" >/tmp/post_action_lba_stats.log 2>&1; then
-  echo "unexpected failure for --lba-stats output case" >&2
+if ! ./post_action_file_tester \
+  --read-count-stats \
+  --w2fr-stats \
+  --life-cycle-stats \
+  "tests/fixtures/valid_mixed.bin" >/tmp/post_action_lba_stats.log 2>&1; then
+  echo "unexpected failure for lba stats output case" >&2
   exit 1
 fi
 if ! rg -i "Read Count distribution|Write-to-First-Read Latency\\(real ms\\) distribution|LBA Life Cycle\\(real ms\\) distribution" "/tmp/post_action_lba_stats.log" >/dev/null; then
   echo "missing segmented lba-stats output sections" >&2
+  exit 1
+fi
+
+echo "  LBA-STATS selective output expected"
+if ! ./post_action_file_tester --read-count-stats "tests/fixtures/valid_mixed.bin" >/tmp/post_action_lba_read_only.log 2>&1; then
+  echo "unexpected failure for lba read-count output case" >&2
+  exit 1
+fi
+if ! rg -i "Read Count distribution" "/tmp/post_action_lba_read_only.log" >/dev/null; then
+  echo "missing Read Count distribution section" >&2
+  exit 1
+fi
+if rg -i "Write-to-First-Read Latency\\(real ms\\) distribution|LBA Life Cycle\\(real ms\\) distribution" "/tmp/post_action_lba_read_only.log" >/dev/null; then
+  echo "unexpected non-read-count sections in read-count-only output" >&2
   exit 1
 fi
 

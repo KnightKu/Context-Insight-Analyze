@@ -28,7 +28,7 @@ Binary output:
 Current command format:
 
 ```bash
-./sfx_ctx_insight_analyze [-D|--debug] [-l|--latency] [--lba-stats] <device_name> <slba[K|M|G|T]> <data_len[K|M|G|T]>
+./sfx_ctx_insight_analyze [-D|--debug] [-l|--latency] [--lba-read-count] [--lba-w2fr] [--lba-life-cycle] <device_name> <slba[K|M|G|T]> <data_len[K|M|G|T]>
 ```
 
 Argument details:
@@ -38,7 +38,9 @@ Argument details:
 - `data_len`: read size in bytes, supports unit suffix `K/M/G/T` (case-insensitive)
 - `-D` / `--debug`: enables runtime debug mode
 - `-l` / `--latency`: enables fio-style latency summary output for post-action `read/write/trim`
-- `--lba-stats`: enables LBA stats distribution summary output
+- `--lba-read-count`: enables `Read Count` distribution output
+- `--lba-w2fr`: enables `Write-to-First-Read Latency` real-time(ms) distribution output
+- `--lba-life-cycle`: enables `LBA Life Cycle` real-time(ms) distribution output
 
 Examples:
 
@@ -49,8 +51,10 @@ Examples:
 ./sfx_ctx_insight_analyze --debug /dev/nvme0n1 0 64M
 ./sfx_ctx_insight_analyze --latency /dev/nvme0n1 0 64M
 ./sfx_ctx_insight_analyze -D -l /dev/nvme0n1 0 64M
-./sfx_ctx_insight_analyze --lba-stats /dev/nvme0n1 0 64M
-./sfx_ctx_insight_analyze -D --lba-stats /dev/nvme0n1 0 64M
+./sfx_ctx_insight_analyze --lba-read-count /dev/nvme0n1 0 64M
+./sfx_ctx_insight_analyze --lba-w2fr /dev/nvme0n1 0 64M
+./sfx_ctx_insight_analyze --lba-life-cycle /dev/nvme0n1 0 64M
+./sfx_ctx_insight_analyze -D --lba-read-count --lba-w2fr --lba-life-cycle /dev/nvme0n1 0 64M
 ```
 
 Notes:
@@ -97,10 +101,10 @@ The default post action:
   - `read`, `write`: use protocol `latency` field (3B)
   - `trim`: use per-range relative `time` delta as trim latency sample
   - Output includes `samples/min/max/avg/p50/p90/p99`
-- Optional LBA stats summary (`--lba-stats`):
-  - `Read Count`: non-zero read-count bucket distribution
-  - `Write-to-First-Read Latency`: decoded real-time distribution (milliseconds)
-  - `LBA Life Cycle`: decoded real-time distribution (milliseconds)
+- Optional LBA stats summary (independent switches):
+  - `--lba-read-count`: `Read Count` non-zero bucket distribution
+  - `--lba-w2fr`: `Write-to-First-Read Latency` decoded real-time distribution (milliseconds)
+  - `--lba-life-cycle`: `LBA Life Cycle` decoded real-time distribution (milliseconds)
   - Output format is segmented ratio buckets, similar to `-l/--latency` style
 
 ## 5. Read/Process Pipeline
@@ -126,7 +130,7 @@ This design helps reduce idle time by allowing I/O and parsing to run concurrent
 - Prints read bandwidth statistics only when debug mode is enabled (`-D` / `--debug`)
 - In debug mode, prints post-action stats summary (`buckets`, `touched`, `read_count_nonzero`, `bytes`)
 - Prints fio-style latency summary only when latency mode is enabled (`-l` / `--latency`)
-- Prints LBA stats segmented ratio summary only when `--lba-stats` is enabled
+- Prints each LBA stats segmented ratio section only when the corresponding `--lba-*` switch is enabled
 
 ## 6. Debug Macro
 
@@ -229,7 +233,7 @@ git push -u origin dev
 The repository includes a dedicated test binary that feeds file data into the post-action interface:
 
 ```bash
-./post_action_file_tester [-D|--debug] [-l|--latency] [--lba-stats] <input_file> [offset_bytes]
+./post_action_file_tester [-D|--debug] [-l|--latency] [--lba-read-count] [--lba-w2fr] [--lba-life-cycle] <input_file> [offset_bytes]
 ```
 
 Behavior:
@@ -239,7 +243,9 @@ Behavior:
 - Supports the same option set as the main binary:
   - `-D` / `--debug`
   - `-l` / `--latency`
-  - `--lba-stats`
+  - `--lba-read-count`
+  - `--lba-w2fr`
+  - `--lba-life-cycle`
 - The only behavior difference from the main binary:
   - data source is `input_file` instead of NVMe device read
 - Returns:

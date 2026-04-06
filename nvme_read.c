@@ -372,8 +372,18 @@ int nvme_read_set_latency(int enabled) {
     return 0;
 }
 
-int nvme_read_set_lba_stats(int enabled) {
-    nvme_post_action_set_lba_stats_enabled(enabled);
+int nvme_read_set_lba_stats_read_count(int enabled) {
+    nvme_post_action_set_lba_read_count_enabled(enabled);
+    return 0;
+}
+
+int nvme_read_set_lba_stats_w2fr(int enabled) {
+    nvme_post_action_set_lba_w2fr_enabled(enabled);
+    return 0;
+}
+
+int nvme_read_set_lba_stats_life_cycle(int enabled) {
+    nvme_post_action_set_lba_life_cycle_enabled(enabled);
     return 0;
 }
 

@@ -273,7 +273,18 @@ static void print_ratio_hist_line(const char *name,
             name, label, hit, pct);
 }
 
-void nvme_post_action_stats_print_ratio_summary(void) {
+static int should_print_section(int print_read_count,
+                                int print_w2fr,
+                                int print_life_cycle) {
+    return (print_read_count != 0 || print_w2fr != 0 || print_life_cycle != 0) ? 1 : 0;
+}
+
+void nvme_post_action_stats_print_ratio_summary(int print_read_count,
+                                                int print_w2fr,
+                                                int print_life_cycle) {
+    if (should_print_section(print_read_count, print_w2fr, print_life_cycle) == 0) {
+        return;
+    }
     nvme_post_action_lba_ratio_summary_t summary;
     pthread_mutex_lock(&g_stats_mutex);
     int rc = build_lba_ratio_summary_locked(&summary);
@@ -285,41 +296,47 @@ void nvme_post_action_stats_print_ratio_summary(void) {
 
     fprintf(stderr, "lba ratio summary (bucket=%llu bytes):\n",
             (unsigned long long)NVME_POST_ACTION_STATS_BLOCK_BYTES);
-    fprintf(stderr, "Read Count distribution:\n");
-    for (uint32_t i = 0U; i < NVME_POST_ACTION_RATIO_BUCKETS; ++i) {
-        char label[32];
-        ratio_label_read_count(i, label, sizeof(label));
-        print_ratio_hist_line("Read Count", summary.read_count_hist[i], total_buckets, label);
+    if (print_read_count != 0) {
+        fprintf(stderr, "Read Count distribution:\n");
+        for (uint32_t i = 0U; i < NVME_POST_ACTION_RATIO_BUCKETS; ++i) {
+            char label[32];
+            ratio_label_read_count(i, label, sizeof(label));
+            print_ratio_hist_line("Read Count", summary.read_count_hist[i], total_buckets, label);
+        }
+        fprintf(stderr, "  non-zero buckets=%" PRIu64 " / %" PRIu64 " (%.2f%%)\n",
+                summary.read_count_non_zero_buckets,
+                total_buckets,
+                total_buckets == 0ULL ? 0.0 :
+                ((double)summary.read_count_non_zero_buckets * 100.0) / (double)total_buckets);
     }
-    fprintf(stderr, "  non-zero buckets=%" PRIu64 " / %" PRIu64 " (%.2f%%)\n",
-            summary.read_count_non_zero_buckets,
-            total_buckets,
-            total_buckets == 0ULL ? 0.0 :
-            ((double)summary.read_count_non_zero_buckets * 100.0) / (double)total_buckets);
 
-    fprintf(stderr, "Write-to-First-Read Latency(real ms) distribution:\n");
-    for (uint32_t i = 0U; i < NVME_POST_ACTION_RATIO_BUCKETS; ++i) {
-        char label[32];
-        ratio_label_latency_ms(i, label, sizeof(label));
-        print_ratio_hist_line("Write-to-First-Read", summary.w2fr_ms_hist[i], total_buckets, label);
+    if (print_w2fr != 0) {
+        fprintf(stderr, "Write-to-First-Read Latency(real ms) distribution:\n");
+        for (uint32_t i = 0U; i < NVME_POST_ACTION_RATIO_BUCKETS; ++i) {
+            char label[32];
+            ratio_label_latency_ms(i, label, sizeof(label));
+            print_ratio_hist_line("Write-to-First-Read", summary.w2fr_ms_hist[i], total_buckets, label);
+        }
+        fprintf(stderr, "  non-zero buckets=%" PRIu64 " / %" PRIu64 " (%.2f%%)\n",
+                summary.w2fr_non_zero_buckets,
+                total_buckets,
+                total_buckets == 0ULL ? 0.0 :
+                ((double)summary.w2fr_non_zero_buckets * 100.0) / (double)total_buckets);
     }
-    fprintf(stderr, "  non-zero buckets=%" PRIu64 " / %" PRIu64 " (%.2f%%)\n",
-            summary.w2fr_non_zero_buckets,
-            total_buckets,
-            total_buckets == 0ULL ? 0.0 :
-            ((double)summary.w2fr_non_zero_buckets * 100.0) / (double)total_buckets);
 
-    fprintf(stderr, "LBA Life Cycle(real ms) distribution:\n");
-    for (uint32_t i = 0U; i < NVME_POST_ACTION_RATIO_BUCKETS; ++i) {
-        char label[32];
-        ratio_label_latency_ms(i, label, sizeof(label));
-        print_ratio_hist_line("LBA Life Cycle", summary.life_cycle_ms_hist[i], total_buckets, label);
+    if (print_life_cycle != 0) {
+        fprintf(stderr, "LBA Life Cycle(real ms) distribution:\n");
+        for (uint32_t i = 0U; i < NVME_POST_ACTION_RATIO_BUCKETS; ++i) {
+            char label[32];
+            ratio_label_latency_ms(i, label, sizeof(label));
+            print_ratio_hist_line("LBA Life Cycle", summary.life_cycle_ms_hist[i], total_buckets, label);
+        }
+        fprintf(stderr, "  non-zero buckets=%" PRIu64 " / %" PRIu64 " (%.2f%%)\n",
+                summary.life_cycle_non_zero_buckets,
+                total_buckets,
+                total_buckets == 0ULL ? 0.0 :
+                ((double)summary.life_cycle_non_zero_buckets * 100.0) / (double)total_buckets);
     }
-    fprintf(stderr, "  non-zero buckets=%" PRIu64 " / %" PRIu64 " (%.2f%%)\n",
-            summary.life_cycle_non_zero_buckets,
-            total_buckets,
-            total_buckets == 0ULL ? 0.0 :
-            ((double)summary.life_cycle_non_zero_buckets * 100.0) / (double)total_buckets);
 }
 
 static uint64_t hash_u64(uint64_t x) {

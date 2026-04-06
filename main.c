@@ -65,7 +65,9 @@ int main(int argc, char *argv[]) {
     int argi = 1;
     int debug_enabled = 0;
     int latency_enabled = 0;
-    int lba_stats_enabled = 0;
+    int lba_stats_read_count_enabled = 0;
+    int lba_stats_w2fr_enabled = 0;
+    int lba_stats_life_cycle_enabled = 0;
     while (argi < argc) {
         if (strcmp(argv[argi], "-D") == 0 || strcmp(argv[argi], "--debug") == 0) {
             debug_enabled = 1;
@@ -77,8 +79,18 @@ int main(int argc, char *argv[]) {
             ++argi;
             continue;
         }
-        if (strcmp(argv[argi], "--lba-stats") == 0) {
-            lba_stats_enabled = 1;
+        if (strcmp(argv[argi], "--lba-stats-read-count") == 0) {
+            lba_stats_read_count_enabled = 1;
+            ++argi;
+            continue;
+        }
+        if (strcmp(argv[argi], "--lba-stats-w2fr") == 0) {
+            lba_stats_w2fr_enabled = 1;
+            ++argi;
+            continue;
+        }
+        if (strcmp(argv[argi], "--lba-stats-life-cycle") == 0) {
+            lba_stats_life_cycle_enabled = 1;
             ++argi;
             continue;
         }
@@ -87,7 +99,8 @@ int main(int argc, char *argv[]) {
 
     if ((argc - argi) != 3) {
         fprintf(stderr,
-                "usage: %s [-D|--debug] [-l|--latency] [--lba-stats] "
+                "usage: %s [-D|--debug] [-l|--latency] "
+                "[--lba-stats-read-count] [--lba-stats-w2fr] [--lba-stats-life-cycle] "
                 "<device_name> <slba[K|M|G|T]> <data_len[K|M|G|T]>\n",
                 argv[0]);
         return 1;
@@ -109,7 +122,9 @@ int main(int argc, char *argv[]) {
 
     nvme_read_set_debug(debug_enabled);
     nvme_read_set_latency(latency_enabled);
-    nvme_read_set_lba_stats(lba_stats_enabled);
+    nvme_read_set_lba_stats_read_count(lba_stats_read_count_enabled);
+    nvme_read_set_lba_stats_w2fr(lba_stats_w2fr_enabled);
+    nvme_read_set_lba_stats_life_cycle(lba_stats_life_cycle_enabled);
 
     if (nvme_read(device_name, slba, data_len, NULL) != 0) {
         fprintf(stderr, "nvme_read failed: %s\n", strerror(errno));
