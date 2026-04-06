@@ -84,12 +84,35 @@ static void sort_u64(uint64_t *arr, uint32_t n) {
     }
 }
 
-static uint64_t percentile_from_sorted(const uint64_t *arr, uint32_t n, uint32_t p) {
-    if (n == 0U) {
+static uint64_t percentile_from_sorted_ratio(const uint64_t *arr,
+                                             uint32_t n,
+                                             uint32_t numerator,
+                                             uint32_t denominator) {
+    if (n == 0U || arr == NULL || denominator == 0U) {
         return 0ULL;
     }
-    uint64_t idx = ((uint64_t)(n - 1U) * (uint64_t)p) / 100ULL;
+    if (numerator > denominator) {
+        numerator = denominator;
+    }
+    uint64_t idx =
+        ((uint64_t)(n - 1U) * (uint64_t)numerator) / (uint64_t)denominator;
     return arr[idx];
+}
+
+static void print_percentiles_line(const char *name,
+                                   const uint64_t *sorted,
+                                   uint32_t n) {
+    fprintf(stderr, "lat(%s) pct(us):", name);
+    fprintf(stderr, " p10=%" PRIu64,
+            percentile_from_sorted_ratio(sorted, n, 10U, 100U));
+    for (uint32_t p = 20U; p <= 99U; ++p) {
+        fprintf(stderr, " p%u=%" PRIu64, p,
+                percentile_from_sorted_ratio(sorted, n, p, 100U));
+    }
+    fprintf(stderr,
+            " p99.9=%" PRIu64 " p99.99=%" PRIu64 "\n",
+            percentile_from_sorted_ratio(sorted, n, 999U, 1000U),
+            percentile_from_sorted_ratio(sorted, n, 9999U, 10000U));
 }
 
 void nvme_post_action_latency_record_read(uint32_t latency_us) {
@@ -119,30 +142,25 @@ void nvme_post_action_latency_record_trim(uint32_t latency_us) {
 static void print_bucket(const latency_bucket_t *bucket) {
     if (bucket->count == 0ULL) {
         fprintf(stderr, "lat(%s): count=0\n", bucket->name);
+        print_percentiles_line(bucket->name, NULL, 0U);
         return;
     }
     double avg = (double)bucket->sum_us / (double)bucket->count;
-    uint64_t p50 = 0ULL;
-    uint64_t p90 = 0ULL;
-    uint64_t p99 = 0ULL;
+    uint64_t sorted[1024];
+    uint32_t sorted_n = 0U;
     if (bucket->sample_count > 0U) {
-        uint64_t sorted[1024];
         memcpy(sorted, bucket->samples, bucket->sample_count * sizeof(uint64_t));
-        sort_u64(sorted, bucket->sample_count);
-        p50 = percentile_from_sorted(sorted, bucket->sample_count, 50U);
-        p90 = percentile_from_sorted(sorted, bucket->sample_count, 90U);
-        p99 = percentile_from_sorted(sorted, bucket->sample_count, 99U);
+        sorted_n = bucket->sample_count;
+        sort_u64(sorted, sorted_n);
     }
     fprintf(stderr,
-            "lat(%s): count=%" PRIu64 " min=%" PRIu64 "us max=%" PRIu64 "us avg=%.2fus p50=%" PRIu64 "us p90=%" PRIu64 "us p99=%" PRIu64 "us\n",
+            "lat(%s): count=%" PRIu64 " min=%" PRIu64 "us max=%" PRIu64 "us avg=%.2fus\n",
             bucket->name,
             bucket->count,
             bucket->min_us,
             bucket->max_us,
-            avg,
-            p50,
-            p90,
-            p99);
+            avg);
+    print_percentiles_line(bucket->name, sorted, sorted_n);
 }
 
 void nvme_post_action_latency_print_summary(void) {

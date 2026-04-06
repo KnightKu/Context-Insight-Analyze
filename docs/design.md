@@ -180,7 +180,7 @@ Runtime latency output switch:
   `read`, `write`, and `trim` records.
 - Metrics are collected from parser-side record latency fields:
   - `count`, `min`, `max`, `avg`
-  - `p50`, `p90`, `p99` percentiles
+  - percentiles: `p10`, `p20` through `p99`, plus `p99.9` and `p99.99`
 - Output unit is microseconds (`us`), and aggregation is enabled only when latency mode is on.
 
 Runtime LBA stats segmented report switches:

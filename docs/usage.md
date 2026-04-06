@@ -100,7 +100,8 @@ The default post action:
 - Optional latency summary (`-l/--latency`) for post-action records:
   - `read`, `write`: use protocol `latency` field (3B)
   - `trim`: use per-range relative `time` delta as trim latency sample
-  - Output includes `samples/min/max/avg/p50/p90/p99`
+  - Output includes `count/min/max/avg`
+  - Percentiles cover `p10`, `p20~p99`, `p99.9`, `p99.99`
 - Optional LBA stats summary (independent switches):
   - `-r` / `--read-count`: `Read Count` non-zero bucket distribution
   - `-w` / `--w2fr`: `Write-to-First-Read Latency` decoded real-time distribution (milliseconds)
