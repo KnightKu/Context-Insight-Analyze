@@ -103,14 +103,13 @@ static void print_percentiles_line(const char *name,
                                    const uint64_t *sorted,
                                    uint32_t n) {
     fprintf(stderr, "lat(%s) pct(us):", name);
-    fprintf(stderr, " p10=%" PRIu64,
-            percentile_from_sorted_ratio(sorted, n, 10U, 100U));
-    for (uint32_t p = 20U; p <= 99U; ++p) {
+    for (uint32_t p = 10U; p <= 90U; p += 10U) {
         fprintf(stderr, " p%u=%" PRIu64, p,
                 percentile_from_sorted_ratio(sorted, n, p, 100U));
     }
     fprintf(stderr,
-            " p99.9=%" PRIu64 " p99.99=%" PRIu64 "\n",
+            " p99=%" PRIu64 " p99.9=%" PRIu64 " p99.99=%" PRIu64 "\n",
+            percentile_from_sorted_ratio(sorted, n, 99U, 100U),
             percentile_from_sorted_ratio(sorted, n, 999U, 1000U),
             percentile_from_sorted_ratio(sorted, n, 9999U, 10000U));
 }
