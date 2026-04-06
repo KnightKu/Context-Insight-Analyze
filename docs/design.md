@@ -104,10 +104,9 @@ The parser now uses `load_le64_u(const unsigned char *p)` as the hot-path primit
 2. Start scanning with `cursor = 0`
 3. Read `op = bytes[cursor]`
 4. Determine record size (8 or 16) from opcode
-5. Check termination marker:
-   - If at least 16 bytes remain
-   - And the first byte of both 8-byte halves is `0x00`
-   - Stop parsing and return success
+5. Handle `op == 0x00` invalid units:
+   - Treat as invalid/noise data
+   - Skip one 8-byte unit and continue parsing subsequent records
 6. Dispatch to one parser:
    - `parse_rw_record`
    - `parse_trim_group`
@@ -145,6 +144,7 @@ Implementation notes:
 - Non-8-byte-aligned tail bytes -> counted as invalid tail fragment
 - Truncated record/group -> counted as invalid and skipped conservatively
 - Marker timestamp non-increasing (`current <= previous`) -> treated as overwrite and soft-stop
+- `op == 0x00` -> treated as invalid/noise and skipped by one 8-byte unit (no immediate return)
 
 ## 5. Error Handling Strategy
 
