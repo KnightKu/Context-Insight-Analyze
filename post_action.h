@@ -31,4 +31,18 @@ void nvme_post_action_reset_latency_stats(void);
 
 void nvme_post_action_print_latency_report(void);
 
+int nvme_post_action_set_lba_read_count_enabled(int enabled);
+
+int nvme_post_action_get_lba_read_count_enabled(void);
+
+int nvme_post_action_set_lba_w2fr_enabled(int enabled);
+
+int nvme_post_action_get_lba_w2fr_enabled(void);
+
+int nvme_post_action_set_lba_life_cycle_enabled(int enabled);
+
+int nvme_post_action_get_lba_life_cycle_enabled(void);
+
+void nvme_post_action_print_lba_stats_report(void);
+
 #endif  // POST_ACTION_H

@@ -19,6 +19,18 @@ int nvme_read_set_debug(int enabled);
 
 int nvme_read_set_latency(int enabled);
 
+int nvme_read_set_lba_stats_read_count(int enabled);
+
+int nvme_read_set_lba_stats_w2fr(int enabled);
+
+int nvme_read_set_lba_stats_life_cycle(int enabled);
+
+int nvme_read_set_lba_stats_read_count(int enabled);
+
+int nvme_read_set_lba_stats_w2fr(int enabled);
+
+int nvme_read_set_lba_stats_life_cycle(int enabled);
+
 int nvme_post_action_process(void *data,
                              uint32_t data_len,
                              uint64_t offset_bytes);

@@ -372,6 +372,21 @@ int nvme_read_set_latency(int enabled) {
     return 0;
 }
 
+int nvme_read_set_lba_stats_read_count(int enabled) {
+    nvme_post_action_set_lba_read_count_enabled(enabled);
+    return 0;
+}
+
+int nvme_read_set_lba_stats_w2fr(int enabled) {
+    nvme_post_action_set_lba_w2fr_enabled(enabled);
+    return 0;
+}
+
+int nvme_read_set_lba_stats_life_cycle(int enabled) {
+    nvme_post_action_set_lba_life_cycle_enabled(enabled);
+    return 0;
+}
+
 int nvme_read_set_mdts_bytes(uint64_t mdts_bytes) {
     return nvme_post_action_stats_set_mdts_bytes(mdts_bytes);
 }
@@ -543,6 +558,7 @@ int nvme_read(const char *device_name,
         nvme_post_action_stats_print_summary_debug(g_nvme_read_debug);
         nvme_post_action_latency_print_summary();
     }
+    nvme_post_action_print_lba_stats_report();
 
     close(nvme_fd);
     return 0;

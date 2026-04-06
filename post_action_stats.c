@@ -3,12 +3,16 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <inttypes.h>
 #include <pthread.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/mman.h>
 #include <unistd.h>
+
+#define NVME_POST_ACTION_RATIO_BUCKETS 10U
 
 typedef struct {
     uint64_t key;
@@ -35,6 +39,15 @@ static uint64_t g_mdts_bytes = 0ULL;
 static nvme_post_action_stat_sample_t *g_stat_samples = NULL;
 static uint64_t g_stat_samples_count = 0ULL;
 static uint64_t g_stat_samples_cap = 0ULL;
+
+typedef struct {
+    uint64_t read_count_hist[NVME_POST_ACTION_RATIO_BUCKETS];
+    uint64_t w2fr_ms_hist[NVME_POST_ACTION_RATIO_BUCKETS];
+    uint64_t life_cycle_ms_hist[NVME_POST_ACTION_RATIO_BUCKETS];
+    uint64_t read_count_non_zero_buckets;
+    uint64_t w2fr_non_zero_buckets;
+    uint64_t life_cycle_non_zero_buckets;
+} nvme_post_action_lba_ratio_summary_t;
 
 static inline uint64_t advanced_hist_index(uint32_t scale_idx, uint16_t life_code) {
     return ((uint64_t)scale_idx * ((uint64_t)NVME_POST_ACTION_LATENCY_CODE_MAX + 1ULL)) +
@@ -90,6 +103,240 @@ static uint16_t encode_duration_ms_non_linear(uint32_t duration_ms) {
         }
     }
     return (uint16_t)lo;
+}
+
+static uint32_t decode_duration_ms_non_linear(uint16_t code) {
+    return g_latency_threshold_ms[(uint32_t)code];
+}
+
+static uint32_t ratio_bucket_index_u8(uint8_t value) {
+    if (value == 0U) {
+        return 0U;
+    }
+    uint32_t bucket = ((uint32_t)value + 24U) / 25U;
+    if (bucket >= NVME_POST_ACTION_RATIO_BUCKETS) {
+        bucket = NVME_POST_ACTION_RATIO_BUCKETS - 1U;
+    }
+    return bucket;
+}
+
+static uint32_t ratio_bucket_index_ms(uint32_t ms) {
+    if (ms == 0U) {
+        return 0U;
+    }
+    if (ms < 1000U) {
+        return 1U;
+    }
+    if (ms < 5000U) {
+        return 2U;
+    }
+    if (ms < 10000U) {
+        return 3U;
+    }
+    if (ms < 30000U) {
+        return 4U;
+    }
+    if (ms < 60000U) {
+        return 5U;
+    }
+    if (ms < 300000U) {
+        return 6U;
+    }
+    if (ms < 1800000U) {
+        return 7U;
+    }
+    if (ms < 3600000U) {
+        return 8U;
+    }
+    return 9U;
+}
+
+static void ratio_label_read_count(uint32_t idx, char *buf, size_t buf_len) {
+    if (buf == NULL || buf_len == 0U) {
+        return;
+    }
+    switch (idx) {
+        case 0U:
+            (void)snprintf(buf, buf_len, "0");
+            break;
+        case 1U:
+            (void)snprintf(buf, buf_len, "1-25");
+            break;
+        case 2U:
+            (void)snprintf(buf, buf_len, "26-50");
+            break;
+        case 3U:
+            (void)snprintf(buf, buf_len, "51-75");
+            break;
+        case 4U:
+            (void)snprintf(buf, buf_len, "76-100");
+            break;
+        case 5U:
+            (void)snprintf(buf, buf_len, "101-125");
+            break;
+        case 6U:
+            (void)snprintf(buf, buf_len, "126-150");
+            break;
+        case 7U:
+            (void)snprintf(buf, buf_len, "151-175");
+            break;
+        case 8U:
+            (void)snprintf(buf, buf_len, "176-200");
+            break;
+        default:
+            (void)snprintf(buf, buf_len, "201-255");
+            break;
+    }
+}
+
+static void ratio_label_latency_ms(uint32_t idx, char *buf, size_t buf_len) {
+    if (buf == NULL || buf_len == 0U) {
+        return;
+    }
+    switch (idx) {
+        case 0U:
+            (void)snprintf(buf, buf_len, "0ms");
+            break;
+        case 1U:
+            (void)snprintf(buf, buf_len, "(0ms,1s)");
+            break;
+        case 2U:
+            (void)snprintf(buf, buf_len, "[1s,5s)");
+            break;
+        case 3U:
+            (void)snprintf(buf, buf_len, "[5s,10s)");
+            break;
+        case 4U:
+            (void)snprintf(buf, buf_len, "[10s,30s)");
+            break;
+        case 5U:
+            (void)snprintf(buf, buf_len, "[30s,1m)");
+            break;
+        case 6U:
+            (void)snprintf(buf, buf_len, "[1m,5m)");
+            break;
+        case 7U:
+            (void)snprintf(buf, buf_len, "[5m,30m)");
+            break;
+        case 8U:
+            (void)snprintf(buf, buf_len, "[30m,1h)");
+            break;
+        default:
+            (void)snprintf(buf, buf_len, ">=1h");
+            break;
+    }
+}
+
+static int build_lba_ratio_summary_locked(nvme_post_action_lba_ratio_summary_t *out) {
+    if (out == NULL) {
+        errno = EINVAL;
+        return -1;
+    }
+    memset(out, 0, sizeof(*out));
+    if (g_stats_enabled == 0 || g_stats == NULL || g_bucket_count == 0ULL) {
+        return 0;
+    }
+    for (uint64_t i = 0ULL; i < g_bucket_count; ++i) {
+        const nvme_post_action_lba_stat_t *s = &g_stats[i];
+        uint32_t rc_idx = ratio_bucket_index_u8(s->read_count);
+        ++out->read_count_hist[rc_idx];
+        if (s->read_count != 0U) {
+            ++out->read_count_non_zero_buckets;
+        }
+
+        uint32_t w2fr_ms = decode_duration_ms_non_linear(s->write_to_first_read_latency);
+        uint32_t w2fr_idx = ratio_bucket_index_ms(w2fr_ms);
+        ++out->w2fr_ms_hist[w2fr_idx];
+        if (s->write_to_first_read_latency != 0U) {
+            ++out->w2fr_non_zero_buckets;
+        }
+
+        uint32_t life_ms = decode_duration_ms_non_linear(s->life_cycle_latency);
+        uint32_t life_idx = ratio_bucket_index_ms(life_ms);
+        ++out->life_cycle_ms_hist[life_idx];
+        if (s->life_cycle_latency != 0U) {
+            ++out->life_cycle_non_zero_buckets;
+        }
+    }
+    return 0;
+}
+
+static void print_ratio_hist_line(const char *name,
+                                  uint64_t hit,
+                                  uint64_t total,
+                                  const char *label) {
+    double pct = 0.0;
+    if (total != 0ULL) {
+        pct = ((double)hit * 100.0) / (double)total;
+    }
+    fprintf(stderr, "  %-28s %12s count=%" PRIu64 " (%.2f%%)\n",
+            name, label, hit, pct);
+}
+
+static int should_print_section(int print_read_count,
+                                int print_w2fr,
+                                int print_life_cycle) {
+    return (print_read_count != 0 || print_w2fr != 0 || print_life_cycle != 0) ? 1 : 0;
+}
+
+void nvme_post_action_stats_print_ratio_summary(int print_read_count,
+                                                int print_w2fr,
+                                                int print_life_cycle) {
+    if (should_print_section(print_read_count, print_w2fr, print_life_cycle) == 0) {
+        return;
+    }
+    nvme_post_action_lba_ratio_summary_t summary;
+    pthread_mutex_lock(&g_stats_mutex);
+    int rc = build_lba_ratio_summary_locked(&summary);
+    uint64_t total_buckets = g_bucket_count;
+    pthread_mutex_unlock(&g_stats_mutex);
+    if (rc != 0) {
+        return;
+    }
+
+    fprintf(stderr, "lba ratio summary (bucket=%llu bytes):\n",
+            (unsigned long long)NVME_POST_ACTION_STATS_BLOCK_BYTES);
+    if (print_read_count != 0) {
+        fprintf(stderr, "Read Count distribution:\n");
+        for (uint32_t i = 0U; i < NVME_POST_ACTION_RATIO_BUCKETS; ++i) {
+            char label[32];
+            ratio_label_read_count(i, label, sizeof(label));
+            print_ratio_hist_line("Read Count", summary.read_count_hist[i], total_buckets, label);
+        }
+        fprintf(stderr, "  non-zero buckets=%" PRIu64 " / %" PRIu64 " (%.2f%%)\n",
+                summary.read_count_non_zero_buckets,
+                total_buckets,
+                total_buckets == 0ULL ? 0.0 :
+                ((double)summary.read_count_non_zero_buckets * 100.0) / (double)total_buckets);
+    }
+
+    if (print_w2fr != 0) {
+        fprintf(stderr, "Write-to-First-Read Latency(real ms) distribution:\n");
+        for (uint32_t i = 0U; i < NVME_POST_ACTION_RATIO_BUCKETS; ++i) {
+            char label[32];
+            ratio_label_latency_ms(i, label, sizeof(label));
+            print_ratio_hist_line("Write-to-First-Read", summary.w2fr_ms_hist[i], total_buckets, label);
+        }
+        fprintf(stderr, "  non-zero buckets=%" PRIu64 " / %" PRIu64 " (%.2f%%)\n",
+                summary.w2fr_non_zero_buckets,
+                total_buckets,
+                total_buckets == 0ULL ? 0.0 :
+                ((double)summary.w2fr_non_zero_buckets * 100.0) / (double)total_buckets);
+    }
+
+    if (print_life_cycle != 0) {
+        fprintf(stderr, "LBA Life Cycle(real ms) distribution:\n");
+        for (uint32_t i = 0U; i < NVME_POST_ACTION_RATIO_BUCKETS; ++i) {
+            char label[32];
+            ratio_label_latency_ms(i, label, sizeof(label));
+            print_ratio_hist_line("LBA Life Cycle", summary.life_cycle_ms_hist[i], total_buckets, label);
+        }
+        fprintf(stderr, "  non-zero buckets=%" PRIu64 " / %" PRIu64 " (%.2f%%)\n",
+                summary.life_cycle_non_zero_buckets,
+                total_buckets,
+                total_buckets == 0ULL ? 0.0 :
+                ((double)summary.life_cycle_non_zero_buckets * 100.0) / (double)total_buckets);
+    }
 }
 
 static uint64_t hash_u64(uint64_t x) {

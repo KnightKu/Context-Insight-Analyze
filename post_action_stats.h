@@ -70,4 +70,14 @@ int nvme_post_action_stats_get_stat_sample_count(uint64_t *count_out);
 int nvme_post_action_stats_get_stat_sample(uint64_t sample_index,
                                            nvme_post_action_stat_sample_t *out);
 
+void nvme_post_action_stats_print_ratio_summary(int print_read_count,
+                                                int print_w2fr,
+                                                int print_life_cycle);
+
+void nvme_post_action_stats_print_read_count_ratio_summary(void);
+
+void nvme_post_action_stats_print_w2fr_ratio_summary(void);
+
+void nvme_post_action_stats_print_life_cycle_ratio_summary(void);
+
 #endif  // POST_ACTION_STATS_H

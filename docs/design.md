@@ -183,6 +183,21 @@ Runtime latency output switch:
   - `p50`, `p90`, `p99` percentiles
 - Output unit is microseconds (`us`), and aggregation is enabled only when latency mode is on.
 
+Runtime LBA stats segmented report switches:
+
+- CLI options:
+  - `--read-count`
+  - `--w2fr`
+  - `--life-cycle`
+  - short aliases: `-r`, `-w`, `-c`
+- Each option independently enables one segmented ratio-style report:
+  - `Read Count`
+  - `Write-to-First-Read Latency` (decoded real time in ms)
+  - `LBA Life Cycle` (decoded real time in ms)
+- Bucket ranges follow the same step profile as the latency-code LUT and are printed as:
+  - `[lower, upper) ms: count=... ratio=...%`
+- `Read Count` is also shown in segmented form (`[lower, upper)` counts with ratio).
+
 ## 7. LBA Post-Action Statistics (5-Byte Bucket Model)
 
 The post-action path now includes an in-memory LBA statistics engine.
