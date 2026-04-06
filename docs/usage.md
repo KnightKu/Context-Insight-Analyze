@@ -78,8 +78,8 @@ The default post action:
   - already-processed records remain valid, and subsequent non-read operations continue
   - warning log includes overwrite context and LBA location (`lba`, `offset`, marker timestamps)
 - Supports an early termination marker:
-  - if a 16-byte window has first-byte `0x00` in both 8-byte halves,
-    post-action parsing stops successfully
+  - `op == 0x00` is treated as invalid/noise record data
+  - parser skips current `8B` unit and continues scanning subsequent records
 - Maintains in-memory per-4KB LBA statistics for runtime analysis:
   - 1B saturated read count (`0..255`) for write-then-read events
   - 2B non-linear encoded write-to-first-read latency

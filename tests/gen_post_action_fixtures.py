@@ -65,6 +65,18 @@ def main() -> None:
     )
     (fixture_dir / "valid_relative_time_with_marker.bin").write_bytes(valid_relative)
 
+    # Valid stream with op==0 noise in the middle:
+    # parser should skip one 8-byte slot and continue.
+    valid_with_zero_op_skip = b"".join(
+        [
+            rec_marker(4_000_000),
+            rec_stat(3, 10, 1, 0, 1, 0),
+            bytes([0x00]) + b"\xAA" * 7,
+            rec_stat(5, 20, 2, 0, 1, 0),
+        ]
+    )
+    (fixture_dir / "valid_zero_op_skip.bin").write_bytes(valid_with_zero_op_skip)
+
     # Valid termination marker: first byte of both 8-byte halves is 0x00.
     # Put marker first so non-marker record has a valid absolute-time base.
     terminator = rec_marker(3_000_000) + rec_stat(4, 50, 3, 0, 1, 0) + bytes([0x00]) + b"\x11" * 7 + bytes([0x00]) + b"\x22" * 7

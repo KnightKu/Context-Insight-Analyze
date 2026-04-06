@@ -463,12 +463,12 @@ static int default_post_action(void *ctx, void *data, uint32_t data_len, uint64_
         uint8_t op = (uint8_t)(record_lo & 0xFFU);
         int rc = 0;
 
-        if ((data_len - cursor) >= NVME_POST_ACTION_RECORD_BYTES_LONG) {
-            uint64_t record_hi_for_terminator = load_le64_u(record + 8U);
-            uint8_t op_hi = (uint8_t)(record_hi_for_terminator & 0xFFU);
-            if (op == 0x00U && op_hi == 0x00U) {
-                return 0;
-            }
+        if (op == 0x00U) {
+            // Skip invalid/empty 8-byte unit and continue parsing following records.
+            ++local_invalid_records;
+            cursor += NVME_POST_ACTION_RECORD_BYTES_SHORT;
+            ++record_index;
+            continue;
         }
 
         if (op == NVME_POST_ACTION_OP_READ || op == NVME_POST_ACTION_OP_WRITE) {
