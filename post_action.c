@@ -163,6 +163,31 @@ static inline uint64_t load_le64_u(const unsigned char *p) {
 #endif
 }
 
+#if NVME_POST_ACTION_DEBUG
+static void debug_print_record_hex(const unsigned char *record,
+                                   uint32_t record_bytes,
+                                   uint64_t record_offset,
+                                   uint32_t record_index,
+                                   uint8_t op) {
+    if (record == NULL || record_bytes == 0U) {
+        return;
+    }
+    fprintf(stderr,
+            "post action record hex: offset=%llu record=%u op=0x%02x bytes=%u data=",
+            (unsigned long long)record_offset,
+            (unsigned int)record_index,
+            (unsigned int)op,
+            (unsigned int)record_bytes);
+    for (uint32_t i = 0U; i < record_bytes; ++i) {
+        fprintf(stderr, "%02x", (unsigned int)record[i]);
+        if ((i + 1U) < record_bytes) {
+            fputc(' ', stderr);
+        }
+    }
+    fputc('\n', stderr);
+}
+#endif
+
 static uint16_t trim_total_ranges_from_raw(uint8_t raw_total_ranges) {
     return raw_total_ranges == 0U ? NVME_POST_ACTION_TRIM_MAX_RANGES : (uint16_t)raw_total_ranges;
 }
@@ -479,6 +504,10 @@ static int default_post_action(void *ctx, void *data, uint32_t data_len, uint64_
                 ++local_invalid_records;
                 break;
             }
+#if NVME_POST_ACTION_DEBUG
+            debug_print_record_hex(record, NVME_POST_ACTION_RECORD_BYTES_LONG,
+                                   record_offset, record_index, op);
+#endif
             uint64_t record_hi = load_le64_u(record + 8U);
             rc = parse_rw_record(record_lo, record_hi, op, record_offset, record_index, &time_ref);
             cursor += NVME_POST_ACTION_RECORD_BYTES_LONG;
@@ -498,6 +527,17 @@ static int default_post_action(void *ctx, void *data, uint32_t data_len, uint64_
                 ++record_index;
                 continue;
             }
+#if NVME_POST_ACTION_DEBUG
+            for (uint32_t i = 0U; i < consumed_records; ++i) {
+                uint32_t rec_cursor = cursor + (i * NVME_POST_ACTION_RECORD_BYTES_LONG);
+                const unsigned char *trim_rec = bytes + rec_cursor;
+                uint64_t trim_offset = offset_bytes + (uint64_t)rec_cursor;
+                uint64_t trim_lo = load_le64_u(trim_rec);
+                uint8_t trim_op = (uint8_t)(trim_lo & 0xFFU);
+                debug_print_record_hex(trim_rec, NVME_POST_ACTION_RECORD_BYTES_LONG,
+                                       trim_offset, record_index + i, trim_op);
+            }
+#endif
             cursor += consumed_bytes;
             record_index += consumed_records;
         } else if (op == NVME_POST_ACTION_OP_STAT) {
@@ -505,6 +545,10 @@ static int default_post_action(void *ctx, void *data, uint32_t data_len, uint64_
                 ++local_invalid_records;
                 break;
             }
+#if NVME_POST_ACTION_DEBUG
+            debug_print_record_hex(record, NVME_POST_ACTION_RECORD_BYTES_LONG,
+                                   record_offset, record_index, op);
+#endif
             uint64_t record_hi = load_le64_u(record + 8U);
 #if NVME_POST_ACTION_SKIP_STAT
             rc = 0;
@@ -514,6 +558,10 @@ static int default_post_action(void *ctx, void *data, uint32_t data_len, uint64_
             cursor += NVME_POST_ACTION_RECORD_BYTES_LONG;
             ++record_index;
         } else if (op == NVME_POST_ACTION_OP_MARKER) {
+#if NVME_POST_ACTION_DEBUG
+            debug_print_record_hex(record, NVME_POST_ACTION_RECORD_BYTES_SHORT,
+                                   record_offset, record_index, op);
+#endif
             rc = parse_marker_record(record_lo, record_offset, record_index, &time_ref);
             cursor += NVME_POST_ACTION_RECORD_BYTES_SHORT;
             ++record_index;

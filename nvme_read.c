@@ -556,8 +556,9 @@ int nvme_read(const char *device_name,
                 bandwidth_mib_s,
                 (unsigned long long)invalid_records);
         nvme_post_action_stats_print_summary_debug(g_nvme_read_debug);
-        nvme_post_action_latency_print_summary();
     }
+    // Latency summary is controlled by -l/--latency and should not depend on debug.
+    nvme_post_action_print_latency_report();
     nvme_post_action_print_lba_stats_report();
 
     close(nvme_fd);

@@ -76,7 +76,7 @@ The project follows a layered structure:
 ### 2.6 `post_action_latency.c`
 
 - Owns read/write/trim latency statistics aggregation
-- Prints fio-style latency summary with count/min/max/avg and percentiles
+- Prints fio-style latency summary with count/min/max/avg and extended percentiles
 - Runtime controlled by CLI option `-l` / `--latency`
 
 ---

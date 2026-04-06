@@ -72,6 +72,20 @@ if rg -i "Write-to-First-Read Latency\\(real ms\\) distribution|LBA Life Cycle\\
   exit 1
 fi
 
+echo "  LATENCY expected: -l enables latency summary output"
+if ! ./post_action_file_tester --latency "tests/fixtures/valid_mixed.bin" >/tmp/post_action_latency.log 2>&1; then
+  echo "unexpected failure for latency output case" >&2
+  exit 1
+fi
+if ! rg -i "latency summary \\(fio-like\\)" "/tmp/post_action_latency.log" >/dev/null; then
+  echo "missing latency summary output when --latency enabled" >&2
+  exit 1
+fi
+if ! rg -i "lat\\(read\\) pct\\(us\\):.*p10=.*p20=.*p99=.*p99\\.9=.*p99\\.99=" "/tmp/post_action_latency.log" >/dev/null; then
+  echo "missing extended percentile coverage (p10, p20~p99, p99.9, p99.99)" >&2
+  exit 1
+fi
+
 for f in "${SOFT_STOP_CASES[@]}"; do
   echo "  SOFT-STOP expected (overwrite should stop parse/read but not fail): ${f}"
   if ! ./post_action_file_tester "${f}" >/tmp/post_action_overwrite.log 2>&1; then
