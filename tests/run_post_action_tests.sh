@@ -81,8 +81,8 @@ if ! rg -i "latency summary \\(fio-like\\)" "/tmp/post_action_latency.log" >/dev
   echo "missing latency summary output when --latency enabled" >&2
   exit 1
 fi
-if ! rg -i "lat\\(read\\) pct\\(us\\):.*p10=.*p20=.*p99=.*p99\\.9=.*p99\\.99=" "/tmp/post_action_latency.log" >/dev/null; then
-  echo "missing extended percentile coverage (p10, p20~p99, p99.9, p99.99)" >&2
+if ! rg -i "lat\\(read\\) pct\\(us\\):.*p10=.*p20=.*p30=.*p40=.*p50=.*p60=.*p70=.*p80=.*p90=.*p99=.*p99\\.9=.*p99\\.99=" "/tmp/post_action_latency.log" >/dev/null; then
+  echo "missing expected percentile coverage (p10~p90 step10, p99, p99.9, p99.99)" >&2
   exit 1
 fi
 
