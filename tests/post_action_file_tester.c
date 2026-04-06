@@ -78,17 +78,17 @@ int main(int argc, char *argv[]) {
             ++argi;
             continue;
         }
-        if (strcmp(argv[argi], "--read-count-stats") == 0) {
+        if (strcmp(argv[argi], "-r") == 0 || strcmp(argv[argi], "--read-count") == 0) {
             read_count_stats_enabled = 1;
             ++argi;
             continue;
         }
-        if (strcmp(argv[argi], "--w2fr-stats") == 0) {
+        if (strcmp(argv[argi], "-w") == 0 || strcmp(argv[argi], "--w2fr") == 0) {
             w2fr_stats_enabled = 1;
             ++argi;
             continue;
         }
-        if (strcmp(argv[argi], "--life-cycle-stats") == 0) {
+        if (strcmp(argv[argi], "-c") == 0 || strcmp(argv[argi], "--life-cycle") == 0) {
             life_cycle_stats_enabled = 1;
             ++argi;
             continue;
@@ -98,8 +98,8 @@ int main(int argc, char *argv[]) {
 
     if ((argc - argi) != 1 && (argc - argi) != 2) {
         fprintf(stderr,
-                "usage: %s [-D|--debug] [-l|--latency] [--read-count-stats] [--w2fr-stats] "
-                "[--life-cycle-stats] <input_file> [offset_bytes]\n",
+                "usage: %s [-D|--debug] [-l|--latency] [-r|--read-count] [-w|--w2fr] "
+                "[-c|--life-cycle] <input_file> [offset_bytes]\n",
                 argv[0]);
         return 2;
     }

@@ -79,17 +79,17 @@ int main(int argc, char *argv[]) {
             ++argi;
             continue;
         }
-        if (strcmp(argv[argi], "--lba-stats-read-count") == 0) {
+        if (strcmp(argv[argi], "-r") == 0 || strcmp(argv[argi], "--read-count") == 0) {
             lba_stats_read_count_enabled = 1;
             ++argi;
             continue;
         }
-        if (strcmp(argv[argi], "--lba-stats-w2fr") == 0) {
+        if (strcmp(argv[argi], "-w") == 0 || strcmp(argv[argi], "--w2fr") == 0) {
             lba_stats_w2fr_enabled = 1;
             ++argi;
             continue;
         }
-        if (strcmp(argv[argi], "--lba-stats-life-cycle") == 0) {
+        if (strcmp(argv[argi], "-c") == 0 || strcmp(argv[argi], "--life-cycle") == 0) {
             lba_stats_life_cycle_enabled = 1;
             ++argi;
             continue;
@@ -100,7 +100,7 @@ int main(int argc, char *argv[]) {
     if ((argc - argi) != 3) {
         fprintf(stderr,
                 "usage: %s [-D|--debug] [-l|--latency] "
-                "[--lba-stats-read-count] [--lba-stats-w2fr] [--lba-stats-life-cycle] "
+                "[-r|--read-count] [-w|--w2fr] [-c|--life-cycle] "
                 "<device_name> <slba[K|M|G|T]> <data_len[K|M|G|T]>\n",
                 argv[0]);
         return 1;

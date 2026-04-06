@@ -186,9 +186,10 @@ Runtime latency output switch:
 Runtime LBA stats segmented report switches:
 
 - CLI options:
-  - `--lba-read-count`
-  - `--lba-w2fr`
-  - `--lba-life-cycle`
+  - `--read-count`
+  - `--w2fr`
+  - `--life-cycle`
+  - short aliases: `-r`, `-w`, `-c`
 - Each option independently enables one segmented ratio-style report:
   - `Read Count`
   - `Write-to-First-Read Latency` (decoded real time in ms)
