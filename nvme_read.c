@@ -174,8 +174,9 @@ static void *pipeline_reader_thread(void *arg) {
         uint64_t remaining = args->data_len - offset;
         uint32_t chunk_size = (uint32_t)(remaining > args->read_chunk_bytes ? args->read_chunk_bytes : remaining);
         uint64_t lba_offset = offset / (uint64_t)args->sector_size;
+        uint64_t slba_lba = args->slba / (uint64_t)args->sector_size;
         uint64_t start_lba = 0ULL;
-        uint64_t backup_lba = args->slba + lba_offset;
+        uint64_t backup_lba = slba_lba + lba_offset;
 
         struct nvme_passthru_cmd cmd;
         memset(&cmd, 0, sizeof(cmd));
@@ -506,6 +507,13 @@ int nvme_read(const char *device_name,
         errno = EINVAL;
         fprintf(stderr, "data_len must be %u-byte aligned, got %llu\n",
                 (unsigned int)sector_size, (unsigned long long)data_len);
+        close(nvme_fd);
+        return -1;
+    }
+    if (slba % (uint64_t)sector_size != 0ULL) {
+        errno = EINVAL;
+        fprintf(stderr, "slba must be %u-byte aligned, got %llu\n",
+                (unsigned int)sector_size, (unsigned long long)slba);
         close(nvme_fd);
         return -1;
     }
