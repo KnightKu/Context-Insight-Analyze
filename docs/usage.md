@@ -62,6 +62,13 @@ Notes:
 - Units use binary scaling (`1M = 1024 * 1024`).
 - `sector_size` is fixed to `4096` bytes (4KiB).
 - `data_len` and `slba` must both be 4KiB-aligned.
+- Runtime log range constants (byte-space):
+  - `LOG_START_LBA = 937684566 * sector_size`
+  - `LOG_END_LBA = 3750730325 * sector_size`
+- Effective backup address check is done in byte-space:
+  - `backup_lba_bytes = LOG_START_LBA + slba + offset_bytes`
+  - must satisfy `backup_lba_bytes < LOG_END_LBA`
+  - then converted to sector-space for `cdw14/cdw15` via `/ sector_size`
 - `slba` is converted by `slba / 4096` before being used in NVMe command LBA fields.
 - Read chunk uses device MDTS-derived size with an internal cap of `mdts <= 6`
   (that is, chunk up to `1 << (12+6) = 256KiB`).

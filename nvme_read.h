@@ -7,6 +7,8 @@
 #define NVME_SPLIT_BYTES (10ULL * 1024ULL * 1024ULL * 1024ULL)
 #define NVME_DEFAULT_DATA_LEN NVME_SPLIT_BYTES
 #define NVME_LBA_SIZE_BYTES 4096ULL
+#define LOG_START_LBA (937684566ULL * NVME_LBA_SIZE_BYTES)
+#define LOG_END_LBA (3750730325ULL * NVME_LBA_SIZE_BYTES)
 
 typedef int (*nvme_read_post_action_t)(void *ctx,
                                        void *data,
