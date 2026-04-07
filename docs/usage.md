@@ -60,9 +60,9 @@ Examples:
 Notes:
 
 - Units use binary scaling (`1M = 1024 * 1024`).
-- `data_len` must satisfy the runtime sector alignment check.
-- `slba` must be aligned to `sector_size`; it is converted by `slba / sector_size`
-  before being used in NVMe command LBA fields.
+- `sector_size` is fixed to `4096` bytes (4KiB).
+- `data_len` and `slba` must both be 4KiB-aligned.
+- `slba` is converted by `slba / 4096` before being used in NVMe command LBA fields.
 - Read chunk uses device MDTS-derived size with an internal cap of `mdts <= 6`
   (that is, chunk up to `1 << (12+6) = 256KiB`).
 
@@ -95,7 +95,7 @@ The default post action:
   - 1B saturated read count (`0..255`) for write-then-read events
   - 2B non-linear encoded write-to-first-read latency
   - 2B non-linear encoded write life-cycle latency (write to next overwrite)
-  - LBA and length units are sectors; sector size defaults to `512B`
+  - LBA and length units are sectors; sector size is fixed to `4096B (4KiB)`
   - Advanced life-cycle overwrite statistics:
     - Tracks overwrite-write segments by size bins: `4K, 8K, 16K, ...` up to MDTS-aligned cap
     - Requires all covered 4K buckets in a segment to share the same life-cycle code
@@ -199,7 +199,7 @@ Typical errors:
 
 Checks:
 
-- Use a `data_len` value aligned to device sector size (typically 512 bytes)
+- Use a `data_len` value aligned to `4096` bytes (fixed sector size)
 
 ### 6.3 Post Action Parse Errors
 

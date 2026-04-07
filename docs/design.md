@@ -220,7 +220,7 @@ The storage is initialized by `mmap` (with `MAP_NORESERVE` when available) to ke
 ### 7.2 Unit Semantics
 
 - In records, both `start_lba` and `length` are interpreted in units of `sector_size`.
-- Default `sector_size` is 512 bytes; runtime-detected sector size is used when available.
+- `sector_size` is fixed to 4096 bytes (4KiB) at runtime.
 - Bucket mapping:
   - `start_bytes = start_lba * sector_size`
   - `end_bytes = (start_lba + length) * sector_size`

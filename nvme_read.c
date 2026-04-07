@@ -6,7 +6,6 @@
 
 #include <errno.h>
 #include <fcntl.h>
-#include <linux/fs.h>
 #include <linux/nvme_ioctl.h>
 #include <pthread.h>
 #include <stdint.h>
@@ -454,25 +453,6 @@ static uint64_t get_mdts_chunk_bytes_or_default(int nvme_fd) {
     return chunk_bytes;
 }
 
-static uint32_t get_sector_size_or_default(int nvme_fd) {
-    int logical_block_size = 0;
-    if (ioctl(nvme_fd, BLKSSZGET, &logical_block_size) != 0) {
-        fprintf(stderr, "BLKSSZGET failed: %s, use default sector_size=%u\n",
-                strerror(errno), (unsigned int)NVME_LBA_SIZE_BYTES);
-        return (uint32_t)NVME_LBA_SIZE_BYTES;
-    }
-
-    if (logical_block_size <= 0) {
-        fprintf(stderr, "invalid sector_size=%d, use default sector_size=%u\n",
-                logical_block_size, (unsigned int)NVME_LBA_SIZE_BYTES);
-        return (uint32_t)NVME_LBA_SIZE_BYTES;
-    }
-
-    uint32_t sector_size = (uint32_t)logical_block_size;
-    fprintf(stderr, "detected sector_size=%u bytes\n", (unsigned int)sector_size);
-    return sector_size;
-}
-
 int nvme_read(const char *device_name,
               uint64_t slba,
               uint64_t data_len,
@@ -493,13 +473,8 @@ int nvme_read(const char *device_name,
         return -1;
     }
 
-    uint32_t sector_size = get_sector_size_or_default(nvme_fd);
-    if (sector_size == 0U) {
-        errno = EINVAL;
-        fprintf(stderr, "invalid sector_size=0\n");
-        close(nvme_fd);
-        return -1;
-    }
+    uint32_t sector_size = (uint32_t)NVME_LBA_SIZE_BYTES;
+    fprintf(stderr, "using fixed sector_size=%u bytes\n", (unsigned int)sector_size);
     (void)nvme_post_action_set_sector_size(sector_size);
     (void)nvme_post_action_set_base_lba(slba);
 
