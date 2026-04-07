@@ -61,6 +61,8 @@ Notes:
 
 - Units use binary scaling (`1M = 1024 * 1024`).
 - `data_len` must satisfy the runtime sector alignment check.
+- Read chunk uses device MDTS-derived size with an internal cap of `mdts <= 6`
+  (that is, chunk up to `1 << (12+6) = 256KiB`).
 
 ## 4. Default Post Action Behavior
 
