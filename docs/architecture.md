@@ -55,7 +55,6 @@ The project follows a layered structure:
 ### 2.3 `nvme_read.c`
 
 - Capability probing:
-  - `get_sector_size_or_default(...)`
   - `get_mdts_chunk_bytes_or_default(...)`
 - Producer-consumer read pipeline orchestration
 - Public API glue for read entrypoint and post-action callbacks
@@ -87,7 +86,7 @@ Main read sequence:
 
 1. `main` calls `nvme_read`
 2. Open NVMe device node
-3. Detect logical sector size (`BLKSSZGET`)
+3. Use fixed logical sector size (`4KiB`)
 4. Query MDTS and determine chunk size
 5. Submit `NVME_IOCTL_IO_CMD` in a loop
 6. Run `nvme_post_action_process(...)` after each chunk
@@ -107,7 +106,7 @@ Main read sequence:
    - Optional LBA statistics path:
      - Bucket granularity: 4KiB (`4096B`)
      - Per-bucket footprint: 5 bytes (`read_count`, `write_to_first_read_latency`, `life_cycle_latency`)
-     - Default logical coverage: 4TiB with default sector size `512B`
+    - Default logical coverage: 4TiB with fixed sector size `4KiB`
      - Total footprint: 5GiB (allocated via anonymous mmap)
      - `read_count` uses saturating counter (`max=255`)
      - Latency fields use non-linear encoding via lookup table
