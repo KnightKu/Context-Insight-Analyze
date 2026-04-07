@@ -18,6 +18,7 @@
 #include <unistd.h>
 
 #define NVME_READ_PIPELINE_SLOTS 4U
+#define NVME_MDTS_MAX_CAP 6U
 
 typedef struct {
     void *buf;
@@ -172,8 +173,10 @@ static void *pipeline_reader_thread(void *arg) {
         nvme_pipeline_slot_t *slot = &state->slots[slot_idx];
         uint64_t remaining = args->data_len - offset;
         uint32_t chunk_size = (uint32_t)(remaining > args->read_chunk_bytes ? args->read_chunk_bytes : remaining);
-        uint64_t chunk_lba = offset / (uint64_t)args->sector_size;
-        uint64_t backup_lba = args->slba + chunk_lba;
+        uint64_t lba_offset = offset / (uint64_t)args->sector_size;
+        uint64_t slba_lba = args->slba / (uint64_t)args->sector_size;
+        uint64_t start_lba = 0ULL;
+        uint64_t backup_lba = slba_lba + lba_offset;
 
         struct nvme_passthru_cmd cmd;
         memset(&cmd, 0, sizeof(cmd));
@@ -181,8 +184,8 @@ static void *pipeline_reader_thread(void *arg) {
         cmd.nsid = 1;
         cmd.addr = (uint64_t)(uintptr_t)slot->buf;
         cmd.data_len = chunk_size;
-        cmd.cdw10 = (uint32_t)(chunk_lba & 0xFFFFFFFFULL);
-        cmd.cdw11 = (uint32_t)((chunk_lba >> 32) & 0xFFFFFFFFULL);
+        cmd.cdw10 = (uint32_t)(start_lba & 0xFFFFFFFFULL);
+        cmd.cdw11 = (uint32_t)((start_lba >> 32) & 0xFFFFFFFFULL);
         cmd.cdw12 = (uint32_t)(chunk_size / (uint64_t)args->sector_size) - 1U;
         cmd.cdw14 = (uint32_t)(backup_lba & 0xFFFFFFFFULL);
         cmd.cdw15 = (uint32_t)((backup_lba >> 32) & 0xFFFFFFFFULL);
@@ -416,20 +419,21 @@ static uint64_t get_mdts_chunk_bytes_or_default(int nvme_fd) {
     }
 
     // Identify Controller data structure: byte 77 is MDTS.
-    uint8_t mdts = id_ctrl[77];
+    uint8_t mdts_raw = id_ctrl[77];
     free(id_ctrl);
 
-    if (mdts == 0U) {
+    if (mdts_raw == 0U) {
         // 0 means no MDTS limit reported, keep using configured default chunk.
         fprintf(stderr, "mdts=0 (no limit reported), use fallback chunk=%llu\n",
                 (unsigned long long)NVME_READ_CHUNK_BYTES);
         return NVME_READ_CHUNK_BYTES;
     }
 
-    if (mdts >= 52U) {
-        fprintf(stderr, "mdts=%u too large, fallback chunk=%llu\n",
-                (unsigned int)mdts, (unsigned long long)NVME_READ_CHUNK_BYTES);
-        return NVME_READ_CHUNK_BYTES;
+    uint8_t mdts = mdts_raw;
+    if (mdts > NVME_MDTS_MAX_CAP) {
+        fprintf(stderr, "mdts=%u exceeds cap=%u, use capped value\n",
+                (unsigned int)mdts_raw, (unsigned int)NVME_MDTS_MAX_CAP);
+        mdts = NVME_MDTS_MAX_CAP;
     }
 
     uint64_t chunk_bytes = (1ULL << (12U + (uint64_t)mdts));
@@ -503,6 +507,13 @@ int nvme_read(const char *device_name,
         errno = EINVAL;
         fprintf(stderr, "data_len must be %u-byte aligned, got %llu\n",
                 (unsigned int)sector_size, (unsigned long long)data_len);
+        close(nvme_fd);
+        return -1;
+    }
+    if (slba % (uint64_t)sector_size != 0ULL) {
+        errno = EINVAL;
+        fprintf(stderr, "slba must be %u-byte aligned, got %llu\n",
+                (unsigned int)sector_size, (unsigned long long)slba);
         close(nvme_fd);
         return -1;
     }
