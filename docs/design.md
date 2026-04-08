@@ -216,7 +216,8 @@ Runtime workload distribution report switches:
   - short aliases: `-q`, `-a`, `-R`, `-W`, `-T`
 - Each option independently enables one segmented ratio-style report:
   - `QD` distribution (from Stat records)
-  - `WA` distribution (`(log_write + folding_write) / hot_write`)
+  - `WA` distribution (`(hot_write + folding_write) / hot_write`)
+    - bucket ranges are compressed into 10 fixed bins in `[1.0, 5.0]`
   - `Read Size` distribution (4K blocks)
   - `Write Size` distribution (4K blocks)
   - `Trim Size` distribution (4K blocks)

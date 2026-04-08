@@ -131,7 +131,8 @@ The default post action:
   - Output format is segmented ratio buckets, similar to `-l/--latency` style
 - Optional workload distribution summary (independent switches):
   - `-q` / `--qd-dist`: `QD` distribution from Stat records
-  - `-a` / `--wa-dist`: `WA` distribution from Stat records (`(log_write + folding_write) / hot_write`)
+  - `-a` / `--wa-dist`: `WA` distribution from Stat records (`(hot_write + folding_write) / hot_write`)
+    - 10 fixed buckets compressed to range `1.0~5.0`: `[1.0,1.4) ... [4.6,5.0]`
   - `-R` / `--read-size-dist`: read size distribution (`length` field, 4K units)
   - `-W` / `--write-size-dist`: write size distribution (`length` field, 4K units)
   - `-T` / `--trim-size-dist`: trim size distribution (per-range `length`, 4K units)

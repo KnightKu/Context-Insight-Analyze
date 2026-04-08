@@ -86,6 +86,10 @@ if ! rg -i "QD distribution:|WA distribution:|Read Size distribution \\(4K block
   echo "missing workload distribution output sections" >&2
   exit 1
 fi
+if ! rg "\\[1\\.0,1\\.4\\)|\\[4\\.6,5\\.0\\]" "/tmp/post_action_workload_stats.log" >/dev/null; then
+  echo "missing compressed WA bucket labels [1.0,1.4) or [4.6,5.0]" >&2
+  exit 1
+fi
 
 echo "  LATENCY expected: -l enables latency summary output"
 if ! ./post_action_file_tester --latency "tests/fixtures/valid_mixed.bin" >/tmp/post_action_latency.log 2>&1; then
