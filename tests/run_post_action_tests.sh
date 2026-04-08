@@ -16,6 +16,7 @@ PASS_CASES=(
   "tests/fixtures/valid_mixed.bin"
   "tests/fixtures/valid_relative_time_with_marker.bin"
   "tests/fixtures/valid_zero_op_skip.bin"
+  "tests/fixtures/valid_pre_marker_skip.bin"
 )
 
 SKIP_CASES=(
@@ -23,7 +24,6 @@ SKIP_CASES=(
   "tests/fixtures/invalid_rw_reserved.bin"
   "tests/fixtures/invalid_trim_total_ranges.bin"
   "tests/fixtures/invalid_alignment.bin"
-  "tests/fixtures/invalid_missing_marker.bin"
 )
 
 SOFT_STOP_CASES=(

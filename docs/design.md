@@ -79,7 +79,8 @@ The current parser supports 5 opcodes and two record lengths:
   - `time_rel` uses the latest marker in stream scope, not only the current chunk.
   - parser seeds each chunk-local time reference from global last-marker state, so
     `time_rel` remains valid across chunk boundaries.
-- If a non-marker record appears before any marker, the record is treated as invalid by parser rules.
+- If a non-marker record appears before the first marker, it is treated as invalid/noise and dropped.
+- Parser keeps scanning until the first marker is found, then starts normal relative-time validation.
 - Marker monotonic rule:
   - marker timestamps must be strictly increasing across the stream.
   - if a marker timestamp is non-increasing (`current <= previous`), it is treated as overwrite.
@@ -145,7 +146,7 @@ Implementation notes:
 
 - Unknown opcode -> counted as invalid and skipped by one aligned record unit
 - Non-zero reserved field -> counted as invalid and skipped
-- Missing marker reference for relative timestamp -> counted as invalid and skipped
+- Records before first marker -> counted as invalid and skipped
 - Non-8-byte-aligned tail bytes -> counted as invalid tail fragment
 - Truncated record/group -> counted as invalid and skipped conservatively
 - Marker timestamp non-increasing (`current <= previous`) -> treated as overwrite and soft-stop

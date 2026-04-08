@@ -496,6 +496,25 @@ static int default_post_action(void *ctx, void *data, uint32_t data_len, uint64_
         uint8_t op = (uint8_t)(record_lo & 0xFFU);
         int rc = 0;
 
+        if (time_ref.has_marker == 0 && op != NVME_POST_ACTION_OP_MARKER) {
+            uint32_t skip_bytes = NVME_POST_ACTION_RECORD_BYTES_SHORT;
+            if (op == NVME_POST_ACTION_OP_READ ||
+                op == NVME_POST_ACTION_OP_WRITE ||
+                op == NVME_POST_ACTION_OP_TRIM ||
+                op == NVME_POST_ACTION_OP_STAT) {
+                skip_bytes = NVME_POST_ACTION_RECORD_BYTES_LONG;
+            }
+            if ((parse_len - cursor) < skip_bytes) {
+                ++local_invalid_records;
+                break;
+            }
+            // Before first marker, all non-marker records are discarded as invalid.
+            ++local_invalid_records;
+            cursor += skip_bytes;
+            ++record_index;
+            continue;
+        }
+
         if (op == 0x00U) {
 #if NVME_POST_ACTION_DEBUG
             debug_print_record_hex(record, NVME_POST_ACTION_RECORD_BYTES_SHORT,
