@@ -96,10 +96,29 @@ int main(int argc, char *argv[]) {
         break;
     }
 
+    uint64_t split_bytes = 0ULL;
+    int use_split = 0;
+    while (argi < argc) {
+        if (strcmp(argv[argi], "--split-bytes") == 0) {
+            if ((argi + 1) >= argc) {
+                fprintf(stderr, "--split-bytes requires a value\n");
+                return 2;
+            }
+            if (parse_u64_with_unit(argv[argi + 1], &split_bytes) != 0 || split_bytes == 0ULL) {
+                fprintf(stderr, "invalid --split-bytes: %s\n", argv[argi + 1]);
+                return 2;
+            }
+            use_split = 1;
+            argi += 2;
+            continue;
+        }
+        break;
+    }
+
     if ((argc - argi) != 1 && (argc - argi) != 2) {
         fprintf(stderr,
                 "usage: %s [-D|--debug] [-l|--latency] [-r|--read-count] [-w|--w2fr] "
-                "[-c|--life-cycle] <input_file> [offset_bytes]\n",
+                "[-c|--life-cycle] [--split-bytes N] <input_file> [offset_bytes]\n",
                 argv[0]);
         return 2;
     }
@@ -166,7 +185,26 @@ int main(int argc, char *argv[]) {
     nvme_read_set_lba_stats_read_count(read_count_stats_enabled);
     nvme_read_set_lba_stats_w2fr(w2fr_stats_enabled);
     nvme_read_set_lba_stats_life_cycle(life_cycle_stats_enabled);
-    int rc = nvme_post_action_process(buf, (uint32_t)len, offset_bytes);
+    int rc = 0;
+    if (use_split != 0) {
+        uint64_t cursor = 0ULL;
+        while (cursor < (uint64_t)len) {
+            uint64_t remaining = (uint64_t)len - cursor;
+            uint64_t chunk = remaining < split_bytes ? remaining : split_bytes;
+            if (chunk > (uint64_t)UINT32_MAX) {
+                fprintf(stderr, "split chunk too large: %" PRIu64 "\n", chunk);
+                free(buf);
+                return 2;
+            }
+            rc = nvme_post_action_process(buf + cursor, (uint32_t)chunk, offset_bytes + cursor);
+            if (rc != 0) {
+                break;
+            }
+            cursor += chunk;
+        }
+    } else {
+        rc = nvme_post_action_process(buf, (uint32_t)len, offset_bytes);
+    }
     if (rc != 0) {
         if (errno == ECANCELED) {
             fprintf(stderr,

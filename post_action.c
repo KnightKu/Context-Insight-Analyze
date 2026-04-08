@@ -477,6 +477,11 @@ static int default_post_action(void *ctx, void *data, uint32_t data_len, uint64_
     uint64_t local_invalid_records = 0ULL;
     nvme_post_action_time_ref_t time_ref;
     memset(&time_ref, 0, sizeof(time_ref));
+    // Keep time baseline continuous across callback invocations/chunks.
+    pthread_mutex_lock(&g_post_action_marker_mutex);
+    time_ref.marker_abs_time_us = g_post_action_last_marker_abs_time_us;
+    time_ref.has_marker = g_post_action_has_last_marker;
+    pthread_mutex_unlock(&g_post_action_marker_mutex);
     uint32_t parse_len = data_len;
     uint32_t tail_bytes = data_len % NVME_POST_ACTION_RECORD_BYTES_SHORT;
     if (tail_bytes != 0U) {

@@ -90,6 +90,7 @@ The default post action:
 - Aggregates consecutive Trim ranges into a single logical Trim group object
 - Treats marker (`0xFF`) `abs_time` as absolute time in microseconds
 - Interprets `time` fields in `read/write/trim/stat` as relative offsets (3B) from the latest previous marker
+- Keeps marker time reference continuous across read chunks (stream-level marker continuity)
 - Requires marker timestamps to be strictly increasing:
   - if marker `abs_time` is non-increasing (`<=` previous marker), it is treated as overwrite
   - post-action enters soft-stop immediately: stop further log read/parse, but main flow keeps success path

@@ -75,6 +75,10 @@ The current parser supports 5 opcodes and two record lengths:
   against the most recent preceding marker.
 - Effective timestamp:
   - `abs_time_us = last_marker_abs_time_us + time_rel`
+- Marker reference continuity:
+  - `time_rel` uses the latest marker in stream scope, not only the current chunk.
+  - parser seeds each chunk-local time reference from global last-marker state, so
+    `time_rel` remains valid across chunk boundaries.
 - If a non-marker record appears before any marker, the record is treated as invalid by parser rules.
 - Marker monotonic rule:
   - marker timestamps must be strictly increasing across the stream.
