@@ -90,6 +90,10 @@ if ! rg "\\[1\\.0,1\\.4\\)|\\[4\\.6,5\\.0\\]" "/tmp/post_action_workload_stats.l
   echo "missing compressed WA bucket labels [1.0,1.4) or [4.6,5.0]" >&2
   exit 1
 fi
+if ! rg "Read Size\\s+4K|Write Size\\s+8K|Trim Size\\s+16K" "/tmp/post_action_workload_stats.log" >/dev/null; then
+  echo "missing explicit IO-size labels (4K/8K/16K...) in workload output" >&2
+  exit 1
+fi
 
 echo "  LATENCY expected: -l enables latency summary output"
 if ! ./post_action_file_tester --latency "tests/fixtures/valid_mixed.bin" >/tmp/post_action_latency.log 2>&1; then

@@ -159,8 +159,8 @@ static const char *label_wa(uint32_t idx) {
 
 static const char *label_io_size(uint32_t idx) {
     static const char *labels[10] = {
-        "0", "1x4K", "2x4K", "3-4x4K", "5-8x4K",
-        "9-16x4K", "17-32x4K", "33-64x4K", "65-128x4K", ">=129x4K"
+        "0", "4K", "8K", "16K", "32K",
+        "64K", "128K", "256K", "512K", ">=1M"
     };
     return labels[idx < 10U ? idx : 9U];
 }
@@ -217,7 +217,7 @@ static uint32_t bucket_index_io_size_4k(uint64_t len_lba) {
     if (len_lba == 1ULL) {
         return 1U;
     }
-    if (len_lba == 2ULL) {
+    if (len_lba <= 2ULL) {
         return 2U;
     }
     if (len_lba <= 4ULL) {
