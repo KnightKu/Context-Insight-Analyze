@@ -477,6 +477,11 @@ static int default_post_action(void *ctx, void *data, uint32_t data_len, uint64_
     uint64_t local_invalid_records = 0ULL;
     nvme_post_action_time_ref_t time_ref;
     memset(&time_ref, 0, sizeof(time_ref));
+    // Keep time baseline continuous across callback invocations/chunks.
+    pthread_mutex_lock(&g_post_action_marker_mutex);
+    time_ref.marker_abs_time_us = g_post_action_last_marker_abs_time_us;
+    time_ref.has_marker = g_post_action_has_last_marker;
+    pthread_mutex_unlock(&g_post_action_marker_mutex);
     uint32_t parse_len = data_len;
     uint32_t tail_bytes = data_len % NVME_POST_ACTION_RECORD_BYTES_SHORT;
     if (tail_bytes != 0U) {
@@ -491,8 +496,37 @@ static int default_post_action(void *ctx, void *data, uint32_t data_len, uint64_
         uint8_t op = (uint8_t)(record_lo & 0xFFU);
         int rc = 0;
 
+        if (time_ref.has_marker == 0 && op != NVME_POST_ACTION_OP_MARKER) {
+            uint32_t skip_bytes = NVME_POST_ACTION_RECORD_BYTES_SHORT;
+            if (op == NVME_POST_ACTION_OP_READ ||
+                op == NVME_POST_ACTION_OP_WRITE ||
+                op == NVME_POST_ACTION_OP_TRIM ||
+                op == NVME_POST_ACTION_OP_STAT) {
+                skip_bytes = NVME_POST_ACTION_RECORD_BYTES_LONG;
+            }
+            if ((parse_len - cursor) < skip_bytes) {
+                ++local_invalid_records;
+                break;
+            }
+            // Before first marker, all non-marker records are discarded as invalid.
+            ++local_invalid_records;
+            cursor += skip_bytes;
+            ++record_index;
+            continue;
+        }
+
         if (op == 0x00U) {
-            // Skip invalid/empty 8-byte unit and continue parsing following records.
+#if NVME_POST_ACTION_DEBUG
+            debug_print_record_hex(record, NVME_POST_ACTION_RECORD_BYTES_SHORT,
+                                   record_offset, record_index, op);
+#endif
+            // A full-zero 8-byte record is treated as end-of-valid-log marker.
+            if (record_lo == 0ULL) {
+                errno = ENODATA;
+                post_action_add_invalid_count(local_invalid_records);
+                return -1;
+            }
+            // Non-zero payload with op==0 is treated as invalid/noise and skipped.
             ++local_invalid_records;
             cursor += NVME_POST_ACTION_RECORD_BYTES_SHORT;
             ++record_index;

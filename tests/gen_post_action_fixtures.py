@@ -77,18 +77,26 @@ def main() -> None:
     )
     (fixture_dir / "valid_zero_op_skip.bin").write_bytes(valid_with_zero_op_skip)
 
-    # Valid termination marker: first byte of both 8-byte halves is 0x00.
-    # Put marker first so non-marker record has a valid absolute-time base.
-    terminator = rec_marker(3_000_000) + rec_stat(4, 50, 3, 0, 1, 0) + bytes([0x00]) + b"\x11" * 7 + bytes([0x00]) + b"\x22" * 7
+    # Valid all-zero termination: one full-zero 8-byte record means end-of-valid-log.
+    terminator = rec_marker(3_000_000) + rec_stat(4, 50, 3, 0, 1, 0) + (b"\x00" * 8) + rec_stat(6, 60, 5, 0, 2, 1)
     (fixture_dir / "valid_termination.bin").write_bytes(terminator)
+    (fixture_dir / "valid_all_zero_termination.bin").write_bytes(terminator)
 
     # Invalid: unknown opcode
     invalid_op = bytes([0x77]) + b"\x00" * 7
     (fixture_dir / "invalid_op.bin").write_bytes(invalid_op)
 
-    # Invalid: non-marker record appears before any marker.
-    invalid_missing_marker = rec_stat(2, 7, 1, 0, 1, 0)
-    (fixture_dir / "invalid_missing_marker.bin").write_bytes(invalid_missing_marker)
+    # Valid by skip policy: records before first marker are dropped as invalid/noise.
+    # After marker appears, following relative-time records are processed normally.
+    valid_pre_marker_skip = b"".join(
+        [
+            rec_stat(2, 7, 1, 0, 1, 0),  # dropped before marker
+            rec_rw(0x01, 0x100, 0x10, 0x0000, 11, 3),  # dropped before marker
+            rec_marker(5_000_000),
+            rec_stat(4, 9, 2, 0, 1, 0),  # valid after marker
+        ]
+    )
+    (fixture_dir / "valid_pre_marker_skip.bin").write_bytes(valid_pre_marker_skip)
 
     # Invalid: marker timestamp is not strictly increasing, indicating overwrite.
     # Marker is 8 bytes each: first at offset 0, second at offset 8.

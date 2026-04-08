@@ -19,7 +19,7 @@ The project follows a layered structure:
 3. **Extension Layer (Post Action)**
    - Exposed via callback type `nvme_read_post_action_t`
    - Default implementation parses and validates protocol records
-   - Supports grouped Trim object aggregation (`ranges[]`) and stream termination marker
+   - Supports grouped Trim object aggregation (`ranges[]`) and all-zero end-of-valid-log soft-stop
    - Supports user-provided custom callbacks
 
 ---
@@ -63,7 +63,7 @@ The project follows a layered structure:
 
 - Owns default post-action parser and callback dispatch
 - Implements record parsing/validation (`rw`, `trim`, `stat`, `marker`)
-- Handles termination marker and invalid-record counting
+- Handles all-zero record soft-stop and invalid-record counting
 - Supports stat-skip compile-time macro (`NVME_POST_ACTION_SKIP_STAT`)
 
 ### 2.5 `post_action_stats.c`
@@ -132,7 +132,7 @@ Main read sequence:
 - Reserved-field zero checks
 - Opcode whitelist checks
 - Trim-group consistency checks (`total_ranges` continuity across ranges)
-- Termination marker check (`0x00` head byte in both 8-byte halves of a 16-byte window)
+- All-zero record check (`8-byte record == 0`) used as end-of-valid-log soft-stop
 
 ---
 
