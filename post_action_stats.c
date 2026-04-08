@@ -293,6 +293,15 @@ void nvme_post_action_stats_print_ratio_summary(int print_read_count,
     if (rc != 0) {
         return;
     }
+    uint64_t w2fr_print_hist[NVME_POST_ACTION_RATIO_BUCKETS];
+    uint64_t life_print_hist[NVME_POST_ACTION_RATIO_BUCKETS];
+    memcpy(w2fr_print_hist, summary.w2fr_ms_hist, sizeof(w2fr_print_hist));
+    memcpy(life_print_hist, summary.life_cycle_ms_hist, sizeof(life_print_hist));
+    // Display-only adjustment: merge 0ms counts into >=1h bucket.
+    w2fr_print_hist[NVME_POST_ACTION_RATIO_BUCKETS - 1U] += w2fr_print_hist[0U];
+    w2fr_print_hist[0U] = 0ULL;
+    life_print_hist[NVME_POST_ACTION_RATIO_BUCKETS - 1U] += life_print_hist[0U];
+    life_print_hist[0U] = 0ULL;
 
     fprintf(stderr, "lba ratio summary (bucket=%llu bytes):\n",
             (unsigned long long)NVME_POST_ACTION_STATS_BLOCK_BYTES);
@@ -315,7 +324,7 @@ void nvme_post_action_stats_print_ratio_summary(int print_read_count,
         for (uint32_t i = 0U; i < NVME_POST_ACTION_RATIO_BUCKETS; ++i) {
             char label[32];
             ratio_label_latency_ms(i, label, sizeof(label));
-            print_ratio_hist_line("Write-to-First-Read", summary.w2fr_ms_hist[i], total_buckets, label);
+            print_ratio_hist_line("Write-to-First-Read", w2fr_print_hist[i], total_buckets, label);
         }
         fprintf(stderr, "  non-zero buckets=%" PRIu64 " / %" PRIu64 " (%.2f%%)\n",
                 summary.w2fr_non_zero_buckets,
@@ -329,7 +338,7 @@ void nvme_post_action_stats_print_ratio_summary(int print_read_count,
         for (uint32_t i = 0U; i < NVME_POST_ACTION_RATIO_BUCKETS; ++i) {
             char label[32];
             ratio_label_latency_ms(i, label, sizeof(label));
-            print_ratio_hist_line("LBA Life Cycle", summary.life_cycle_ms_hist[i], total_buckets, label);
+            print_ratio_hist_line("LBA Life Cycle", life_print_hist[i], total_buckets, label);
         }
         fprintf(stderr, "  non-zero buckets=%" PRIu64 " / %" PRIu64 " (%.2f%%)\n",
                 summary.life_cycle_non_zero_buckets,
