@@ -14,7 +14,6 @@ python3 tests/gen_post_action_fixtures.py
 
 PASS_CASES=(
   "tests/fixtures/valid_mixed.bin"
-  "tests/fixtures/valid_termination.bin"
   "tests/fixtures/valid_relative_time_with_marker.bin"
   "tests/fixtures/valid_zero_op_skip.bin"
 )
@@ -107,5 +106,15 @@ for f in "${SOFT_STOP_CASES[@]}"; do
     exit 1
   fi
 done
+
+echo "  SOFT-STOP expected (all-zero record indicates invalid tail): tests/fixtures/valid_termination.bin"
+if ! ./post_action_file_tester "tests/fixtures/valid_termination.bin" >/tmp/post_action_all_zero.log 2>&1; then
+  echo "unexpected failure for valid_termination.bin" >&2
+  exit 1
+fi
+if ! rg -i "all-zero record detected|soft-stop" "/tmp/post_action_all_zero.log" >/dev/null; then
+  echo "missing all-zero soft-stop hint in output" >&2
+  exit 1
+fi
 
 echo "all post-action tests passed"

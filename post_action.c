@@ -497,7 +497,17 @@ static int default_post_action(void *ctx, void *data, uint32_t data_len, uint64_
         int rc = 0;
 
         if (op == 0x00U) {
-            // Skip invalid/empty 8-byte unit and continue parsing following records.
+#if NVME_POST_ACTION_DEBUG
+            debug_print_record_hex(record, NVME_POST_ACTION_RECORD_BYTES_SHORT,
+                                   record_offset, record_index, op);
+#endif
+            // A full-zero 8-byte record is treated as end-of-valid-log marker.
+            if (record_lo == 0ULL) {
+                errno = ENODATA;
+                post_action_add_invalid_count(local_invalid_records);
+                return -1;
+            }
+            // Non-zero payload with op==0 is treated as invalid/noise and skipped.
             ++local_invalid_records;
             cursor += NVME_POST_ACTION_RECORD_BYTES_SHORT;
             ++record_index;

@@ -77,10 +77,10 @@ def main() -> None:
     )
     (fixture_dir / "valid_zero_op_skip.bin").write_bytes(valid_with_zero_op_skip)
 
-    # Valid termination marker: first byte of both 8-byte halves is 0x00.
-    # Put marker first so non-marker record has a valid absolute-time base.
-    terminator = rec_marker(3_000_000) + rec_stat(4, 50, 3, 0, 1, 0) + bytes([0x00]) + b"\x11" * 7 + bytes([0x00]) + b"\x22" * 7
+    # Valid all-zero termination: one full-zero 8-byte record means end-of-valid-log.
+    terminator = rec_marker(3_000_000) + rec_stat(4, 50, 3, 0, 1, 0) + (b"\x00" * 8) + rec_stat(6, 60, 5, 0, 2, 1)
     (fixture_dir / "valid_termination.bin").write_bytes(terminator)
+    (fixture_dir / "valid_all_zero_termination.bin").write_bytes(terminator)
 
     # Invalid: unknown opcode
     invalid_op = bytes([0x77]) + b"\x00" * 7

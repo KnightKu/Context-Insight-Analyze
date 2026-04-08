@@ -96,9 +96,11 @@ The default post action:
   - post-action enters soft-stop immediately: stop further log read/parse, but main flow keeps success path
   - already-processed records remain valid, and subsequent non-read operations continue
   - warning log includes overwrite context and LBA location (`lba`, `offset`, marker timestamps)
-- Supports an early termination marker:
-  - `op == 0x00` is treated as invalid/noise record data
-  - parser skips current `8B` unit and continues scanning subsequent records
+- Supports early full-zero termination:
+  - if an 8-byte record is all zero (`00 00 00 00 00 00 00 00`), parser treats it as end-of-valid-log
+  - post-action soft-stops immediately (no further parse in current/next chunks)
+  - read pipeline also stops further device reads, while main flow still returns success
+  - non-zero `op == 0x00` records are still treated as invalid/noise and skipped by 8 bytes
 - Maintains in-memory per-4KB LBA statistics for runtime analysis:
   - 1B saturated read count (`0..255`) for write-then-read events
   - 2B non-linear encoded write-to-first-read latency

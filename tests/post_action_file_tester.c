@@ -210,6 +210,10 @@ int main(int argc, char *argv[]) {
             fprintf(stderr,
                     "post action soft-stop: overwrite detected, stop further parse at offset=%" PRIu64 "\n",
                     offset_bytes);
+        } else if (errno == ENODATA) {
+            fprintf(stderr,
+                    "post action soft-stop: all-zero record detected, stop further parse at offset=%" PRIu64 "\n",
+                    offset_bytes);
         } else {
             fprintf(stderr, "post action failed: %s\n", strerror(errno));
             free(buf);

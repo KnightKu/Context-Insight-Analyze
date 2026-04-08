@@ -108,9 +108,10 @@ The parser now uses `load_le64_u(const unsigned char *p)` as the hot-path primit
 2. Start scanning with `cursor = 0`
 3. Read `op = bytes[cursor]`
 4. Determine record size (8 or 16) from opcode
-5. Handle `op == 0x00` invalid units:
-   - Treat as invalid/noise data
-   - Skip one 8-byte unit and continue parsing subsequent records
+5. Handle `op == 0x00` units:
+   - If the whole 8-byte record is all zero (`0x00 * 8`), treat as end-of-valid-log
+     and return soft-stop (`errno = ENODATA`) to stop further parsing/reading
+   - If `op == 0x00` but payload is not all zero, treat as invalid/noise and skip one 8-byte unit
 6. Dispatch to one parser:
    - `parse_rw_record`
    - `parse_trim_group`
@@ -148,7 +149,8 @@ Implementation notes:
 - Non-8-byte-aligned tail bytes -> counted as invalid tail fragment
 - Truncated record/group -> counted as invalid and skipped conservatively
 - Marker timestamp non-increasing (`current <= previous`) -> treated as overwrite and soft-stop
-- `op == 0x00` -> treated as invalid/noise and skipped by one 8-byte unit (no immediate return)
+- all-zero 8-byte record (`0x00 * 8`) -> treated as end-of-valid-log and soft-stop
+- `op == 0x00` with non-zero payload -> treated as invalid/noise and skipped by one 8-byte unit
 
 ## 5. Error Handling Strategy
 
