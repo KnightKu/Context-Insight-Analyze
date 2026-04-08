@@ -32,6 +32,7 @@
 #define NVME_POST_ACTION_U24_MASK 0xFFFFFFU
 #define NVME_POST_ACTION_U56_MASK 0x00FFFFFFFFFFFFFFULL
 #define NVME_POST_ACTION_TRIM_MAX_RANGES 256U
+#define NVME_POST_ACTION_RATIO_BUCKETS 10U
 
 typedef struct {
     uint8_t op;
@@ -104,6 +105,22 @@ static int g_post_action_debug_enabled = 0;
 static int g_post_action_lba_read_count_enabled = 0;
 static int g_post_action_lba_w2fr_enabled = 0;
 static int g_post_action_lba_life_cycle_enabled = 0;
+static int g_post_action_qd_dist_enabled = 0;
+static int g_post_action_wa_dist_enabled = 0;
+static int g_post_action_read_size_dist_enabled = 0;
+static int g_post_action_write_size_dist_enabled = 0;
+static int g_post_action_trim_size_dist_enabled = 0;
+static pthread_mutex_t g_post_action_workload_mutex = PTHREAD_MUTEX_INITIALIZER;
+static uint64_t g_post_action_qd_hist[NVME_POST_ACTION_RATIO_BUCKETS];
+static uint64_t g_post_action_wa_hist[NVME_POST_ACTION_RATIO_BUCKETS];
+static uint64_t g_post_action_read_size_hist[NVME_POST_ACTION_RATIO_BUCKETS];
+static uint64_t g_post_action_write_size_hist[NVME_POST_ACTION_RATIO_BUCKETS];
+static uint64_t g_post_action_trim_size_hist[NVME_POST_ACTION_RATIO_BUCKETS];
+static uint64_t g_post_action_qd_samples = 0ULL;
+static uint64_t g_post_action_wa_samples = 0ULL;
+static uint64_t g_post_action_read_size_samples = 0ULL;
+static uint64_t g_post_action_write_size_samples = 0ULL;
+static uint64_t g_post_action_trim_size_samples = 0ULL;
 
 void nvme_post_action_reset_invalid_count(void) {
     pthread_mutex_lock(&g_post_action_invalid_mutex);
@@ -123,6 +140,173 @@ static void post_action_add_invalid_count(uint64_t delta) {
     pthread_mutex_lock(&g_post_action_invalid_mutex);
     g_post_action_invalid_records += delta;
     pthread_mutex_unlock(&g_post_action_invalid_mutex);
+}
+
+static const char *label_qd(uint32_t idx) {
+    static const char *labels[10] = {
+        "0", "1", "2", "3-4", "5-8", "9-16", "17-32", "33-64", "65-128", ">=129"
+    };
+    return labels[idx < 10U ? idx : 9U];
+}
+
+static const char *label_wa(uint32_t idx) {
+    static const char *labels[10] = {
+        "[1.0,1.4)", "[1.4,1.8)", "[1.8,2.2)", "[2.2,2.6)", "[2.6,3.0)",
+        "[3.0,3.4)", "[3.4,3.8)", "[3.8,4.2)", "[4.2,4.6)", "[4.6,5.0]"
+    };
+    return labels[idx < 10U ? idx : 9U];
+}
+
+static const char *label_io_size(uint32_t idx) {
+    static const char *labels[10] = {
+        "0", "4K", "8K", "16K", "32K",
+        "64K", "128K", "256K", "512K", ">=1M"
+    };
+    return labels[idx < 10U ? idx : 9U];
+}
+
+static uint32_t bucket_index_qd(uint16_t qd) {
+    if (qd == 0U) {
+        return 0U;
+    }
+    if (qd == 1U) {
+        return 1U;
+    }
+    if (qd == 2U) {
+        return 2U;
+    }
+    if (qd <= 4U) {
+        return 3U;
+    }
+    if (qd <= 8U) {
+        return 4U;
+    }
+    if (qd <= 16U) {
+        return 5U;
+    }
+    if (qd <= 32U) {
+        return 6U;
+    }
+    if (qd <= 64U) {
+        return 7U;
+    }
+    if (qd <= 128U) {
+        return 8U;
+    }
+    return 9U;
+}
+
+static uint32_t bucket_index_wa_x1000(uint32_t wa_x1000) {
+    if (wa_x1000 <= 1000U) {
+        return 0U;
+    }
+    if (wa_x1000 >= 5000U) {
+        return 9U;
+    }
+    uint32_t idx = (wa_x1000 - 1000U) / 400U;
+    if (idx >= NVME_POST_ACTION_RATIO_BUCKETS) {
+        idx = NVME_POST_ACTION_RATIO_BUCKETS - 1U;
+    }
+    return idx;
+}
+
+static uint32_t bucket_index_io_size_4k(uint64_t len_lba) {
+    if (len_lba == 0ULL) {
+        return 0U;
+    }
+    if (len_lba == 1ULL) {
+        return 1U;
+    }
+    if (len_lba <= 2ULL) {
+        return 2U;
+    }
+    if (len_lba <= 4ULL) {
+        return 3U;
+    }
+    if (len_lba <= 8ULL) {
+        return 4U;
+    }
+    if (len_lba <= 16ULL) {
+        return 5U;
+    }
+    if (len_lba <= 32ULL) {
+        return 6U;
+    }
+    if (len_lba <= 64ULL) {
+        return 7U;
+    }
+    if (len_lba <= 128ULL) {
+        return 8U;
+    }
+    return 9U;
+}
+
+static void record_qd_and_wa(uint16_t qd, uint32_t hot_write_4k, uint32_t folding_write_4k) {
+    if (g_post_action_qd_dist_enabled == 0 && g_post_action_wa_dist_enabled == 0) {
+        return;
+    }
+    pthread_mutex_lock(&g_post_action_workload_mutex);
+    if (g_post_action_qd_dist_enabled != 0) {
+        uint32_t idx = bucket_index_qd(qd);
+        ++g_post_action_qd_hist[idx];
+        ++g_post_action_qd_samples;
+    }
+    if (g_post_action_wa_dist_enabled != 0 && hot_write_4k != 0U) {
+        // WA uses (hot_write + folding_write) / hot_write.
+        uint64_t numer = (uint64_t)hot_write_4k + (uint64_t)folding_write_4k;
+        uint32_t wa_x1000 = (uint32_t)((numer * 1000ULL) / (uint64_t)hot_write_4k);
+        uint32_t idx = bucket_index_wa_x1000(wa_x1000);
+        ++g_post_action_wa_hist[idx];
+        ++g_post_action_wa_samples;
+    }
+    pthread_mutex_unlock(&g_post_action_workload_mutex);
+}
+
+static void record_io_size(uint8_t op, uint64_t len_lba) {
+    if (op == NVME_POST_ACTION_OP_READ && g_post_action_read_size_dist_enabled == 0) {
+        return;
+    }
+    if (op == NVME_POST_ACTION_OP_WRITE && g_post_action_write_size_dist_enabled == 0) {
+        return;
+    }
+    if (op == NVME_POST_ACTION_OP_TRIM && g_post_action_trim_size_dist_enabled == 0) {
+        return;
+    }
+    uint32_t idx = bucket_index_io_size_4k(len_lba);
+    pthread_mutex_lock(&g_post_action_workload_mutex);
+    if (op == NVME_POST_ACTION_OP_READ && g_post_action_read_size_dist_enabled != 0) {
+        ++g_post_action_read_size_hist[idx];
+        ++g_post_action_read_size_samples;
+    } else if (op == NVME_POST_ACTION_OP_WRITE && g_post_action_write_size_dist_enabled != 0) {
+        ++g_post_action_write_size_hist[idx];
+        ++g_post_action_write_size_samples;
+    } else if (op == NVME_POST_ACTION_OP_TRIM && g_post_action_trim_size_dist_enabled != 0) {
+        ++g_post_action_trim_size_hist[idx];
+        ++g_post_action_trim_size_samples;
+    }
+    pthread_mutex_unlock(&g_post_action_workload_mutex);
+}
+
+static void print_histogram_section(const char *title,
+                                    const char *item_name,
+                                    const uint64_t hist[10],
+                                    uint64_t total_samples,
+                                    const char *(*label_fn)(uint32_t)) {
+    if (hist == NULL || label_fn == NULL) {
+        return;
+    }
+    fprintf(stderr, "%s:\n", title);
+    for (uint32_t i = 0U; i < 10U; ++i) {
+        double pct = 0.0;
+        if (total_samples != 0ULL) {
+            pct = ((double)hist[i] * 100.0) / (double)total_samples;
+        }
+        fprintf(stderr, "  %-16s %12s count=%llu (%.2f%%)\n",
+                item_name,
+                label_fn(i),
+                (unsigned long long)hist[i],
+                pct);
+    }
 }
 
 static uint64_t marker_record_to_lba_locked(uint64_t record_offset_bytes) {
@@ -230,9 +414,11 @@ static int parse_rw_record(uint64_t record_lo,
     if (op == NVME_POST_ACTION_OP_WRITE) {
         nvme_post_action_stats_update_write(parsed.start_lba, (uint64_t)parsed.length, abs_time_us);
         nvme_post_action_latency_record_write(parsed.latency);
+        record_io_size(op, (uint64_t)parsed.length);
     } else if (op == NVME_POST_ACTION_OP_READ) {
         nvme_post_action_stats_update_read(parsed.start_lba, (uint64_t)parsed.length, abs_time_us);
         nvme_post_action_latency_record_read(parsed.latency);
+        record_io_size(op, (uint64_t)parsed.length);
     }
 
 #if NVME_POST_ACTION_DEBUG
@@ -362,6 +548,7 @@ static int parse_trim_group(const unsigned char *bytes,
         }
         nvme_post_action_stats_update_write(fields.start_lba, (uint64_t)fields.length, abs_time_us);
         nvme_post_action_latency_record_trim(fields.time_rel);
+        record_io_size(NVME_POST_ACTION_OP_TRIM, (uint64_t)fields.length);
     }
     parsed.range_count = parsed.total_ranges;
     (void)parsed;
@@ -401,6 +588,7 @@ static int parse_stat_record(uint64_t record_lo,
                                            parsed.folding_write) != 0) {
         return -1;
     }
+    record_qd_and_wa(parsed.qd, parsed.hot_write, parsed.folding_write);
 #if NVME_POST_ACTION_DEBUG
     fprintf(stderr,
             "post action stat: offset=%llu record=%u qd=%u time_rel=%u abs_time_us=%llu "
@@ -713,6 +901,51 @@ int nvme_post_action_get_lba_life_cycle_enabled(void) {
     return g_post_action_lba_life_cycle_enabled;
 }
 
+int nvme_post_action_set_qd_dist_enabled(int enabled) {
+    g_post_action_qd_dist_enabled = (enabled != 0) ? 1 : 0;
+    return 0;
+}
+
+int nvme_post_action_get_qd_dist_enabled(void) {
+    return g_post_action_qd_dist_enabled;
+}
+
+int nvme_post_action_set_wa_dist_enabled(int enabled) {
+    g_post_action_wa_dist_enabled = (enabled != 0) ? 1 : 0;
+    return 0;
+}
+
+int nvme_post_action_get_wa_dist_enabled(void) {
+    return g_post_action_wa_dist_enabled;
+}
+
+int nvme_post_action_set_read_size_dist_enabled(int enabled) {
+    g_post_action_read_size_dist_enabled = (enabled != 0) ? 1 : 0;
+    return 0;
+}
+
+int nvme_post_action_get_read_size_dist_enabled(void) {
+    return g_post_action_read_size_dist_enabled;
+}
+
+int nvme_post_action_set_write_size_dist_enabled(int enabled) {
+    g_post_action_write_size_dist_enabled = (enabled != 0) ? 1 : 0;
+    return 0;
+}
+
+int nvme_post_action_get_write_size_dist_enabled(void) {
+    return g_post_action_write_size_dist_enabled;
+}
+
+int nvme_post_action_set_trim_size_dist_enabled(int enabled) {
+    g_post_action_trim_size_dist_enabled = (enabled != 0) ? 1 : 0;
+    return 0;
+}
+
+int nvme_post_action_get_trim_size_dist_enabled(void) {
+    return g_post_action_trim_size_dist_enabled;
+}
+
 void nvme_post_action_print_lba_stats_report(void) {
     if (g_post_action_lba_read_count_enabled == 0 &&
         g_post_action_lba_w2fr_enabled == 0 &&
@@ -722,4 +955,39 @@ void nvme_post_action_print_lba_stats_report(void) {
     nvme_post_action_stats_print_ratio_summary(g_post_action_lba_read_count_enabled,
                                                g_post_action_lba_w2fr_enabled,
                                                g_post_action_lba_life_cycle_enabled);
+}
+
+void nvme_post_action_print_workload_stats_report(void) {
+    if (g_post_action_qd_dist_enabled == 0 &&
+        g_post_action_wa_dist_enabled == 0 &&
+        g_post_action_read_size_dist_enabled == 0 &&
+        g_post_action_write_size_dist_enabled == 0 &&
+        g_post_action_trim_size_dist_enabled == 0) {
+        return;
+    }
+    pthread_mutex_lock(&g_post_action_workload_mutex);
+    if (g_post_action_qd_dist_enabled != 0) {
+        print_histogram_section("QD distribution", "QD", g_post_action_qd_hist,
+                                g_post_action_qd_samples, label_qd);
+    }
+    if (g_post_action_wa_dist_enabled != 0) {
+        print_histogram_section("WA distribution", "WA", g_post_action_wa_hist,
+                                g_post_action_wa_samples, label_wa);
+    }
+    if (g_post_action_read_size_dist_enabled != 0) {
+        print_histogram_section("Read Size distribution (4K blocks)", "Read Size",
+                                g_post_action_read_size_hist, g_post_action_read_size_samples,
+                                label_io_size);
+    }
+    if (g_post_action_write_size_dist_enabled != 0) {
+        print_histogram_section("Write Size distribution (4K blocks)", "Write Size",
+                                g_post_action_write_size_hist, g_post_action_write_size_samples,
+                                label_io_size);
+    }
+    if (g_post_action_trim_size_dist_enabled != 0) {
+        print_histogram_section("Trim Size distribution (4K blocks)", "Trim Size",
+                                g_post_action_trim_size_hist, g_post_action_trim_size_samples,
+                                label_io_size);
+    }
+    pthread_mutex_unlock(&g_post_action_workload_mutex);
 }

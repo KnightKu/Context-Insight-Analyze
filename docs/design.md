@@ -205,6 +205,23 @@ Runtime LBA stats segmented report switches:
   - `[lower, upper) ms: count=... ratio=...%`
 - `Read Count` is also shown in segmented form (`[lower, upper)` counts with ratio).
 
+Runtime workload distribution report switches:
+
+- CLI options:
+  - `--qd-dist`
+  - `--wa-dist`
+  - `--read-size-dist`
+  - `--write-size-dist`
+  - `--trim-size-dist`
+  - short aliases: `-q`, `-a`, `-R`, `-W`, `-T`
+- Each option independently enables one segmented ratio-style report:
+  - `QD` distribution (from Stat records)
+  - `WA` distribution (`(hot_write + folding_write) / hot_write`)
+    - bucket ranges are compressed into 10 fixed bins in `[1.0, 5.0]`
+  - `Read Size` distribution (4K blocks)
+  - `Write Size` distribution (4K blocks)
+  - `Trim Size` distribution (4K blocks)
+
 ## 7. LBA Post-Action Statistics (5-Byte Bucket Model)
 
 The post-action path now includes an in-memory LBA statistics engine.

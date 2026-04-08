@@ -425,6 +425,31 @@ int nvme_read_set_lba_stats_life_cycle(int enabled) {
     return 0;
 }
 
+int nvme_read_set_qd_dist(int enabled) {
+    nvme_post_action_set_qd_dist_enabled(enabled);
+    return 0;
+}
+
+int nvme_read_set_wa_dist(int enabled) {
+    nvme_post_action_set_wa_dist_enabled(enabled);
+    return 0;
+}
+
+int nvme_read_set_read_size_dist(int enabled) {
+    nvme_post_action_set_read_size_dist_enabled(enabled);
+    return 0;
+}
+
+int nvme_read_set_write_size_dist(int enabled) {
+    nvme_post_action_set_write_size_dist_enabled(enabled);
+    return 0;
+}
+
+int nvme_read_set_trim_size_dist(int enabled) {
+    nvme_post_action_set_trim_size_dist_enabled(enabled);
+    return 0;
+}
+
 int nvme_read_set_mdts_bytes(uint64_t mdts_bytes) {
     return nvme_post_action_stats_set_mdts_bytes(mdts_bytes);
 }

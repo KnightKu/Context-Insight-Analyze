@@ -43,6 +43,28 @@ int nvme_post_action_set_lba_life_cycle_enabled(int enabled);
 
 int nvme_post_action_get_lba_life_cycle_enabled(void);
 
+int nvme_post_action_set_qd_dist_enabled(int enabled);
+
+int nvme_post_action_get_qd_dist_enabled(void);
+
+int nvme_post_action_set_wa_dist_enabled(int enabled);
+
+int nvme_post_action_get_wa_dist_enabled(void);
+
+int nvme_post_action_set_read_size_dist_enabled(int enabled);
+
+int nvme_post_action_get_read_size_dist_enabled(void);
+
+int nvme_post_action_set_write_size_dist_enabled(int enabled);
+
+int nvme_post_action_get_write_size_dist_enabled(void);
+
+int nvme_post_action_set_trim_size_dist_enabled(int enabled);
+
+int nvme_post_action_get_trim_size_dist_enabled(void);
+
 void nvme_post_action_print_lba_stats_report(void);
+
+void nvme_post_action_print_workload_stats_report(void);
 
 #endif  // POST_ACTION_H
