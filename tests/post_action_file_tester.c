@@ -67,6 +67,11 @@ int main(int argc, char *argv[]) {
     int read_count_stats_enabled = 0;
     int w2fr_stats_enabled = 0;
     int life_cycle_stats_enabled = 0;
+    int qd_dist_enabled = 0;
+    int wa_dist_enabled = 0;
+    int read_size_dist_enabled = 0;
+    int write_size_dist_enabled = 0;
+    int trim_size_dist_enabled = 0;
     while (argi < argc) {
         if (strcmp(argv[argi], "-D") == 0 || strcmp(argv[argi], "--debug") == 0) {
             debug_enabled = 1;
@@ -90,6 +95,31 @@ int main(int argc, char *argv[]) {
         }
         if (strcmp(argv[argi], "-c") == 0 || strcmp(argv[argi], "--life-cycle") == 0) {
             life_cycle_stats_enabled = 1;
+            ++argi;
+            continue;
+        }
+        if (strcmp(argv[argi], "-q") == 0 || strcmp(argv[argi], "--qd-dist") == 0) {
+            qd_dist_enabled = 1;
+            ++argi;
+            continue;
+        }
+        if (strcmp(argv[argi], "-a") == 0 || strcmp(argv[argi], "--wa-dist") == 0) {
+            wa_dist_enabled = 1;
+            ++argi;
+            continue;
+        }
+        if (strcmp(argv[argi], "-R") == 0 || strcmp(argv[argi], "--read-size-dist") == 0) {
+            read_size_dist_enabled = 1;
+            ++argi;
+            continue;
+        }
+        if (strcmp(argv[argi], "-W") == 0 || strcmp(argv[argi], "--write-size-dist") == 0) {
+            write_size_dist_enabled = 1;
+            ++argi;
+            continue;
+        }
+        if (strcmp(argv[argi], "-T") == 0 || strcmp(argv[argi], "--trim-size-dist") == 0) {
+            trim_size_dist_enabled = 1;
             ++argi;
             continue;
         }
@@ -118,7 +148,9 @@ int main(int argc, char *argv[]) {
     if ((argc - argi) != 1 && (argc - argi) != 2) {
         fprintf(stderr,
                 "usage: %s [-D|--debug] [-l|--latency] [-r|--read-count] [-w|--w2fr] "
-                "[-c|--life-cycle] [--split-bytes N] <input_file> [offset_bytes]\n",
+                "[-c|--life-cycle] [-q|--qd-dist] [-a|--wa-dist] "
+                "[-R|--read-size-dist] [-W|--write-size-dist] [-T|--trim-size-dist] "
+                "[--split-bytes N] <input_file> [offset_bytes]\n",
                 argv[0]);
         return 2;
     }
@@ -185,6 +217,11 @@ int main(int argc, char *argv[]) {
     nvme_read_set_lba_stats_read_count(read_count_stats_enabled);
     nvme_read_set_lba_stats_w2fr(w2fr_stats_enabled);
     nvme_read_set_lba_stats_life_cycle(life_cycle_stats_enabled);
+    nvme_read_set_qd_dist(qd_dist_enabled);
+    nvme_read_set_wa_dist(wa_dist_enabled);
+    nvme_read_set_read_size_dist(read_size_dist_enabled);
+    nvme_read_set_write_size_dist(write_size_dist_enabled);
+    nvme_read_set_trim_size_dist(trim_size_dist_enabled);
     int rc = 0;
     if (use_split != 0) {
         uint64_t cursor = 0ULL;
@@ -230,6 +267,13 @@ int main(int argc, char *argv[]) {
         w2fr_stats_enabled != 0 ||
         life_cycle_stats_enabled != 0) {
         nvme_post_action_print_lba_stats_report();
+    }
+    if (qd_dist_enabled != 0 ||
+        wa_dist_enabled != 0 ||
+        read_size_dist_enabled != 0 ||
+        write_size_dist_enabled != 0 ||
+        trim_size_dist_enabled != 0) {
+        nvme_post_action_print_workload_stats_report();
     }
     free(buf);
     return 0;

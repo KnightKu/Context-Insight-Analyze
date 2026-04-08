@@ -28,7 +28,7 @@ Binary output:
 Current command format:
 
 ```bash
-./sfx_ctx_insight_analyze [-D|--debug] [-l|--latency] [-r|--read-count] [-w|--w2fr] [-c|--life-cycle] <device_name> <slba[K|M|G|T]> <data_len[K|M|G|T]>
+./sfx_ctx_insight_analyze [-D|--debug] [-l|--latency] [-r|--read-count] [-w|--w2fr] [-c|--life-cycle] [-q|--qd-dist] [-a|--wa-dist] [-R|--read-size-dist] [-W|--write-size-dist] [-T|--trim-size-dist] <device_name> <slba[K|M|G|T]> <data_len[K|M|G|T]>
 ```
 
 Argument details:
@@ -41,6 +41,11 @@ Argument details:
 - `-r` / `--read-count`: enables `Read Count` distribution output
 - `-w` / `--w2fr`: enables `Write-to-First-Read Latency` real-time(ms) distribution output
 - `-c` / `--life-cycle`: enables `LBA Life Cycle` real-time(ms) distribution output
+- `-q` / `--qd-dist`: enables `QD` distribution output
+- `-a` / `--wa-dist`: enables `WA` (write amplification) distribution output
+- `-R` / `--read-size-dist`: enables read size distribution output (4K block units)
+- `-W` / `--write-size-dist`: enables write size distribution output (4K block units)
+- `-T` / `--trim-size-dist`: enables trim size distribution output (4K block units)
 
 Examples:
 
@@ -55,6 +60,8 @@ Examples:
 ./sfx_ctx_insight_analyze --w2fr /dev/nvme0n1 0 64M
 ./sfx_ctx_insight_analyze --life-cycle /dev/nvme0n1 0 64M
 ./sfx_ctx_insight_analyze -D -r -w -c /dev/nvme0n1 0 64M
+./sfx_ctx_insight_analyze --qd-dist --wa-dist /dev/nvme0n1 0 64M
+./sfx_ctx_insight_analyze --read-size-dist --write-size-dist --trim-size-dist /dev/nvme0n1 0 64M
 ```
 
 Notes:
@@ -122,6 +129,12 @@ The default post action:
   - `-w` / `--w2fr`: `Write-to-First-Read Latency` decoded real-time distribution (milliseconds)
   - `-c` / `--life-cycle`: `LBA Life Cycle` decoded real-time distribution (milliseconds)
   - Output format is segmented ratio buckets, similar to `-l/--latency` style
+- Optional workload distribution summary (independent switches):
+  - `-q` / `--qd-dist`: `QD` distribution from Stat records
+  - `-a` / `--wa-dist`: `WA` distribution from Stat records (`(log_write + folding_write) / hot_write`)
+  - `-R` / `--read-size-dist`: read size distribution (`length` field, 4K units)
+  - `-W` / `--write-size-dist`: write size distribution (`length` field, 4K units)
+  - `-T` / `--trim-size-dist`: trim size distribution (per-range `length`, 4K units)
 
 ## 5. Read/Process Pipeline
 
@@ -249,7 +262,7 @@ git push -u origin dev
 The repository includes a dedicated test binary that feeds file data into the post-action interface:
 
 ```bash
-./post_action_file_tester [-D|--debug] [-l|--latency] [-r|--read-count] [-w|--w2fr] [-c|--life-cycle] <input_file> [offset_bytes]
+./post_action_file_tester [-D|--debug] [-l|--latency] [-r|--read-count] [-w|--w2fr] [-c|--life-cycle] [-q|--qd-dist] [-a|--wa-dist] [-R|--read-size-dist] [-W|--write-size-dist] [-T|--trim-size-dist] <input_file> [offset_bytes]
 ```
 
 Behavior:
@@ -262,6 +275,11 @@ Behavior:
   - `-r` / `--read-count`
   - `-w` / `--w2fr`
   - `-c` / `--life-cycle`
+  - `-q` / `--qd-dist`
+  - `-a` / `--wa-dist`
+  - `-R` / `--read-size-dist`
+  - `-W` / `--write-size-dist`
+  - `-T` / `--trim-size-dist`
 - The only behavior difference from the main binary:
   - data source is `input_file` instead of NVMe device read
 - Returns:

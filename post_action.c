@@ -32,6 +32,7 @@
 #define NVME_POST_ACTION_U24_MASK 0xFFFFFFU
 #define NVME_POST_ACTION_U56_MASK 0x00FFFFFFFFFFFFFFULL
 #define NVME_POST_ACTION_TRIM_MAX_RANGES 256U
+#define NVME_POST_ACTION_RATIO_BUCKETS 10U
 
 typedef struct {
     uint8_t op;
@@ -104,6 +105,22 @@ static int g_post_action_debug_enabled = 0;
 static int g_post_action_lba_read_count_enabled = 0;
 static int g_post_action_lba_w2fr_enabled = 0;
 static int g_post_action_lba_life_cycle_enabled = 0;
+static int g_post_action_qd_dist_enabled = 0;
+static int g_post_action_wa_dist_enabled = 0;
+static int g_post_action_read_size_dist_enabled = 0;
+static int g_post_action_write_size_dist_enabled = 0;
+static int g_post_action_trim_size_dist_enabled = 0;
+static pthread_mutex_t g_post_action_workload_mutex = PTHREAD_MUTEX_INITIALIZER;
+static uint64_t g_post_action_qd_hist[NVME_POST_ACTION_RATIO_BUCKETS];
+static uint64_t g_post_action_wa_hist[NVME_POST_ACTION_RATIO_BUCKETS];
+static uint64_t g_post_action_read_size_hist[NVME_POST_ACTION_RATIO_BUCKETS];
+static uint64_t g_post_action_write_size_hist[NVME_POST_ACTION_RATIO_BUCKETS];
+static uint64_t g_post_action_trim_size_hist[NVME_POST_ACTION_RATIO_BUCKETS];
+static uint64_t g_post_action_qd_samples = 0ULL;
+static uint64_t g_post_action_wa_samples = 0ULL;
+static uint64_t g_post_action_read_size_samples = 0ULL;
+static uint64_t g_post_action_write_size_samples = 0ULL;
+static uint64_t g_post_action_trim_size_samples = 0ULL;
 
 void nvme_post_action_reset_invalid_count(void) {
     pthread_mutex_lock(&g_post_action_invalid_mutex);
@@ -123,6 +140,51 @@ static void post_action_add_invalid_count(uint64_t delta) {
     pthread_mutex_lock(&g_post_action_invalid_mutex);
     g_post_action_invalid_records += delta;
     pthread_mutex_unlock(&g_post_action_invalid_mutex);
+}
+
+static const char *label_qd(uint32_t idx) {
+    static const char *labels[10] = {
+        "0", "1", "2", "3-4", "5-8", "9-16", "17-32", "33-64", "65-128", ">=129"
+    };
+    return labels[idx < 10U ? idx : 9U];
+}
+
+static const char *label_wa(uint32_t idx) {
+    static const char *labels[10] = {
+        "0", "(0,1.0)", "[1.0,1.5)", "[1.5,2.0)", "[2.0,3.0)",
+        "[3.0,5.0)", "[5.0,10.0)", "[10.0,20.0)", "[20.0,50.0)", ">=50.0"
+    };
+    return labels[idx < 10U ? idx : 9U];
+}
+
+static const char *label_io_size(uint32_t idx) {
+    static const char *labels[10] = {
+        "0", "1x4K", "2x4K", "3-4x4K", "5-8x4K",
+        "9-16x4K", "17-32x4K", "33-64x4K", "65-128x4K", ">=129x4K"
+    };
+    return labels[idx < 10U ? idx : 9U];
+}
+
+static void print_histogram_section(const char *title,
+                                    const char *item_name,
+                                    const uint64_t hist[10],
+                                    uint64_t total_samples,
+                                    const char *(*label_fn)(uint32_t)) {
+    if (hist == NULL || label_fn == NULL) {
+        return;
+    }
+    fprintf(stderr, "%s:\n", title);
+    for (uint32_t i = 0U; i < 10U; ++i) {
+        double pct = 0.0;
+        if (total_samples != 0ULL) {
+            pct = ((double)hist[i] * 100.0) / (double)total_samples;
+        }
+        fprintf(stderr, "  %-16s %12s count=%llu (%.2f%%)\n",
+                item_name,
+                label_fn(i),
+                (unsigned long long)hist[i],
+                pct);
+    }
 }
 
 static uint64_t marker_record_to_lba_locked(uint64_t record_offset_bytes) {
@@ -713,6 +775,51 @@ int nvme_post_action_get_lba_life_cycle_enabled(void) {
     return g_post_action_lba_life_cycle_enabled;
 }
 
+int nvme_post_action_set_qd_dist_enabled(int enabled) {
+    g_post_action_qd_dist_enabled = (enabled != 0) ? 1 : 0;
+    return 0;
+}
+
+int nvme_post_action_get_qd_dist_enabled(void) {
+    return g_post_action_qd_dist_enabled;
+}
+
+int nvme_post_action_set_wa_dist_enabled(int enabled) {
+    g_post_action_wa_dist_enabled = (enabled != 0) ? 1 : 0;
+    return 0;
+}
+
+int nvme_post_action_get_wa_dist_enabled(void) {
+    return g_post_action_wa_dist_enabled;
+}
+
+int nvme_post_action_set_read_size_dist_enabled(int enabled) {
+    g_post_action_read_size_dist_enabled = (enabled != 0) ? 1 : 0;
+    return 0;
+}
+
+int nvme_post_action_get_read_size_dist_enabled(void) {
+    return g_post_action_read_size_dist_enabled;
+}
+
+int nvme_post_action_set_write_size_dist_enabled(int enabled) {
+    g_post_action_write_size_dist_enabled = (enabled != 0) ? 1 : 0;
+    return 0;
+}
+
+int nvme_post_action_get_write_size_dist_enabled(void) {
+    return g_post_action_write_size_dist_enabled;
+}
+
+int nvme_post_action_set_trim_size_dist_enabled(int enabled) {
+    g_post_action_trim_size_dist_enabled = (enabled != 0) ? 1 : 0;
+    return 0;
+}
+
+int nvme_post_action_get_trim_size_dist_enabled(void) {
+    return g_post_action_trim_size_dist_enabled;
+}
+
 void nvme_post_action_print_lba_stats_report(void) {
     if (g_post_action_lba_read_count_enabled == 0 &&
         g_post_action_lba_w2fr_enabled == 0 &&
@@ -722,4 +829,39 @@ void nvme_post_action_print_lba_stats_report(void) {
     nvme_post_action_stats_print_ratio_summary(g_post_action_lba_read_count_enabled,
                                                g_post_action_lba_w2fr_enabled,
                                                g_post_action_lba_life_cycle_enabled);
+}
+
+void nvme_post_action_print_workload_stats_report(void) {
+    if (g_post_action_qd_dist_enabled == 0 &&
+        g_post_action_wa_dist_enabled == 0 &&
+        g_post_action_read_size_dist_enabled == 0 &&
+        g_post_action_write_size_dist_enabled == 0 &&
+        g_post_action_trim_size_dist_enabled == 0) {
+        return;
+    }
+    pthread_mutex_lock(&g_post_action_workload_mutex);
+    if (g_post_action_qd_dist_enabled != 0) {
+        print_histogram_section("QD distribution", "QD", g_post_action_qd_hist,
+                                g_post_action_qd_samples, label_qd);
+    }
+    if (g_post_action_wa_dist_enabled != 0) {
+        print_histogram_section("WA distribution", "WA", g_post_action_wa_hist,
+                                g_post_action_wa_samples, label_wa);
+    }
+    if (g_post_action_read_size_dist_enabled != 0) {
+        print_histogram_section("Read Size distribution (4K blocks)", "Read Size",
+                                g_post_action_read_size_hist, g_post_action_read_size_samples,
+                                label_io_size);
+    }
+    if (g_post_action_write_size_dist_enabled != 0) {
+        print_histogram_section("Write Size distribution (4K blocks)", "Write Size",
+                                g_post_action_write_size_hist, g_post_action_write_size_samples,
+                                label_io_size);
+    }
+    if (g_post_action_trim_size_dist_enabled != 0) {
+        print_histogram_section("Trim Size distribution (4K blocks)", "Trim Size",
+                                g_post_action_trim_size_hist, g_post_action_trim_size_samples,
+                                label_io_size);
+    }
+    pthread_mutex_unlock(&g_post_action_workload_mutex);
 }

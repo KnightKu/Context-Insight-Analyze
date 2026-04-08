@@ -71,6 +71,22 @@ if rg -i "Write-to-First-Read Latency\\(real ms\\) distribution|LBA Life Cycle\\
   exit 1
 fi
 
+echo "  WORKLOAD-STATS expected: qd/wa/read-write-trim size distribution output"
+if ! ./post_action_file_tester \
+  --qd-dist \
+  --wa-dist \
+  --read-size-dist \
+  --write-size-dist \
+  --trim-size-dist \
+  "tests/fixtures/valid_mixed.bin" >/tmp/post_action_workload_stats.log 2>&1; then
+  echo "unexpected failure for workload stats output case" >&2
+  exit 1
+fi
+if ! rg -i "QD distribution:|WA distribution:|Read Size distribution \\(4K blocks\\):|Write Size distribution \\(4K blocks\\):|Trim Size distribution \\(4K blocks\\):" "/tmp/post_action_workload_stats.log" >/dev/null; then
+  echo "missing workload distribution output sections" >&2
+  exit 1
+fi
+
 echo "  LATENCY expected: -l enables latency summary output"
 if ! ./post_action_file_tester --latency "tests/fixtures/valid_mixed.bin" >/tmp/post_action_latency.log 2>&1; then
   echo "unexpected failure for latency output case" >&2

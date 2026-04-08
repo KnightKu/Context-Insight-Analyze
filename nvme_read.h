@@ -27,11 +27,15 @@ int nvme_read_set_lba_stats_w2fr(int enabled);
 
 int nvme_read_set_lba_stats_life_cycle(int enabled);
 
-int nvme_read_set_lba_stats_read_count(int enabled);
+int nvme_read_set_qd_dist(int enabled);
 
-int nvme_read_set_lba_stats_w2fr(int enabled);
+int nvme_read_set_wa_dist(int enabled);
 
-int nvme_read_set_lba_stats_life_cycle(int enabled);
+int nvme_read_set_read_size_dist(int enabled);
+
+int nvme_read_set_write_size_dist(int enabled);
+
+int nvme_read_set_trim_size_dist(int enabled);
 
 int nvme_post_action_process(void *data,
                              uint32_t data_len,

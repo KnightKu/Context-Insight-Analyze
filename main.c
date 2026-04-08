@@ -68,6 +68,11 @@ int main(int argc, char *argv[]) {
     int lba_stats_read_count_enabled = 0;
     int lba_stats_w2fr_enabled = 0;
     int lba_stats_life_cycle_enabled = 0;
+    int qd_dist_enabled = 0;
+    int wa_dist_enabled = 0;
+    int read_size_dist_enabled = 0;
+    int write_size_dist_enabled = 0;
+    int trim_size_dist_enabled = 0;
     while (argi < argc) {
         if (strcmp(argv[argi], "-D") == 0 || strcmp(argv[argi], "--debug") == 0) {
             debug_enabled = 1;
@@ -94,6 +99,31 @@ int main(int argc, char *argv[]) {
             ++argi;
             continue;
         }
+        if (strcmp(argv[argi], "-q") == 0 || strcmp(argv[argi], "--qd-dist") == 0) {
+            qd_dist_enabled = 1;
+            ++argi;
+            continue;
+        }
+        if (strcmp(argv[argi], "-a") == 0 || strcmp(argv[argi], "--wa-dist") == 0) {
+            wa_dist_enabled = 1;
+            ++argi;
+            continue;
+        }
+        if (strcmp(argv[argi], "-R") == 0 || strcmp(argv[argi], "--read-size-dist") == 0) {
+            read_size_dist_enabled = 1;
+            ++argi;
+            continue;
+        }
+        if (strcmp(argv[argi], "-W") == 0 || strcmp(argv[argi], "--write-size-dist") == 0) {
+            write_size_dist_enabled = 1;
+            ++argi;
+            continue;
+        }
+        if (strcmp(argv[argi], "-T") == 0 || strcmp(argv[argi], "--trim-size-dist") == 0) {
+            trim_size_dist_enabled = 1;
+            ++argi;
+            continue;
+        }
         break;
     }
 
@@ -101,6 +131,8 @@ int main(int argc, char *argv[]) {
         fprintf(stderr,
                 "usage: %s [-D|--debug] [-l|--latency] "
                 "[-r|--read-count] [-w|--w2fr] [-c|--life-cycle] "
+                "[-q|--qd-dist] [-a|--wa-dist] "
+                "[-R|--read-size-dist] [-W|--write-size-dist] [-T|--trim-size-dist] "
                 "<device_name> <slba[K|M|G|T]> <data_len[K|M|G|T]>\n",
                 argv[0]);
         return 1;
@@ -125,6 +157,11 @@ int main(int argc, char *argv[]) {
     nvme_read_set_lba_stats_read_count(lba_stats_read_count_enabled);
     nvme_read_set_lba_stats_w2fr(lba_stats_w2fr_enabled);
     nvme_read_set_lba_stats_life_cycle(lba_stats_life_cycle_enabled);
+    nvme_read_set_qd_dist(qd_dist_enabled);
+    nvme_read_set_wa_dist(wa_dist_enabled);
+    nvme_read_set_read_size_dist(read_size_dist_enabled);
+    nvme_read_set_write_size_dist(write_size_dist_enabled);
+    nvme_read_set_trim_size_dist(trim_size_dist_enabled);
 
     if (nvme_read(device_name, slba, data_len, NULL) != 0) {
         fprintf(stderr, "nvme_read failed: %s\n", strerror(errno));
