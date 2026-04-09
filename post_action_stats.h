@@ -74,8 +74,6 @@ void nvme_post_action_stats_print_ratio_summary(int print_read_count,
                                                 int print_w2fr,
                                                 int print_life_cycle);
 
-void nvme_post_action_stats_set_print_debug(int enabled);
-
 void nvme_post_action_stats_print_read_count_ratio_summary(void);
 
 void nvme_post_action_stats_print_w2fr_ratio_summary(void);

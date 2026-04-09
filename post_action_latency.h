@@ -5,8 +5,6 @@
 
 void nvme_post_action_latency_set_enabled(int enabled);
 
-void nvme_post_action_latency_set_debug(int enabled);
-
 int nvme_post_action_latency_get_enabled(void);
 
 void nvme_post_action_latency_record_read(uint32_t latency_us);
@@ -17,6 +15,6 @@ void nvme_post_action_latency_record_trim(uint32_t latency_us);
 
 void nvme_post_action_latency_reset(void);
 
-void nvme_post_action_latency_print_summary(int debug_enabled);
+void nvme_post_action_latency_print_summary(void);
 
 #endif  // POST_ACTION_LATENCY_H

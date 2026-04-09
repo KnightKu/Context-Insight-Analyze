@@ -45,7 +45,6 @@ done
 
 echo "  LBA-STATS expected: segmented distribution output"
 if ! ./post_action_file_tester \
-  --debug \
   --read-count \
   --w2fr \
   --life-cycle \
@@ -59,7 +58,7 @@ if ! rg -i "Read Count distribution|Write-to-First-Read Latency\\(real ms\\) dis
 fi
 
 echo "  LBA-STATS selective output expected"
-if ! ./post_action_file_tester --debug --read-count "tests/fixtures/valid_mixed.bin" >/tmp/post_action_lba_read_only.log 2>&1; then
+if ! ./post_action_file_tester --read-count "tests/fixtures/valid_mixed.bin" >/tmp/post_action_lba_read_only.log 2>&1; then
   echo "unexpected failure for lba read-count output case" >&2
   exit 1
 fi
@@ -74,7 +73,6 @@ fi
 
 echo "  WORKLOAD-STATS expected: qd/wa/read-write-trim size distribution output"
 if ! ./post_action_file_tester \
-  --debug \
   --qd-dist \
   --wa-dist \
   --read-size-dist \
@@ -98,7 +96,7 @@ if ! rg "Read Size\\s+4K|Write Size\\s+8K|Trim Size\\s+16K" "/tmp/post_action_wo
 fi
 
 echo "  LATENCY expected: -l enables latency summary output"
-if ! ./post_action_file_tester --debug --latency "tests/fixtures/valid_mixed.bin" >/tmp/post_action_latency.log 2>&1; then
+if ! ./post_action_file_tester --latency "tests/fixtures/valid_mixed.bin" >/tmp/post_action_latency.log 2>&1; then
   echo "unexpected failure for latency output case" >&2
   exit 1
 fi

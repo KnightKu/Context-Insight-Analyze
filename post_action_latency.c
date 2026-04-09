@@ -18,7 +18,6 @@ typedef struct {
 
 static pthread_mutex_t g_latency_mutex = PTHREAD_MUTEX_INITIALIZER;
 static int g_latency_enabled = 0;
-static int g_latency_debug_enabled = 0;
 static latency_bucket_t g_latency_read = {.name = "read", .count = 0ULL, .min_us = UINT64_MAX, .max_us = 0ULL, .sum_us = 0ULL};
 static latency_bucket_t g_latency_write = {.name = "write", .count = 0ULL, .min_us = UINT64_MAX, .max_us = 0ULL, .sum_us = 0ULL};
 static latency_bucket_t g_latency_trim = {.name = "trim", .count = 0ULL, .min_us = UINT64_MAX, .max_us = 0ULL, .sum_us = 0ULL};
@@ -26,12 +25,6 @@ static latency_bucket_t g_latency_trim = {.name = "trim", .count = 0ULL, .min_us
 void nvme_post_action_latency_set_enabled(int enabled) {
     pthread_mutex_lock(&g_latency_mutex);
     g_latency_enabled = (enabled != 0) ? 1 : 0;
-    pthread_mutex_unlock(&g_latency_mutex);
-}
-
-void nvme_post_action_latency_set_debug(int enabled) {
-    pthread_mutex_lock(&g_latency_mutex);
-    g_latency_debug_enabled = (enabled != 0) ? 1 : 0;
     pthread_mutex_unlock(&g_latency_mutex);
 }
 
@@ -169,17 +162,15 @@ static void print_bucket(const latency_bucket_t *bucket) {
     print_percentiles_line(bucket->name, sorted, sorted_n);
 }
 
-void nvme_post_action_latency_print_summary(int debug_enabled) {
+void nvme_post_action_latency_print_summary(void) {
     pthread_mutex_lock(&g_latency_mutex);
     int enabled = g_latency_enabled;
-    g_latency_debug_enabled = (debug_enabled != 0) ? 1 : 0;
-    int debug = g_latency_debug_enabled;
     latency_bucket_t read_copy = g_latency_read;
     latency_bucket_t write_copy = g_latency_write;
     latency_bucket_t trim_copy = g_latency_trim;
     pthread_mutex_unlock(&g_latency_mutex);
 
-    if (enabled == 0 || debug == 0) {
+    if (enabled == 0) {
         return;
     }
 

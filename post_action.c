@@ -840,8 +840,6 @@ int nvme_post_action_process(void *data, uint32_t data_len, uint64_t offset_byte
 
 int nvme_post_action_set_debug(int enabled) {
     g_post_action_debug_enabled = (enabled != 0) ? 1 : 0;
-    nvme_post_action_stats_print_summary_debug(g_post_action_debug_enabled);
-    nvme_post_action_latency_set_debug(g_post_action_debug_enabled);
     return 0;
 }
 
@@ -883,10 +881,7 @@ void nvme_post_action_reset_latency_stats(void) {
 }
 
 void nvme_post_action_print_latency_report(void) {
-    if (g_post_action_debug_enabled == 0) {
-        return;
-    }
-    nvme_post_action_latency_print_summary(g_post_action_debug_enabled);
+    nvme_post_action_latency_print_summary();
 }
 
 int nvme_post_action_set_lba_read_count_enabled(int enabled) {
@@ -962,9 +957,6 @@ int nvme_post_action_get_trim_size_dist_enabled(void) {
 }
 
 void nvme_post_action_print_lba_stats_report(void) {
-    if (g_post_action_debug_enabled == 0) {
-        return;
-    }
     if (g_post_action_lba_read_count_enabled == 0 &&
         g_post_action_lba_w2fr_enabled == 0 &&
         g_post_action_lba_life_cycle_enabled == 0) {
@@ -976,9 +968,6 @@ void nvme_post_action_print_lba_stats_report(void) {
 }
 
 void nvme_post_action_print_workload_stats_report(void) {
-    if (g_post_action_debug_enabled == 0) {
-        return;
-    }
     if (g_post_action_qd_dist_enabled == 0 &&
         g_post_action_wa_dist_enabled == 0 &&
         g_post_action_read_size_dist_enabled == 0 &&
