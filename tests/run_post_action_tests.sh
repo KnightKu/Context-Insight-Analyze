@@ -82,7 +82,7 @@ if ! ./post_action_file_tester \
   echo "unexpected failure for workload stats output case" >&2
   exit 1
 fi
-if ! rg -i "QD distribution:|WA distribution:|Read Size distribution \\(4K blocks\\):|Write Size distribution \\(4K blocks\\):|Trim Size distribution \\(4K blocks\\):" "/tmp/post_action_workload_stats.log" >/dev/null; then
+if ! rg -i "QD distribution:|WA distribution:|Read Size distribution \\(4K blocks, 0~1M\\):|Write Size distribution \\(4K blocks, 0~1M\\):|Trim Size distribution \\(4K blocks\\):" "/tmp/post_action_workload_stats.log" >/dev/null; then
   echo "missing workload distribution output sections" >&2
   exit 1
 fi
@@ -90,8 +90,12 @@ if ! rg "\\[1\\.0,1\\.4\\)|\\[4\\.6,5\\.0\\]" "/tmp/post_action_workload_stats.l
   echo "missing compressed WA bucket labels [1.0,1.4) or [4.6,5.0]" >&2
   exit 1
 fi
-if ! rg "Read Size\\s+4K|Write Size\\s+8K|Trim Size\\s+16K" "/tmp/post_action_workload_stats.log" >/dev/null; then
-  echo "missing explicit IO-size labels (4K/8K/16K...) in workload output" >&2
+if ! rg "Read Size distribution \\(4K blocks, 0~1M\\):|Write Size distribution \\(4K blocks, 0~1M\\):" "/tmp/post_action_workload_stats.log" >/dev/null; then
+  echo "missing 0~1M read/write size distribution headers" >&2
+  exit 1
+fi
+if ! rg "Read Size\\s+4K|Read Size\\s+1M|Write Size\\s+8K|Write Size\\s+1M|Trim Size\\s+16K" "/tmp/post_action_workload_stats.log" >/dev/null; then
+  echo "missing expected read/write/trim size labels in workload output" >&2
   exit 1
 fi
 

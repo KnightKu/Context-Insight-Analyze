@@ -43,8 +43,8 @@ Argument details:
 - `-c` / `--life-cycle`: enables `LBA Life Cycle` real-time(ms) distribution output
 - `-q` / `--qd-dist`: enables `QD` distribution output
 - `-a` / `--wa-dist`: enables `WA` (write amplification) distribution output
-- `-R` / `--read-size-dist`: enables read size distribution output (4K block units)
-- `-W` / `--write-size-dist`: enables write size distribution output (4K block units)
+- `-R` / `--read-size-dist`: enables read size distribution output (4K units, 0~1M coverage)
+- `-W` / `--write-size-dist`: enables write size distribution output (4K units, 0~1M coverage)
 - `-T` / `--trim-size-dist`: enables trim size distribution output (4K block units)
 
 Examples:
@@ -133,8 +133,8 @@ The default post action:
   - `-q` / `--qd-dist`: `QD` distribution from Stat records
   - `-a` / `--wa-dist`: `WA` distribution from Stat records (`(hot_write + folding_write) / hot_write`)
     - 10 fixed buckets compressed to range `1.0~5.0`: `[1.0,1.4) ... [4.6,5.0]`
-  - `-R` / `--read-size-dist`: read size distribution (`length` field, 4K units)
-  - `-W` / `--write-size-dist`: write size distribution (`length` field, 4K units)
+  - `-R` / `--read-size-dist`: read size distribution (`length` field, 4K units), bucketized from `0` to `1M` by `4K` step
+  - `-W` / `--write-size-dist`: write size distribution (`length` field, 4K units), bucketized from `0` to `1M` by `4K` step
   - `-T` / `--trim-size-dist`: trim size distribution (per-range `length`, 4K units)
 
 ## 5. Read/Process Pipeline
