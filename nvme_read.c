@@ -649,6 +649,7 @@ int nvme_read(const char *device_name,
     // Latency summary is controlled by -l/--latency and should not depend on debug.
     nvme_post_action_print_latency_report();
     nvme_post_action_print_lba_stats_report();
+    nvme_post_action_print_workload_stats_report();
 
     close(nvme_fd);
     return 0;
