@@ -45,6 +45,7 @@ done
 
 echo "  LBA-STATS expected: segmented distribution output"
 if ! ./post_action_file_tester \
+  --debug \
   --read-count \
   --w2fr \
   --life-cycle \
@@ -58,7 +59,7 @@ if ! rg -i "Read Count distribution|Write-to-First-Read Latency\\(real ms\\) dis
 fi
 
 echo "  LBA-STATS selective output expected"
-if ! ./post_action_file_tester --read-count "tests/fixtures/valid_mixed.bin" >/tmp/post_action_lba_read_only.log 2>&1; then
+if ! ./post_action_file_tester --debug --read-count "tests/fixtures/valid_mixed.bin" >/tmp/post_action_lba_read_only.log 2>&1; then
   echo "unexpected failure for lba read-count output case" >&2
   exit 1
 fi
@@ -73,6 +74,7 @@ fi
 
 echo "  WORKLOAD-STATS expected: qd/wa/read-write-trim size distribution output"
 if ! ./post_action_file_tester \
+  --debug \
   --qd-dist \
   --wa-dist \
   --read-size-dist \
@@ -96,7 +98,7 @@ if ! rg "Read Size\\s+4K|Write Size\\s+8K|Trim Size\\s+16K" "/tmp/post_action_wo
 fi
 
 echo "  LATENCY expected: -l enables latency summary output"
-if ! ./post_action_file_tester --latency "tests/fixtures/valid_mixed.bin" >/tmp/post_action_latency.log 2>&1; then
+if ! ./post_action_file_tester --debug --latency "tests/fixtures/valid_mixed.bin" >/tmp/post_action_latency.log 2>&1; then
   echo "unexpected failure for latency output case" >&2
   exit 1
 fi
@@ -121,7 +123,7 @@ fi
 
 for f in "${SOFT_STOP_CASES[@]}"; do
   echo "  SOFT-STOP expected (overwrite should stop parse/read but not fail): ${f}"
-  if ! ./post_action_file_tester "${f}" >/tmp/post_action_overwrite.log 2>&1; then
+  if ! ./post_action_file_tester --debug "${f}" >/tmp/post_action_overwrite.log 2>&1; then
     echo "unexpected failure for ${f}" >&2
     exit 1
   fi
@@ -132,7 +134,7 @@ for f in "${SOFT_STOP_CASES[@]}"; do
 done
 
 echo "  SOFT-STOP expected (all-zero record indicates invalid tail): tests/fixtures/valid_termination.bin"
-if ! ./post_action_file_tester "tests/fixtures/valid_termination.bin" >/tmp/post_action_all_zero.log 2>&1; then
+if ! ./post_action_file_tester --debug "tests/fixtures/valid_termination.bin" >/tmp/post_action_all_zero.log 2>&1; then
   echo "unexpected failure for valid_termination.bin" >&2
   exit 1
 fi

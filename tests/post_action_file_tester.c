@@ -244,13 +244,17 @@ int main(int argc, char *argv[]) {
     }
     if (rc != 0) {
         if (errno == ECANCELED) {
-            fprintf(stderr,
-                    "post action soft-stop: overwrite detected, stop further parse at offset=%" PRIu64 "\n",
-                    offset_bytes);
+            if (debug_enabled != 0) {
+                fprintf(stderr,
+                        "post action soft-stop: overwrite detected, stop further parse at offset=%" PRIu64 "\n",
+                        offset_bytes);
+            }
         } else if (errno == ENODATA) {
-            fprintf(stderr,
-                    "post action soft-stop: all-zero record detected, stop further parse at offset=%" PRIu64 "\n",
-                    offset_bytes);
+            if (debug_enabled != 0) {
+                fprintf(stderr,
+                        "post action soft-stop: all-zero record detected, stop further parse at offset=%" PRIu64 "\n",
+                        offset_bytes);
+            }
         } else {
             fprintf(stderr, "post action failed: %s\n", strerror(errno));
             free(buf);
@@ -258,8 +262,10 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    fprintf(stderr, "post action success: file=%s bytes=%zu offset=%" PRIu64 "\n",
-            input_file, len, offset_bytes);
+    if (debug_enabled != 0) {
+        fprintf(stderr, "post action success: file=%s bytes=%zu offset=%" PRIu64 "\n",
+                input_file, len, offset_bytes);
+    }
     if (latency_enabled != 0) {
         nvme_post_action_print_latency_report();
     }

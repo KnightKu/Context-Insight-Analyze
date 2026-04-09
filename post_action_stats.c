@@ -24,6 +24,7 @@ typedef struct {
 static pthread_mutex_t g_stats_mutex = PTHREAD_MUTEX_INITIALIZER;
 static int g_stats_inited = 0;
 static int g_stats_enabled = 0;
+static int g_stats_debug_enabled = 0;
 static uint32_t g_sector_size = NVME_POST_ACTION_DEFAULT_SECTOR_SIZE;
 static uint64_t g_bucket_count = 0ULL;
 static uint64_t g_total_bytes = 0ULL;
@@ -282,6 +283,9 @@ static int should_print_section(int print_read_count,
 void nvme_post_action_stats_print_ratio_summary(int print_read_count,
                                                 int print_w2fr,
                                                 int print_life_cycle) {
+    if (g_stats_debug_enabled == 0) {
+        return;
+    }
     if (should_print_section(print_read_count, print_w2fr, print_life_cycle) == 0) {
         return;
     }
@@ -766,6 +770,9 @@ void nvme_post_action_stats_update_read(uint64_t start_lba,
 }
 
 void nvme_post_action_stats_print_summary_debug(int debug_enabled) {
+    pthread_mutex_lock(&g_stats_mutex);
+    g_stats_debug_enabled = (debug_enabled != 0) ? 1 : 0;
+    pthread_mutex_unlock(&g_stats_mutex);
     if (debug_enabled == 0) {
         return;
     }

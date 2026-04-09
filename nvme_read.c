@@ -457,8 +457,10 @@ int nvme_read_set_mdts_bytes(uint64_t mdts_bytes) {
 static uint64_t get_mdts_chunk_bytes_or_default(int nvme_fd) {
     unsigned char *id_ctrl = NULL;
     if (posix_memalign((void **)&id_ctrl, 4096, 4096) != 0) {
-        fprintf(stderr, "posix_memalign failed for identify buffer, fallback chunk=%llu\n",
-                (unsigned long long)NVME_READ_CHUNK_BYTES);
+        if (g_nvme_read_debug != 0) {
+            fprintf(stderr, "posix_memalign failed for identify buffer, fallback chunk=%llu\n",
+                    (unsigned long long)NVME_READ_CHUNK_BYTES);
+        }
         return NVME_READ_CHUNK_BYTES;
     }
     memset(id_ctrl, 0, 4096);
@@ -472,8 +474,10 @@ static uint64_t get_mdts_chunk_bytes_or_default(int nvme_fd) {
     admin_cmd.cdw10 = 1;      // CNS = 1, Identify Controller
 
     if (ioctl(nvme_fd, NVME_IOCTL_ADMIN_CMD, &admin_cmd) < 0) {
-        fprintf(stderr, "identify controller failed: %s, fallback chunk=%llu\n",
-                strerror(errno), (unsigned long long)NVME_READ_CHUNK_BYTES);
+        if (g_nvme_read_debug != 0) {
+            fprintf(stderr, "identify controller failed: %s, fallback chunk=%llu\n",
+                    strerror(errno), (unsigned long long)NVME_READ_CHUNK_BYTES);
+        }
         free(id_ctrl);
         return NVME_READ_CHUNK_BYTES;
     }
@@ -484,33 +488,43 @@ static uint64_t get_mdts_chunk_bytes_or_default(int nvme_fd) {
 
     if (mdts_raw == 0U) {
         // 0 means no MDTS limit reported, keep using configured default chunk.
-        fprintf(stderr, "mdts=0 (no limit reported), use fallback chunk=%llu\n",
-                (unsigned long long)NVME_READ_CHUNK_BYTES);
+        if (g_nvme_read_debug != 0) {
+            fprintf(stderr, "mdts=0 (no limit reported), use fallback chunk=%llu\n",
+                    (unsigned long long)NVME_READ_CHUNK_BYTES);
+        }
         return NVME_READ_CHUNK_BYTES;
     }
 
     uint8_t mdts = mdts_raw;
     if (mdts > NVME_MDTS_MAX_CAP) {
-        fprintf(stderr, "mdts=%u exceeds cap=%u, use capped value\n",
-                (unsigned int)mdts_raw, (unsigned int)NVME_MDTS_MAX_CAP);
+        if (g_nvme_read_debug != 0) {
+            fprintf(stderr, "mdts=%u exceeds cap=%u, use capped value\n",
+                    (unsigned int)mdts_raw, (unsigned int)NVME_MDTS_MAX_CAP);
+        }
         mdts = NVME_MDTS_MAX_CAP;
     }
 
     uint64_t chunk_bytes = (1ULL << (12U + (uint64_t)mdts));
     if (chunk_bytes < NVME_LBA_SIZE_BYTES || (chunk_bytes % NVME_LBA_SIZE_BYTES) != 0ULL) {
-        fprintf(stderr, "invalid mdts-derived chunk=%llu, fallback chunk=%llu\n",
-                (unsigned long long)chunk_bytes, (unsigned long long)NVME_READ_CHUNK_BYTES);
+        if (g_nvme_read_debug != 0) {
+            fprintf(stderr, "invalid mdts-derived chunk=%llu, fallback chunk=%llu\n",
+                    (unsigned long long)chunk_bytes, (unsigned long long)NVME_READ_CHUNK_BYTES);
+        }
         return NVME_READ_CHUNK_BYTES;
     }
 
     if (chunk_bytes > (uint64_t)UINT32_MAX) {
-        fprintf(stderr, "mdts-derived chunk too large=%llu, fallback chunk=%llu\n",
-                (unsigned long long)chunk_bytes, (unsigned long long)NVME_READ_CHUNK_BYTES);
+        if (g_nvme_read_debug != 0) {
+            fprintf(stderr, "mdts-derived chunk too large=%llu, fallback chunk=%llu\n",
+                    (unsigned long long)chunk_bytes, (unsigned long long)NVME_READ_CHUNK_BYTES);
+        }
         return NVME_READ_CHUNK_BYTES;
     }
 
-    fprintf(stderr, "mdts=%u, read chunk=%llu bytes\n",
-            (unsigned int)mdts, (unsigned long long)chunk_bytes);
+    if (g_nvme_read_debug != 0) {
+        fprintf(stderr, "mdts=%u, read chunk=%llu bytes\n",
+                (unsigned int)mdts, (unsigned long long)chunk_bytes);
+    }
     return chunk_bytes;
 }
 
@@ -535,7 +549,9 @@ int nvme_read(const char *device_name,
     }
 
     uint32_t sector_size = (uint32_t)NVME_LBA_SIZE_BYTES;
-    fprintf(stderr, "using fixed sector_size=%u bytes\n", (unsigned int)sector_size);
+    if (g_nvme_read_debug != 0) {
+        fprintf(stderr, "using fixed sector_size=%u bytes\n", (unsigned int)sector_size);
+    }
     (void)nvme_post_action_set_sector_size(sector_size);
     (void)nvme_post_action_set_base_lba(slba);
 

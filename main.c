@@ -168,7 +168,9 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    fprintf(stderr, "nvme passthru read done. slba=%" PRIu64 " data_len=%" PRIu64 "\n",
-            slba, data_len);
+    if (debug_enabled != 0) {
+        fprintf(stderr, "nvme passthru read done. slba=%" PRIu64 " data_len=%" PRIu64 "\n",
+                slba, data_len);
+    }
     return 0;
 }
