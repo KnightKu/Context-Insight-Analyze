@@ -218,8 +218,8 @@ Runtime workload distribution report switches:
   - `QD` distribution (from Stat records)
   - `WA` distribution (`(hot_write + folding_write) / hot_write`)
     - bucket ranges are compressed into 10 fixed bins in `[1.0, 5.0]`
-  - `Read Size` distribution (4K blocks), fine-grained in 4K steps covering `0~1M`
-  - `Write Size` distribution (4K blocks), fine-grained in 4K steps covering `0~1M`
+  - `Read Size` distribution (4K blocks)
+  - `Write Size` distribution (4K blocks)
   - `Trim Size` distribution (4K blocks)
 
 ## 7. LBA Post-Action Statistics (5-Byte Bucket Model)

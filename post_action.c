@@ -33,8 +33,6 @@
 #define NVME_POST_ACTION_U56_MASK 0x00FFFFFFFFFFFFFFULL
 #define NVME_POST_ACTION_TRIM_MAX_RANGES 256U
 #define NVME_POST_ACTION_RATIO_BUCKETS 10U
-#define NVME_POST_ACTION_IO_SIZE_MAX_4K 256U
-#define NVME_POST_ACTION_IO_SIZE_BUCKETS (NVME_POST_ACTION_IO_SIZE_MAX_4K + 1U)
 
 typedef struct {
     uint8_t op;
@@ -115,8 +113,8 @@ static int g_post_action_trim_size_dist_enabled = 0;
 static pthread_mutex_t g_post_action_workload_mutex = PTHREAD_MUTEX_INITIALIZER;
 static uint64_t g_post_action_qd_hist[NVME_POST_ACTION_RATIO_BUCKETS];
 static uint64_t g_post_action_wa_hist[NVME_POST_ACTION_RATIO_BUCKETS];
-static uint64_t g_post_action_read_size_hist[NVME_POST_ACTION_IO_SIZE_BUCKETS];
-static uint64_t g_post_action_write_size_hist[NVME_POST_ACTION_IO_SIZE_BUCKETS];
+static uint64_t g_post_action_read_size_hist[NVME_POST_ACTION_RATIO_BUCKETS];
+static uint64_t g_post_action_write_size_hist[NVME_POST_ACTION_RATIO_BUCKETS];
 static uint64_t g_post_action_trim_size_hist[NVME_POST_ACTION_RATIO_BUCKETS];
 static uint64_t g_post_action_qd_samples = 0ULL;
 static uint64_t g_post_action_wa_samples = 0ULL;
@@ -159,7 +157,7 @@ static const char *label_wa(uint32_t idx) {
     return labels[idx < 10U ? idx : 9U];
 }
 
-static const char *label_trim_size(uint32_t idx) {
+static const char *label_io_size(uint32_t idx) {
     static const char *labels[10] = {
         "0", "4K", "8K", "16K", "32K",
         "64K", "128K", "256K", "512K", ">=1M"
@@ -212,17 +210,7 @@ static uint32_t bucket_index_wa_x1000(uint32_t wa_x1000) {
     return idx;
 }
 
-static uint32_t bucket_index_rw_size_4k(uint64_t len_lba) {
-    if (len_lba == 0ULL) {
-        return 0U;
-    }
-    if (len_lba >= (uint64_t)NVME_POST_ACTION_IO_SIZE_MAX_4K) {
-        return NVME_POST_ACTION_IO_SIZE_MAX_4K;
-    }
-    return (uint32_t)len_lba;
-}
-
-static uint32_t bucket_index_trim_size_4k(uint64_t len_lba) {
+static uint32_t bucket_index_io_size_4k(uint64_t len_lba) {
     if (len_lba == 0ULL) {
         return 0U;
     }
@@ -284,50 +272,19 @@ static void record_io_size(uint8_t op, uint64_t len_lba) {
     if (op == NVME_POST_ACTION_OP_TRIM && g_post_action_trim_size_dist_enabled == 0) {
         return;
     }
+    uint32_t idx = bucket_index_io_size_4k(len_lba);
     pthread_mutex_lock(&g_post_action_workload_mutex);
     if (op == NVME_POST_ACTION_OP_READ && g_post_action_read_size_dist_enabled != 0) {
-        uint32_t idx = bucket_index_rw_size_4k(len_lba);
         ++g_post_action_read_size_hist[idx];
         ++g_post_action_read_size_samples;
     } else if (op == NVME_POST_ACTION_OP_WRITE && g_post_action_write_size_dist_enabled != 0) {
-        uint32_t idx = bucket_index_rw_size_4k(len_lba);
         ++g_post_action_write_size_hist[idx];
         ++g_post_action_write_size_samples;
     } else if (op == NVME_POST_ACTION_OP_TRIM && g_post_action_trim_size_dist_enabled != 0) {
-        uint32_t idx = bucket_index_trim_size_4k(len_lba);
         ++g_post_action_trim_size_hist[idx];
         ++g_post_action_trim_size_samples;
     }
     pthread_mutex_unlock(&g_post_action_workload_mutex);
-}
-
-static void print_rw_size_histogram_section(const char *title,
-                                            const char *item_name,
-                                            const uint64_t hist[NVME_POST_ACTION_IO_SIZE_BUCKETS],
-                                            uint64_t total_samples) {
-    if (hist == NULL) {
-        return;
-    }
-    fprintf(stderr, "%s:\n", title);
-    for (uint32_t i = 0U; i < NVME_POST_ACTION_IO_SIZE_BUCKETS; ++i) {
-        char label[16];
-        if (i == 0U) {
-            (void)snprintf(label, sizeof(label), "0");
-        } else if (i == NVME_POST_ACTION_IO_SIZE_MAX_4K) {
-            (void)snprintf(label, sizeof(label), "1M");
-        } else {
-            (void)snprintf(label, sizeof(label), "%uK", i * 4U);
-        }
-        double pct = 0.0;
-        if (total_samples != 0ULL) {
-            pct = ((double)hist[i] * 100.0) / (double)total_samples;
-        }
-        fprintf(stderr, "  %-16s %12s count=%llu (%.2f%%)\n",
-                item_name,
-                label,
-                (unsigned long long)hist[i],
-                pct);
-    }
 }
 
 static void print_histogram_section(const char *title,
@@ -1018,19 +975,19 @@ void nvme_post_action_print_workload_stats_report(void) {
                                 g_post_action_wa_samples, label_wa);
     }
     if (g_post_action_read_size_dist_enabled != 0) {
-        print_rw_size_histogram_section("Read Size distribution (4K blocks, 0~1M)", "Read Size",
-                                        g_post_action_read_size_hist,
-                                        g_post_action_read_size_samples);
+        print_histogram_section("Read Size distribution (4K blocks)", "Read Size",
+                                g_post_action_read_size_hist, g_post_action_read_size_samples,
+                                label_io_size);
     }
     if (g_post_action_write_size_dist_enabled != 0) {
-        print_rw_size_histogram_section("Write Size distribution (4K blocks, 0~1M)", "Write Size",
-                                        g_post_action_write_size_hist,
-                                        g_post_action_write_size_samples);
+        print_histogram_section("Write Size distribution (4K blocks)", "Write Size",
+                                g_post_action_write_size_hist, g_post_action_write_size_samples,
+                                label_io_size);
     }
     if (g_post_action_trim_size_dist_enabled != 0) {
         print_histogram_section("Trim Size distribution (4K blocks)", "Trim Size",
                                 g_post_action_trim_size_hist, g_post_action_trim_size_samples,
-                                label_trim_size);
+                                label_io_size);
     }
     pthread_mutex_unlock(&g_post_action_workload_mutex);
 }
