@@ -56,6 +56,10 @@ if ! rg -i "Read Count distribution|Write-to-First-Read Latency\\(real ms\\) dis
   echo "missing segmented lba-stats output sections" >&2
   exit 1
 fi
+if ! rg -i "Read Count.*bytes=" "/tmp/post_action_lba_stats.log" >/dev/null; then
+  echo "missing read-count bucket bytes statistics in output" >&2
+  exit 1
+fi
 
 echo "  LBA-STATS selective output expected"
 if ! ./post_action_file_tester --read-count "tests/fixtures/valid_mixed.bin" >/tmp/post_action_lba_read_only.log 2>&1; then

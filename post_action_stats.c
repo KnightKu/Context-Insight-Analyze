@@ -42,6 +42,7 @@ static uint64_t g_stat_samples_cap = 0ULL;
 
 typedef struct {
     uint64_t read_count_hist[NVME_POST_ACTION_RATIO_BUCKETS];
+    uint64_t read_count_read_bytes_hist[NVME_POST_ACTION_RATIO_BUCKETS];
     uint64_t w2fr_ms_hist[NVME_POST_ACTION_RATIO_BUCKETS];
     uint64_t life_cycle_ms_hist[NVME_POST_ACTION_RATIO_BUCKETS];
     uint64_t read_count_non_zero_buckets;
@@ -240,6 +241,8 @@ static int build_lba_ratio_summary_locked(nvme_post_action_lba_ratio_summary_t *
         const nvme_post_action_lba_stat_t *s = &g_stats[i];
         uint32_t rc_idx = ratio_bucket_index_u8(s->read_count);
         ++out->read_count_hist[rc_idx];
+        out->read_count_read_bytes_hist[rc_idx] +=
+            ((uint64_t)s->read_count * NVME_POST_ACTION_STATS_BLOCK_BYTES);
         if (s->read_count != 0U) {
             ++out->read_count_non_zero_buckets;
         }
@@ -271,6 +274,20 @@ static void print_ratio_hist_line(const char *name,
     }
     fprintf(stderr, "  %-28s %12s count=%" PRIu64 " (%.2f%%)\n",
             name, label, hit, pct);
+}
+
+static void print_read_count_hist_line(const char *name,
+                                       uint64_t hit,
+                                       uint64_t total,
+                                       const char *label,
+                                       uint64_t read_bytes) {
+    double pct = 0.0;
+    if (total != 0ULL) {
+        pct = ((double)hit * 100.0) / (double)total;
+    }
+    fprintf(stderr,
+            "  %-28s %12s count=%" PRIu64 " (%.2f%%) read_bytes=%" PRIu64 "\n",
+            name, label, hit, pct, read_bytes);
 }
 
 static int should_print_section(int print_read_count,
@@ -310,7 +327,11 @@ void nvme_post_action_stats_print_ratio_summary(int print_read_count,
         for (uint32_t i = 0U; i < NVME_POST_ACTION_RATIO_BUCKETS; ++i) {
             char label[32];
             ratio_label_read_count(i, label, sizeof(label));
-            print_ratio_hist_line("Read Count", summary.read_count_hist[i], total_buckets, label);
+            print_read_count_hist_line("Read Count",
+                                       summary.read_count_hist[i],
+                                       total_buckets,
+                                       label,
+                                       summary.read_count_read_bytes_hist[i]);
         }
         fprintf(stderr, "  non-zero buckets=%" PRIu64 " / %" PRIu64 " (%.2f%%)\n",
                 summary.read_count_non_zero_buckets,
