@@ -395,19 +395,23 @@ static int parse_rw_record(uint64_t record_lo,
 
     if (reserved != 0U) {
         errno = EINVAL;
-        fprintf(stderr,
-                "post action invalid rw reserved: offset=%llu record=%u op=0x%02x reserved=0x%04x\n",
-                (unsigned long long)offset_bytes, (unsigned int)record_index, (unsigned int)op,
-                (unsigned int)reserved);
+        if (g_post_action_debug_enabled != 0) {
+            fprintf(stderr,
+                    "post action invalid rw reserved: offset=%llu record=%u op=0x%02x reserved=0x%04x\n",
+                    (unsigned long long)offset_bytes, (unsigned int)record_index, (unsigned int)op,
+                    (unsigned int)reserved);
+        }
         return -1;
     }
     if (resolve_abs_time_us(parsed.time_rel, time_ref, &abs_time_us) != 0) {
-        fprintf(stderr,
-                "post action missing marker for rw time: offset=%llu record=%u op=0x%02x time_rel=%u\n",
-                (unsigned long long)offset_bytes,
-                (unsigned int)record_index,
-                (unsigned int)op,
-                (unsigned int)parsed.time_rel);
+        if (g_post_action_debug_enabled != 0) {
+            fprintf(stderr,
+                    "post action missing marker for rw time: offset=%llu record=%u op=0x%02x time_rel=%u\n",
+                    (unsigned long long)offset_bytes,
+                    (unsigned int)record_index,
+                    (unsigned int)op,
+                    (unsigned int)parsed.time_rel);
+        }
         return -1;
     }
 
@@ -457,9 +461,11 @@ static int decode_trim_record_fields(uint64_t record_lo,
 
     if (reserved != 0U) {
         errno = EINVAL;
-        fprintf(stderr,
-                "post action invalid trim reserved: offset=%llu record=%u reserved=0x%02x\n",
-                (unsigned long long)offset_bytes, (unsigned int)record_index, (unsigned int)reserved);
+        if (g_post_action_debug_enabled != 0) {
+            fprintf(stderr,
+                    "post action invalid trim reserved: offset=%llu record=%u reserved=0x%02x\n",
+                    (unsigned long long)offset_bytes, (unsigned int)record_index, (unsigned int)reserved);
+        }
         return -1;
     }
     return 0;
@@ -479,10 +485,12 @@ static int parse_trim_group(const unsigned char *bytes,
     }
     if (time_ref == NULL || time_ref->has_marker == 0) {
         errno = EINVAL;
-        fprintf(stderr,
-                "post action missing marker for trim time: offset=%llu record=%u\n",
-                (unsigned long long)(base_offset_bytes + (uint64_t)cursor),
-                (unsigned int)record_index);
+        if (g_post_action_debug_enabled != 0) {
+            fprintf(stderr,
+                    "post action missing marker for trim time: offset=%llu record=%u\n",
+                    (unsigned long long)(base_offset_bytes + (uint64_t)cursor),
+                    (unsigned int)record_index);
+        }
         return -1;
     }
     if ((data_len - cursor) < NVME_POST_ACTION_RECORD_BYTES_LONG) {
@@ -629,14 +637,16 @@ static int parse_marker_record(uint64_t record_lo,
         uint64_t overwrite_lba = marker_record_to_lba_locked(offset_bytes);
         uint64_t prev_abs_time = g_post_action_last_marker_abs_time_us;
         pthread_mutex_unlock(&g_post_action_marker_mutex);
-        fprintf(stderr,
-                "post action warning: overwrite detected, marker timestamp not increasing: "
-                "prev_abs_time_us=%llu curr_abs_time_us=%llu lba=%llu offset=%llu record=%u\n",
-                (unsigned long long)prev_abs_time,
-                (unsigned long long)parsed.abs_time,
-                (unsigned long long)overwrite_lba,
-                (unsigned long long)offset_bytes,
-                (unsigned int)record_index);
+        if (g_post_action_debug_enabled != 0) {
+            fprintf(stderr,
+                    "post action warning: overwrite detected, marker timestamp not increasing: "
+                    "prev_abs_time_us=%llu curr_abs_time_us=%llu lba=%llu offset=%llu record=%u\n",
+                    (unsigned long long)prev_abs_time,
+                    (unsigned long long)parsed.abs_time,
+                    (unsigned long long)overwrite_lba,
+                    (unsigned long long)offset_bytes,
+                    (unsigned int)record_index);
+        }
         errno = ECANCELED;
         return -1;
     }

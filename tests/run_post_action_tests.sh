@@ -121,7 +121,7 @@ fi
 
 for f in "${SOFT_STOP_CASES[@]}"; do
   echo "  SOFT-STOP expected (overwrite should stop parse/read but not fail): ${f}"
-  if ! ./post_action_file_tester "${f}" >/tmp/post_action_overwrite.log 2>&1; then
+  if ! ./post_action_file_tester --debug "${f}" >/tmp/post_action_overwrite.log 2>&1; then
     echo "unexpected failure for ${f}" >&2
     exit 1
   fi
@@ -132,7 +132,7 @@ for f in "${SOFT_STOP_CASES[@]}"; do
 done
 
 echo "  SOFT-STOP expected (all-zero record indicates invalid tail): tests/fixtures/valid_termination.bin"
-if ! ./post_action_file_tester "tests/fixtures/valid_termination.bin" >/tmp/post_action_all_zero.log 2>&1; then
+if ! ./post_action_file_tester --debug "tests/fixtures/valid_termination.bin" >/tmp/post_action_all_zero.log 2>&1; then
   echo "unexpected failure for valid_termination.bin" >&2
   exit 1
 fi
