@@ -102,7 +102,7 @@ static uint64_t percentile_from_sorted_ratio(const uint64_t *arr,
 static void print_percentiles_line(const char *name,
                                    const uint64_t *sorted,
                                    uint32_t n) {
-    fprintf(stderr, "lat(%s) pct(us):", name);
+    fprintf(stderr, "%s (us):\n Qos", name);
     for (uint32_t p = 10U; p <= 90U; p += 10U) {
         fprintf(stderr, " p%u=%" PRIu64, p,
                 percentile_from_sorted_ratio(sorted, n, p, 100U));
@@ -140,8 +140,6 @@ void nvme_post_action_latency_record_trim(uint32_t latency_us) {
 
 static void print_bucket(const latency_bucket_t *bucket) {
     if (bucket->count == 0ULL) {
-        fprintf(stderr, "lat(%s): count=0\n", bucket->name);
-        print_percentiles_line(bucket->name, NULL, 0U);
         return;
     }
     double avg = (double)bucket->sum_us / (double)bucket->count;
@@ -153,9 +151,8 @@ static void print_bucket(const latency_bucket_t *bucket) {
         sort_u64(sorted, sorted_n);
     }
     fprintf(stderr,
-            "lat(%s): count=%" PRIu64 " min=%" PRIu64 "us max=%" PRIu64 "us avg=%.2fus\n",
+            "lat(%s): min=%" PRIu64 "us max=%" PRIu64 "us avg=%.2fus\n",
             bucket->name,
-            bucket->count,
             bucket->min_us,
             bucket->max_us,
             avg);
@@ -174,7 +171,7 @@ void nvme_post_action_latency_print_summary(void) {
         return;
     }
 
-    fprintf(stderr, "latency summary (fio-like):\n");
+    fprintf(stderr, "latency summary:\n");
     print_bucket(&read_copy);
     print_bucket(&write_copy);
     print_bucket(&trim_copy);

@@ -334,11 +334,11 @@ void nvme_post_action_stats_print_ratio_summary(int print_read_count,
     }
 
     if (print_life_cycle != 0) {
-        fprintf(stderr, "LBA Life Cycle(real ms) distribution:\n");
+        fprintf(stderr, "Life Cycle(real ms) distribution:\n");
         for (uint32_t i = 0U; i < NVME_POST_ACTION_RATIO_BUCKETS; ++i) {
             char label[32];
             ratio_label_latency_ms(i, label, sizeof(label));
-            print_ratio_hist_line("LBA Life Cycle", life_print_hist[i], total_buckets, label);
+            print_ratio_hist_line("Life Cycle", life_print_hist[i], total_buckets, label);
         }
         fprintf(stderr, "  non-zero buckets=%" PRIu64 " / %" PRIu64 " (%.2f%%)\n",
                 summary.life_cycle_non_zero_buckets,
@@ -792,7 +792,6 @@ void nvme_post_action_stats_print_summary_debug(int debug_enabled) {
             (unsigned long long)non_zero_reads,
             (unsigned long long)g_total_bytes);
     if (g_advanced_hist != NULL) {
-        fprintf(stderr, "advanced life-cycle stats (4K..):\n");
         for (uint32_t scale = 0U; scale <= g_advanced_max_scale; ++scale) {
             uint64_t total = 0ULL;
             for (uint32_t code = 0U; code <= NVME_POST_ACTION_LATENCY_CODE_MAX; ++code) {
