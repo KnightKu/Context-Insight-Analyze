@@ -52,8 +52,12 @@ if ! ./post_action_file_tester \
   echo "unexpected failure for lba stats output case" >&2
   exit 1
 fi
-if ! rg -i "Read Count distribution|Write-to-First-Read Latency\\(real ms\\) distribution|LBA Life Cycle\\(real ms\\) distribution" "/tmp/post_action_lba_stats.log" >/dev/null; then
+if ! rg -i "Read Count distribution|Write-to-First-Read Latency\\(real ms\\) distribution|Life Cycle\\(real ms\\) distribution" "/tmp/post_action_lba_stats.log" >/dev/null; then
   echo "missing segmented lba-stats output sections" >&2
+  exit 1
+fi
+if ! rg -i "Read Count.*bytes=|Life Cycle.*bytes=" "/tmp/post_action_lba_stats.log" >/dev/null; then
+  echo "missing data-volume bytes column for read-count/life-cycle output" >&2
   exit 1
 fi
 
@@ -66,7 +70,7 @@ if ! rg -i "Read Count distribution" "/tmp/post_action_lba_read_only.log" >/dev/
   echo "missing Read Count distribution section" >&2
   exit 1
 fi
-if rg -i "Write-to-First-Read Latency\\(real ms\\) distribution|LBA Life Cycle\\(real ms\\) distribution" "/tmp/post_action_lba_read_only.log" >/dev/null; then
+if rg -i "Write-to-First-Read Latency\\(real ms\\) distribution|Life Cycle\\(real ms\\) distribution" "/tmp/post_action_lba_read_only.log" >/dev/null; then
   echo "unexpected non-read-count sections in read-count-only output" >&2
   exit 1
 fi
