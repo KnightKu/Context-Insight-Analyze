@@ -52,8 +52,12 @@ if ! ./post_action_file_tester \
   echo "unexpected failure for lba stats output case" >&2
   exit 1
 fi
-if ! rg -i "Read Count distribution|Write-to-First-Read Latency\\(real ms\\) distribution|LBA Life Cycle\\(real ms\\) distribution" "/tmp/post_action_lba_stats.log" >/dev/null; then
+if ! rg -i "Read Count distribution|Write-to-First-Read Latency\\(real ms\\) distribution|Life Cycle\\(real ms\\) distribution" "/tmp/post_action_lba_stats.log" >/dev/null; then
   echo "missing segmented lba-stats output sections" >&2
+  exit 1
+fi
+if ! rg -i "Read Count.*bytes=|Life Cycle.*bytes=" "/tmp/post_action_lba_stats.log" >/dev/null; then
+  echo "missing data-volume bytes column for read-count/life-cycle output" >&2
   exit 1
 fi
 
@@ -66,8 +70,18 @@ if ! rg -i "Read Count distribution" "/tmp/post_action_lba_read_only.log" >/dev/
   echo "missing Read Count distribution section" >&2
   exit 1
 fi
-if rg -i "Write-to-First-Read Latency\\(real ms\\) distribution|LBA Life Cycle\\(real ms\\) distribution" "/tmp/post_action_lba_read_only.log" >/dev/null; then
+if rg -i "Write-to-First-Read Latency\\(real ms\\) distribution|Life Cycle\\(real ms\\) distribution" "/tmp/post_action_lba_read_only.log" >/dev/null; then
   echo "unexpected non-read-count sections in read-count-only output" >&2
+  exit 1
+fi
+
+echo "  LBA-STATS request-count expected: one 32K read should count as one request"
+if ! ./post_action_file_tester --read-count "tests/fixtures/valid_request_count_32k.bin" >/tmp/post_action_lba_req_count.log 2>&1; then
+  echo "unexpected failure for request-count fixture case" >&2
+  exit 1
+fi
+if ! rg -i "Read Count.*1-25.*count=1" "/tmp/post_action_lba_req_count.log" >/dev/null; then
+  echo "read-count distribution does not reflect request-based counting" >&2
   exit 1
 fi
 
@@ -100,11 +114,11 @@ if ! ./post_action_file_tester --latency "tests/fixtures/valid_mixed.bin" >/tmp/
   echo "unexpected failure for latency output case" >&2
   exit 1
 fi
-if ! rg -i "latency summary \\(fio-like\\)" "/tmp/post_action_latency.log" >/dev/null; then
+if ! rg -i "latency summary" "/tmp/post_action_latency.log" >/dev/null; then
   echo "missing latency summary output when --latency enabled" >&2
   exit 1
 fi
-if ! rg -i "lat\\(read\\) pct\\(us\\):.*p10=.*p20=.*p30=.*p40=.*p50=.*p60=.*p70=.*p80=.*p90=.*p99=.*p99\\.9=.*p99\\.99=" "/tmp/post_action_latency.log" >/dev/null; then
+if ! rg -i "Qos p10=.*p20=.*p30=.*p40=.*p50=.*p60=.*p70=.*p80=.*p90=.*p99=.*p99\\.9=.*p99\\.99=" "/tmp/post_action_latency.log" >/dev/null; then
   echo "missing expected percentile coverage (p10~p90 step10, p99, p99.9, p99.99)" >&2
   exit 1
 fi

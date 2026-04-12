@@ -222,6 +222,16 @@ int main(int argc, char *argv[]) {
     nvme_read_set_read_size_dist(read_size_dist_enabled);
     nvme_read_set_write_size_dist(write_size_dist_enabled);
     nvme_read_set_trim_size_dist(trim_size_dist_enabled);
+    if (nvme_post_action_set_sector_size((uint32_t)NVME_LBA_SIZE_BYTES) != 0) {
+        fprintf(stderr, "post action set sector_size failed: %s\n", strerror(errno));
+        free(buf);
+        return 2;
+    }
+    if (nvme_post_action_set_base_lba(0ULL) != 0) {
+        fprintf(stderr, "post action set base_lba failed: %s\n", strerror(errno));
+        free(buf);
+        return 2;
+    }
     int rc = 0;
     if (use_split != 0) {
         uint64_t cursor = 0ULL;
