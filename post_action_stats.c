@@ -39,11 +39,20 @@ static uint64_t g_mdts_bytes = 0ULL;
 static nvme_post_action_stat_sample_t *g_stat_samples = NULL;
 static uint64_t g_stat_samples_count = 0ULL;
 static uint64_t g_stat_samples_cap = 0ULL;
+static uint64_t g_read_req_hist[NVME_POST_ACTION_RATIO_BUCKETS];
+static uint64_t g_w2fr_req_hist[NVME_POST_ACTION_RATIO_BUCKETS];
+static uint64_t g_life_cycle_req_hist[NVME_POST_ACTION_RATIO_BUCKETS];
+static uint64_t g_read_req_total = 0ULL;
+static uint64_t g_w2fr_req_total = 0ULL;
+static uint64_t g_life_cycle_req_total = 0ULL;
 
 typedef struct {
     uint64_t read_count_hist[NVME_POST_ACTION_RATIO_BUCKETS];
     uint64_t w2fr_ms_hist[NVME_POST_ACTION_RATIO_BUCKETS];
     uint64_t life_cycle_ms_hist[NVME_POST_ACTION_RATIO_BUCKETS];
+    uint64_t read_count_total_samples;
+    uint64_t w2fr_total_samples;
+    uint64_t life_cycle_total_samples;
     uint64_t read_count_non_zero_buckets;
     uint64_t w2fr_non_zero_buckets;
     uint64_t life_cycle_non_zero_buckets;
@@ -236,28 +245,24 @@ static int build_lba_ratio_summary_locked(nvme_post_action_lba_ratio_summary_t *
     if (g_stats_enabled == 0 || g_stats == NULL || g_bucket_count == 0ULL) {
         return 0;
     }
+    out->read_count_total_samples = g_read_req_total;
+    out->w2fr_total_samples = g_w2fr_req_total;
+    out->life_cycle_total_samples = g_life_cycle_req_total;
     for (uint64_t i = 0ULL; i < g_bucket_count; ++i) {
         const nvme_post_action_lba_stat_t *s = &g_stats[i];
-        uint32_t rc_idx = ratio_bucket_index_u8(s->read_count);
-        ++out->read_count_hist[rc_idx];
         if (s->read_count != 0U) {
             ++out->read_count_non_zero_buckets;
         }
-
-        uint32_t w2fr_ms = decode_duration_ms_non_linear(s->write_to_first_read_latency);
-        uint32_t w2fr_idx = ratio_bucket_index_ms(w2fr_ms);
-        ++out->w2fr_ms_hist[w2fr_idx];
         if (s->write_to_first_read_latency != 0U) {
             ++out->w2fr_non_zero_buckets;
         }
-
-        uint32_t life_ms = decode_duration_ms_non_linear(s->life_cycle_latency);
-        uint32_t life_idx = ratio_bucket_index_ms(life_ms);
-        ++out->life_cycle_ms_hist[life_idx];
         if (s->life_cycle_latency != 0U) {
             ++out->life_cycle_non_zero_buckets;
         }
     }
+    memcpy(out->read_count_hist, g_read_req_hist, sizeof(out->read_count_hist));
+    memcpy(out->w2fr_ms_hist, g_w2fr_req_hist, sizeof(out->w2fr_ms_hist));
+    memcpy(out->life_cycle_ms_hist, g_life_cycle_req_hist, sizeof(out->life_cycle_ms_hist));
     return 0;
 }
 
@@ -271,6 +276,17 @@ static void print_ratio_hist_line(const char *name,
     }
     fprintf(stderr, "  %-28s %12s count=%" PRIu64 " (%.2f%%)\n",
             name, label, hit, pct);
+}
+
+static uint64_t sum_hist_u64(const uint64_t *hist, uint32_t n) {
+    uint64_t total = 0ULL;
+    if (hist == NULL) {
+        return 0ULL;
+    }
+    for (uint32_t i = 0U; i < n; ++i) {
+        total += hist[i];
+    }
+    return total;
 }
 
 static int should_print_section(int print_read_count,
@@ -306,11 +322,15 @@ void nvme_post_action_stats_print_ratio_summary(int print_read_count,
     fprintf(stderr, "lba ratio summary (bucket=%llu bytes):\n",
             (unsigned long long)NVME_POST_ACTION_STATS_BLOCK_BYTES);
     if (print_read_count != 0) {
+        uint64_t read_total = summary.read_count_total_samples;
+        if (read_total == 0ULL) {
+            read_total = sum_hist_u64(summary.read_count_hist, NVME_POST_ACTION_RATIO_BUCKETS);
+        }
         fprintf(stderr, "Read Count distribution:\n");
         for (uint32_t i = 0U; i < NVME_POST_ACTION_RATIO_BUCKETS; ++i) {
             char label[32];
             ratio_label_read_count(i, label, sizeof(label));
-            print_ratio_hist_line("Read Count", summary.read_count_hist[i], total_buckets, label);
+            print_ratio_hist_line("Read Count", summary.read_count_hist[i], read_total, label);
         }
         fprintf(stderr, "  non-zero buckets=%" PRIu64 " / %" PRIu64 " (%.2f%%)\n",
                 summary.read_count_non_zero_buckets,
@@ -320,11 +340,15 @@ void nvme_post_action_stats_print_ratio_summary(int print_read_count,
     }
 
     if (print_w2fr != 0) {
+        uint64_t w2fr_total = summary.w2fr_total_samples;
+        if (w2fr_total == 0ULL) {
+            w2fr_total = sum_hist_u64(w2fr_print_hist, NVME_POST_ACTION_RATIO_BUCKETS);
+        }
         fprintf(stderr, "Write-to-First-Read Latency(real ms) distribution:\n");
         for (uint32_t i = 0U; i < NVME_POST_ACTION_RATIO_BUCKETS; ++i) {
             char label[32];
             ratio_label_latency_ms(i, label, sizeof(label));
-            print_ratio_hist_line("Write-to-First-Read", w2fr_print_hist[i], total_buckets, label);
+            print_ratio_hist_line("Write-to-First-Read", w2fr_print_hist[i], w2fr_total, label);
         }
         fprintf(stderr, "  non-zero buckets=%" PRIu64 " / %" PRIu64 " (%.2f%%)\n",
                 summary.w2fr_non_zero_buckets,
@@ -334,11 +358,15 @@ void nvme_post_action_stats_print_ratio_summary(int print_read_count,
     }
 
     if (print_life_cycle != 0) {
+        uint64_t life_total = summary.life_cycle_total_samples;
+        if (life_total == 0ULL) {
+            life_total = sum_hist_u64(life_print_hist, NVME_POST_ACTION_RATIO_BUCKETS);
+        }
         fprintf(stderr, "Life Cycle(real ms) distribution:\n");
         for (uint32_t i = 0U; i < NVME_POST_ACTION_RATIO_BUCKETS; ++i) {
             char label[32];
             ratio_label_latency_ms(i, label, sizeof(label));
-            print_ratio_hist_line("Life Cycle", life_print_hist[i], total_buckets, label);
+            print_ratio_hist_line("Life Cycle", life_print_hist[i], life_total, label);
         }
         fprintf(stderr, "  non-zero buckets=%" PRIu64 " / %" PRIu64 " (%.2f%%)\n",
                 summary.life_cycle_non_zero_buckets,
@@ -730,6 +758,13 @@ void nvme_post_action_stats_update_write(uint64_t start_lba,
         w->last_write_abs_us = abs_time_us;
         w->first_read_seen = 0U;
     }
+    if (end_exclusive > begin) {
+        uint64_t first_life_ms =
+            decode_duration_ms_non_linear(g_stats[begin].life_cycle_latency);
+        uint32_t life_idx = ratio_bucket_index_ms((uint32_t)first_life_ms);
+        ++g_life_cycle_req_hist[life_idx];
+        ++g_life_cycle_req_total;
+    }
     pthread_mutex_unlock(&g_stats_mutex);
 }
 
@@ -760,6 +795,20 @@ void nvme_post_action_stats_update_read(uint64_t start_lba,
             uint32_t d_ms = duration_us_to_ms(abs_time_us - w->last_write_abs_us);
             s->write_to_first_read_latency = encode_duration_ms_non_linear(d_ms);
             w->first_read_seen = 1U;
+        }
+    }
+    if (end_exclusive > begin) {
+        uint32_t rc_idx = ratio_bucket_index_u8(1U);
+        ++g_read_req_hist[rc_idx];
+        ++g_read_req_total;
+
+        lba_active_write_entry_t *w0 = active_writes_lookup(begin);
+        if (w0 != NULL && w0->first_read_seen != 0U) {
+            uint32_t w2fr_ms =
+                decode_duration_ms_non_linear(g_stats[begin].write_to_first_read_latency);
+            uint32_t w2fr_idx = ratio_bucket_index_ms(w2fr_ms);
+            ++g_w2fr_req_hist[w2fr_idx];
+            ++g_w2fr_req_total;
         }
     }
     pthread_mutex_unlock(&g_stats_mutex);

@@ -65,6 +65,19 @@ def main() -> None:
     )
     (fixture_dir / "valid_relative_time_with_marker.bin").write_bytes(valid_relative)
 
+    # Valid request-count stream:
+    # one 32K write + one 32K read (+ one small read for W2FR visibility),
+    # used to verify count histograms are request-based (per operation), not per 4K bucket count.
+    valid_request_count = b"".join(
+        [
+            rec_marker(6_000_000),
+            rec_rw(0x02, 0x4000, 8, 0x0000, 120, 10),   # write 32K
+            rec_rw(0x01, 0x4000, 8, 0x0000, 130, 20),   # read 32K
+            rec_rw(0x01, 0x4000, 1, 0x0000, 140, 30),   # read 4K
+        ]
+    )
+    (fixture_dir / "valid_request_count.bin").write_bytes(valid_request_count)
+
     # Valid stream with op==0 noise in the middle:
     # parser should skip one 8-byte slot and continue.
     valid_with_zero_op_skip = b"".join(
@@ -97,6 +110,17 @@ def main() -> None:
         ]
     )
     (fixture_dir / "valid_pre_marker_skip.bin").write_bytes(valid_pre_marker_skip)
+
+    # Request-count fixture: one write + one 32K read on same range.
+    # With request-based counting, Read Count histogram should record one request.
+    valid_request_count_32k = b"".join(
+        [
+            rec_marker(6_000_000),
+            rec_rw(0x02, 0x4000, 8, 0x0000, 120, 10),  # 32K write
+            rec_rw(0x01, 0x4000, 8, 0x0000, 150, 20),  # 32K read
+        ]
+    )
+    (fixture_dir / "valid_request_count_32k.bin").write_bytes(valid_request_count_32k)
 
     # Invalid: marker timestamp is not strictly increasing, indicating overwrite.
     # Marker is 8 bytes each: first at offset 0, second at offset 8.
