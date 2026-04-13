@@ -18,6 +18,7 @@
 
 #define NVME_READ_PIPELINE_SLOTS 4U
 #define NVME_MDTS_MAX_CAP 6U
+#define NVME_IO_AUDIT_LBA_MAGIC 0x494C4F47
 
 typedef struct {
     void *buf;
@@ -172,7 +173,7 @@ static void *pipeline_reader_thread(void *arg) {
         nvme_pipeline_slot_t *slot = &state->slots[slot_idx];
         uint64_t remaining = args->data_len - offset;
         uint32_t chunk_size = (uint32_t)(remaining > args->read_chunk_bytes ? args->read_chunk_bytes : remaining);
-        uint64_t start_lba = 0ULL;
+
         if (args->slba > (UINT64_MAX - LOG_START_LBA) ||
             (LOG_START_LBA + args->slba) > (UINT64_MAX - offset)) {
             int saved_errno = ERANGE;
@@ -210,6 +211,7 @@ static void *pipeline_reader_thread(void *arg) {
         }
         uint64_t backup_lba = backup_lba_bytes / (uint64_t)args->sector_size;
 
+        uint64_t start_lba = backup_lba;
         struct nvme_passthru_cmd cmd;
         memset(&cmd, 0, sizeof(cmd));
         cmd.opcode = 0x02;      // NVM Read
@@ -219,8 +221,9 @@ static void *pipeline_reader_thread(void *arg) {
         cmd.cdw10 = (uint32_t)(start_lba & 0xFFFFFFFFULL);
         cmd.cdw11 = (uint32_t)((start_lba >> 32) & 0xFFFFFFFFULL);
         cmd.cdw12 = (uint32_t)(chunk_size / (uint64_t)args->sector_size) - 1U;
-        cmd.cdw14 = (uint32_t)(backup_lba & 0xFFFFFFFFULL);
-        cmd.cdw15 = (uint32_t)((backup_lba >> 32) & 0xFFFFFFFFULL);
+        cmd.cdw14 = (uint32_t)NVME_IO_AUDIT_LBA_MAGIC;
+        //cmd.cdw14 = (uint32_t)(backup_lba & 0xFFFFFFFFULL);
+        //cmd.cdw15 = (uint32_t)((backup_lba >> 32) & 0xFFFFFFFFULL);
 
         if (ioctl(args->nvme_fd, NVME_IOCTL_IO_CMD, &cmd) < 0) {
             int saved_errno = errno == 0 ? EIO : errno;
