@@ -19,10 +19,9 @@ This document focuses on the `post action` subsystem design and its goals:
 
 ## 3. Protocol and Record Definitions
 
-The current parser supports 5 opcodes and two record lengths:
+The current parser supports 5 opcodes and one aligned record length:
 
-- 16-byte records: `0x01` (Read), `0x02` (Write), `0x03` (Trim)
-- 8-byte records: `0x0F` (Stat), `0xFF` (Marker)
+- 16-byte records: `0x01` (Read), `0x02` (Write), `0x03` (Trim), `0x0F` (Stat), `0xFF` (Marker)
 
 ### 3.1 Read / Write (`0x01` / `0x02`) - 16B
 
@@ -61,16 +60,18 @@ The current parser supports 5 opcodes and two record lengths:
 | Hot write | 3B | 10 | Hot write volume (unit: 4KiB) |
 | Folding write | 3B | 13 | Folding/migration write volume (unit: 4KiB) |
 
-### 3.4 Marker (`0xFF`) - 8B
+### 3.4 Marker (`0xFF`) - 16B
 
 | Field | Size | Offset | Description |
 |---|---:|---:|---|
 | Opcode | 1B | 0 | `0xFF` |
 | Absolute time | 7B | 1 | High-precision absolute timestamp (microseconds) |
+| Unix timestamp | 8B | 8 | Unix timestamp in milliseconds |
 
 ### 3.5 Timestamp Semantics
 
 - `Marker.abs_time` is an absolute timestamp in microseconds (`us`).
+- `Marker.unix_time_ms` carries wall-clock Unix timestamp in milliseconds (`ms`).
 - For `Read/Write/Trim/Stat`, the 3-byte `time` field is interpreted as a relative delta (`time_rel`)
   against the most recent preceding marker.
 - Effective timestamp:
@@ -98,7 +99,7 @@ The parser now uses `load_le64_u(const unsigned char *p)` as the hot-path primit
 
 - Loads one unaligned 8-byte word via `memcpy`
 - Uses host-endian branch (no swap on little-endian hosts)
-- Decodes 8-byte records with one load and 16-byte records with two loads
+- Decodes records via one or two 8-byte little-endian loads depending on opcode layout
 - Extracts fields with bit masks and shifts
 
 ### 4.2 Record Dispatch and Boundary Safety

@@ -95,7 +95,9 @@ The default post action:
 - Focuses on format validation and observability
 - Parses records using a fast 64-bit load path (`load_le64_u`)
 - Aggregates consecutive Trim ranges into a single logical Trim group object
-- Treats marker (`0xFF`) `abs_time` as absolute time in microseconds
+- Treats marker (`0xFF`) as a 16-byte record:
+  - low 8 bytes: opcode + `abs_time` (7B, microseconds), same as previous logic
+  - high 8 bytes: Unix timestamp in milliseconds (`unix_time_ms`)
 - Interprets `time` fields in `read/write/trim/stat` as relative offsets (3B) from the latest previous marker
 - Records before the first marker are treated as invalid preamble/noise and dropped
 - Keeps marker time reference continuous across read chunks (stream-level marker continuity)
@@ -239,7 +241,9 @@ Typical errors:
 Checks:
 
 - Verify record layout against `docs/design.md`
-- Verify opcode and record size mapping (8-byte vs 16-byte records)
+- Verify opcode and record size mapping:
+  - protocol records (`read/write/trim/stat/marker`) are 16-byte
+  - parser control/noise skip unit remains 8-byte (`op == 0x00` / unknown opcode)
 
 ## 8. Common Development Commands
 

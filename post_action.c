@@ -75,6 +75,7 @@ typedef struct {
 typedef struct {
     nvme_post_action_record_meta_t meta;
     uint64_t abs_time;
+    uint64_t unix_time_ms;
 } nvme_post_action_marker_t;
 
 typedef struct {
@@ -618,6 +619,7 @@ static int parse_stat_record(uint64_t record_lo,
 #endif
 
 static int parse_marker_record(uint64_t record_lo,
+                               uint64_t record_hi,
                                uint64_t offset_bytes,
                                uint32_t record_index,
                                nvme_post_action_time_ref_t *time_ref) {
@@ -626,6 +628,7 @@ static int parse_marker_record(uint64_t record_lo,
     parsed.meta.offset_bytes = offset_bytes;
     parsed.meta.record_index = record_index;
     parsed.abs_time = (record_lo >> 8U) & NVME_POST_ACTION_U56_MASK;
+    parsed.unix_time_ms = record_hi;
     if (time_ref == NULL) {
         errno = EINVAL;
         return -1;
@@ -790,12 +793,17 @@ static int default_post_action(void *ctx, void *data, uint32_t data_len, uint64_
             cursor += NVME_POST_ACTION_RECORD_BYTES_LONG;
             ++record_index;
         } else if (op == NVME_POST_ACTION_OP_MARKER) {
+            if ((parse_len - cursor) < NVME_POST_ACTION_RECORD_BYTES_LONG) {
+                ++local_invalid_records;
+                break;
+            }
 #if NVME_POST_ACTION_DEBUG
-            debug_print_record_hex(record, NVME_POST_ACTION_RECORD_BYTES_SHORT,
+            debug_print_record_hex(record, NVME_POST_ACTION_RECORD_BYTES_LONG,
                                    record_offset, record_index, op);
 #endif
-            rc = parse_marker_record(record_lo, record_offset, record_index, &time_ref);
-            cursor += NVME_POST_ACTION_RECORD_BYTES_SHORT;
+            uint64_t record_hi = load_le64_u(record + 8U);
+            rc = parse_marker_record(record_lo, record_hi, record_offset, record_index, &time_ref);
+            cursor += NVME_POST_ACTION_RECORD_BYTES_LONG;
             ++record_index;
         } else {
             ++local_invalid_records;

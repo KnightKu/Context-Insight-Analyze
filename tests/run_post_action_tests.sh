@@ -124,7 +124,7 @@ if ! rg -i "Qos p10=.*p20=.*p30=.*p40=.*p50=.*p60=.*p70=.*p80=.*p90=.*p99=.*p99\
 fi
 
 echo "  CROSS-CHUNK marker continuity expected"
-if ! ./post_action_file_tester --split-bytes 8 "tests/fixtures/valid_relative_time_with_marker.bin" >/tmp/post_action_chunk_continuity.log 2>&1; then
+if ! ./post_action_file_tester --split-bytes 16 "tests/fixtures/valid_relative_time_with_marker.bin" >/tmp/post_action_chunk_continuity.log 2>&1; then
   echo "unexpected failure for cross-chunk marker continuity case" >&2
   exit 1
 fi
