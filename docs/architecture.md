@@ -132,7 +132,7 @@ Main read sequence:
 - Reserved-field zero checks
 - Opcode whitelist checks
 - Trim-group consistency checks (`total_ranges` continuity across ranges)
-- All-zero record check (`8-byte record == 0`) used as end-of-valid-log soft-stop
+- All-zero record check (`16-byte record == 0`) used as end-of-valid-log soft-stop
 
 ---
 
@@ -167,7 +167,7 @@ This allows custom parsing, aggregation, filtering, or external export logic.
 ## 8. Current Parsing Fast Path Notes
 
 - Record decode uses unaligned 64-bit little-endian loads (`load_le64_u`) and bit extraction.
-- 8B records use one 64-bit load; 16B records use two 64-bit loads.
+- Protocol and control/noise units are parsed on 16B boundaries using two 64-bit loads when needed.
 - Trim groups are parsed as one logical object, reducing repeated per-record orchestration overhead.
 
 ## 9. Read/Post-Action Pipeline

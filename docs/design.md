@@ -5,7 +5,7 @@
 This project reads data via Linux NVMe passthrough and runs a `post action` callback after each read chunk.  
 This document focuses on the `post action` subsystem design and its goals:
 
-- Parse multiple record formats according to the protocol (8B / 16B)
+- Parse protocol records with unified 16B alignment
 - Reconstruct fields precisely in little-endian order
 - Fail fast on malformed/truncated data with actionable errors
 - Provide optional debug observability without affecting the default fast path
@@ -109,11 +109,11 @@ The parser now uses `load_le64_u(const unsigned char *p)` as the hot-path primit
 1. Validate `data != NULL` and alignment constraints
 2. Start scanning with `cursor = 0`
 3. Read `op = bytes[cursor]`
-4. Determine record size (8 or 16) from opcode
+4. Determine record type from opcode (protocol records are 16B aligned)
 5. Handle `op == 0x00` units:
-   - If the whole 8-byte record is all zero (`0x00 * 8`), treat as end-of-valid-log
+   - If the whole 16-byte record is all zero (`0x00 * 16`), treat as end-of-valid-log
      and return soft-stop (`errno = ENODATA`) to stop further parsing/reading
-   - If `op == 0x00` but payload is not all zero, treat as invalid/noise and skip one 8-byte unit
+   - If `op == 0x00` but payload is not all zero, treat as invalid/noise and skip one 16-byte unit
 6. Dispatch to one parser:
    - `parse_rw_record`
    - `parse_trim_group`
@@ -148,11 +148,11 @@ Implementation notes:
 - Unknown opcode -> counted as invalid and skipped by one aligned record unit
 - Non-zero reserved field -> counted as invalid and skipped
 - Records before first marker -> counted as invalid and skipped
-- Non-8-byte-aligned tail bytes -> counted as invalid tail fragment
+- Non-16-byte-aligned tail bytes -> counted as invalid tail fragment
 - Truncated record/group -> counted as invalid and skipped conservatively
 - Marker timestamp non-increasing (`current <= previous`) -> treated as overwrite and soft-stop
-- all-zero 8-byte record (`0x00 * 8`) -> treated as end-of-valid-log and soft-stop
-- `op == 0x00` with non-zero payload -> treated as invalid/noise and skipped by one 8-byte unit
+- all-zero 16-byte record (`0x00 * 16`) -> treated as end-of-valid-log and soft-stop
+- `op == 0x00` with non-zero payload -> treated as invalid/noise and skipped by one 16-byte unit
 
 ## 5. Error Handling Strategy
 
@@ -169,7 +169,7 @@ Compile-time macro `NVME_POST_ACTION_DEBUG` controls debug logs:
 
 - Default: `0` (off)
 - Set to `1` to print parsed fields for each record type
-- When `data_len < 8`, the "no complete 8-byte unit" message is printed only in debug mode
+- When `data_len < 16`, the "no complete 16-byte unit" message is printed only in debug mode
 - When termination marker is hit, a debug line is printed (in debug mode)
 - Invalid record count is reported in final debug read stats (`invalid_records=...`)
 
@@ -178,7 +178,7 @@ are parsed:
 
 - Default: `0` (off), Stat records are parsed and validated as before.
 - Set to `1` to skip Stat processing in post action:
-  - Stat records are consumed as 8-byte units
+  - Stat records are consumed as 16-byte units
   - No Stat field validation is performed
   - No invalid-record count is added for skipped Stat records
 

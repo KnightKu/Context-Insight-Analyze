@@ -19,7 +19,7 @@
 #define NVME_POST_ACTION_SKIP_STAT 0
 #endif
 
-#define NVME_POST_ACTION_RECORD_BYTES_SHORT 8U
+#define NVME_POST_ACTION_RECORD_BYTES_SHORT 16U
 #define NVME_POST_ACTION_RECORD_BYTES_LONG 16U
 
 #define NVME_POST_ACTION_OP_READ 0x01U
@@ -721,8 +721,9 @@ static int default_post_action(void *ctx, void *data, uint32_t data_len, uint64_
             debug_print_record_hex(record, NVME_POST_ACTION_RECORD_BYTES_SHORT,
                                    record_offset, record_index, op);
 #endif
-            // A full-zero 8-byte record is treated as end-of-valid-log marker.
-            if (record_lo == 0ULL) {
+            uint64_t record_hi = load_le64_u(record + 8U);
+            // A full-zero 16-byte record is treated as end-of-valid-log marker.
+            if (record_lo == 0ULL && record_hi == 0ULL) {
                 errno = ENODATA;
                 post_action_add_invalid_count(local_invalid_records);
                 return -1;

@@ -107,10 +107,10 @@ The default post action:
   - already-processed records remain valid, and subsequent non-read operations continue
   - warning log includes overwrite context and LBA location (`lba`, `offset`, marker timestamps)
 - Supports early full-zero termination:
-  - if an 8-byte record is all zero (`00 00 00 00 00 00 00 00`), parser treats it as end-of-valid-log
+  - if a 16-byte record is all zero (`00 * 16`), parser treats it as end-of-valid-log
   - post-action soft-stops immediately (no further parse in current/next chunks)
   - read pipeline also stops further device reads, while main flow still returns success
-  - non-zero `op == 0x00` records are still treated as invalid/noise and skipped by 8 bytes
+  - non-zero `op == 0x00` records are still treated as invalid/noise and skipped by 16 bytes
 - Maintains in-memory per-4KB LBA statistics for runtime analysis:
   - 1B saturated read count (`0..255`) for write-then-read events
   - 2B non-linear encoded write-to-first-read latency
@@ -192,7 +192,7 @@ and directly continues with the next record.
 Set `NVME_POST_ACTION_DEBUG` to `1` to enable debug logs:
 
 - Prints parsed fields for each record type
-- Prints a message when `data_len < 8` (no complete 8-byte record)
+- Prints a message when `data_len < 16` (no complete 16-byte record)
 
 How to enable:
 
@@ -243,7 +243,7 @@ Checks:
 - Verify record layout against `docs/design.md`
 - Verify opcode and record size mapping:
   - protocol records (`read/write/trim/stat/marker`) are 16-byte
-  - parser control/noise skip unit remains 8-byte (`op == 0x00` / unknown opcode)
+  - parser control/noise skip unit is also 16-byte (`op == 0x00` / unknown opcode)
 
 ## 8. Common Development Commands
 

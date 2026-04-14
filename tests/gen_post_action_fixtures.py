@@ -79,24 +79,24 @@ def main() -> None:
     (fixture_dir / "valid_request_count.bin").write_bytes(valid_request_count)
 
     # Valid stream with op==0 noise in the middle:
-    # parser should skip one 8-byte slot and continue.
+    # parser should skip one 16-byte slot and continue.
     valid_with_zero_op_skip = b"".join(
         [
             rec_marker(4_000_000, 1_710_000_030_000),
             rec_stat(3, 10, 1, 0, 1, 0),
-            bytes([0x00]) + b"\xAA" * 7,
+            bytes([0x00]) + b"\xAA" * 15,
             rec_stat(5, 20, 2, 0, 1, 0),
         ]
     )
     (fixture_dir / "valid_zero_op_skip.bin").write_bytes(valid_with_zero_op_skip)
 
-    # Valid all-zero termination: one full-zero 8-byte record means end-of-valid-log.
-    terminator = rec_marker(3_000_000, 1_710_000_040_000) + rec_stat(4, 50, 3, 0, 1, 0) + (b"\x00" * 8) + rec_stat(6, 60, 5, 0, 2, 1)
+    # Valid all-zero termination: one full-zero 16-byte record means end-of-valid-log.
+    terminator = rec_marker(3_000_000, 1_710_000_040_000) + rec_stat(4, 50, 3, 0, 1, 0) + (b"\x00" * 16) + rec_stat(6, 60, 5, 0, 2, 1)
     (fixture_dir / "valid_termination.bin").write_bytes(terminator)
     (fixture_dir / "valid_all_zero_termination.bin").write_bytes(terminator)
 
     # Invalid: unknown opcode
-    invalid_op = bytes([0x77]) + b"\x00" * 7
+    invalid_op = bytes([0x77]) + b"\x00" * 15
     (fixture_dir / "invalid_op.bin").write_bytes(invalid_op)
 
     # Valid by skip policy: records before first marker are dropped as invalid/noise.
