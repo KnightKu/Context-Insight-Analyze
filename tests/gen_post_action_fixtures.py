@@ -31,8 +31,8 @@ def rec_stat(qd: int,
     )
 
 
-def rec_marker(abs_time: int, unix_time_ms: int) -> bytes:
-    return bytes([0xFF]) + le_n(abs_time, 7) + le_n(unix_time_ms, 8)
+def rec_marker(abs_time: int, unix_time_ms: int, marker_reserved: int = 0) -> bytes:
+    return bytes([0xFF]) + le_n(abs_time, 7) + bytes([marker_reserved & 0xFF]) + le_n(unix_time_ms, 7)
 
 
 def main() -> None:
@@ -147,6 +147,10 @@ def main() -> None:
     # Invalid: not 8-byte aligned tail fragment (has marker first).
     invalid_alignment = rec_marker(1_000_000, 1_710_000_090_000) + rec_stat(1, 1, 1, 0, 1, 0) + b"\xAA"
     (fixture_dir / "invalid_alignment.bin").write_bytes(invalid_alignment)
+
+    # Invalid: marker high 8-byte first byte must be zero (reserved field check).
+    invalid_marker_reserved = rec_marker(7_000_000, 1_710_000_100_000, marker_reserved=1)
+    (fixture_dir / "invalid_marker_reserved.bin").write_bytes(invalid_marker_reserved)
 
 
 if __name__ == "__main__":
