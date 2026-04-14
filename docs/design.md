@@ -66,11 +66,14 @@ The current parser supports 5 opcodes and one aligned record length:
 |---|---:|---:|---|
 | Opcode | 1B | 0 | `0xFF` |
 | Absolute time | 7B | 1 | High-precision absolute timestamp (microseconds) |
-| Unix timestamp | 8B | 8 | Unix timestamp in milliseconds |
+| Reserved | 1B | 8 | Must be `0x00` |
+| Unix timestamp | 7B | 9 | Unix timestamp in milliseconds (low 56 bits) |
 
 ### 3.5 Timestamp Semantics
 
 - `Marker.abs_time` is an absolute timestamp in microseconds (`us`).
+- `Marker` high 8 bytes reserve the first byte (must be zero); remaining 7 bytes carry
+  `unix_time_ms` low 56 bits.
 - `Marker.unix_time_ms` carries wall-clock Unix timestamp in milliseconds (`ms`).
 - For `Read/Write/Trim/Stat`, the 3-byte `time` field is interpreted as a relative delta (`time_rel`)
   against the most recent preceding marker.

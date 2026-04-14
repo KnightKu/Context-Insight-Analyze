@@ -97,7 +97,7 @@ The default post action:
 - Aggregates consecutive Trim ranges into a single logical Trim group object
 - Treats marker (`0xFF`) as a 16-byte record:
   - low 8 bytes: opcode + `abs_time` (7B, microseconds), same as previous logic
-  - high 8 bytes: Unix timestamp in milliseconds (`unix_time_ms`)
+  - high 8 bytes: first byte is reserved and must be `0x00`, remaining 7 bytes are Unix timestamp in milliseconds (`unix_time_ms`)
 - Interprets `time` fields in `read/write/trim/stat` as relative offsets (3B) from the latest previous marker
 - Records before the first marker are treated as invalid preamble/noise and dropped
 - Keeps marker time reference continuous across read chunks (stream-level marker continuity)

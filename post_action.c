@@ -628,9 +628,21 @@ static int parse_marker_record(uint64_t record_lo,
     parsed.meta.offset_bytes = offset_bytes;
     parsed.meta.record_index = record_index;
     parsed.abs_time = (record_lo >> 8U) & NVME_POST_ACTION_U56_MASK;
-    parsed.unix_time_ms = record_hi;
+    uint8_t reserved = (uint8_t)(record_hi & 0xFFU);
+    parsed.unix_time_ms = (record_hi >> 8U) & NVME_POST_ACTION_U56_MASK;
     if (time_ref == NULL) {
         errno = EINVAL;
+        return -1;
+    }
+    if (reserved != 0U) {
+        errno = EINVAL;
+        if (g_post_action_debug_enabled != 0) {
+            fprintf(stderr,
+                    "post action invalid marker reserved: offset=%llu record=%u reserved=0x%02x\n",
+                    (unsigned long long)offset_bytes,
+                    (unsigned int)record_index,
+                    (unsigned int)reserved);
+        }
         return -1;
     }
 
