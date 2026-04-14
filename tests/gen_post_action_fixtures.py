@@ -31,8 +31,8 @@ def rec_stat(qd: int,
     )
 
 
-def rec_marker(abs_time: int) -> bytes:
-    return bytes([0xFF]) + le_n(abs_time, 7)
+def rec_marker(abs_time: int, unix_time_ms: int) -> bytes:
+    return bytes([0xFF]) + le_n(abs_time, 7) + le_n(unix_time_ms, 8)
 
 
 def main() -> None:
@@ -43,7 +43,7 @@ def main() -> None:
     # Non-marker record time fields are relative to the latest marker abs_time.
     valid = b"".join(
         [
-            rec_marker(0x01020304050000),
+            rec_marker(0x01020304050000, 1_710_000_000_000),
             rec_rw(0x01, 0x123456789A, 0x0200, 0x0000, 0x001234, 0x005678),
             rec_trim(0x10, 3, 0, 0, 16, 100),
             rec_trim(0x20, 3, 1, 0, 32, 101),
@@ -56,7 +56,7 @@ def main() -> None:
     # Valid record stream with explicit marker + relative-time records.
     valid_relative = b"".join(
         [
-            rec_marker(2_000_000),
+            rec_marker(2_000_000, 1_710_000_010_000),
             rec_rw(0x02, 0x1000, 0x80, 0x0000, 300, 15),
             rec_stat(16, 20, 7, 0, 2, 1),
             rec_trim(0x2000, 2, 0, 0, 64, 25),
@@ -70,7 +70,7 @@ def main() -> None:
     # used to verify count histograms are request-based (per operation), not per 4K bucket count.
     valid_request_count = b"".join(
         [
-            rec_marker(6_000_000),
+            rec_marker(6_000_000, 1_710_000_020_000),
             rec_rw(0x02, 0x4000, 8, 0x0000, 120, 10),   # write 32K
             rec_rw(0x01, 0x4000, 8, 0x0000, 130, 20),   # read 32K
             rec_rw(0x01, 0x4000, 1, 0x0000, 140, 30),   # read 4K
@@ -79,24 +79,24 @@ def main() -> None:
     (fixture_dir / "valid_request_count.bin").write_bytes(valid_request_count)
 
     # Valid stream with op==0 noise in the middle:
-    # parser should skip one 8-byte slot and continue.
+    # parser should skip one 16-byte slot and continue.
     valid_with_zero_op_skip = b"".join(
         [
-            rec_marker(4_000_000),
+            rec_marker(4_000_000, 1_710_000_030_000),
             rec_stat(3, 10, 1, 0, 1, 0),
-            bytes([0x00]) + b"\xAA" * 7,
+            bytes([0x00]) + b"\xAA" * 15,
             rec_stat(5, 20, 2, 0, 1, 0),
         ]
     )
     (fixture_dir / "valid_zero_op_skip.bin").write_bytes(valid_with_zero_op_skip)
 
-    # Valid all-zero termination: one full-zero 8-byte record means end-of-valid-log.
-    terminator = rec_marker(3_000_000) + rec_stat(4, 50, 3, 0, 1, 0) + (b"\x00" * 8) + rec_stat(6, 60, 5, 0, 2, 1)
+    # Valid all-zero termination: one full-zero 16-byte record means end-of-valid-log.
+    terminator = rec_marker(3_000_000, 1_710_000_040_000) + rec_stat(4, 50, 3, 0, 1, 0) + (b"\x00" * 16) + rec_stat(6, 60, 5, 0, 2, 1)
     (fixture_dir / "valid_termination.bin").write_bytes(terminator)
     (fixture_dir / "valid_all_zero_termination.bin").write_bytes(terminator)
 
     # Invalid: unknown opcode
-    invalid_op = bytes([0x77]) + b"\x00" * 7
+    invalid_op = bytes([0x77]) + b"\x00" * 15
     (fixture_dir / "invalid_op.bin").write_bytes(invalid_op)
 
     # Valid by skip policy: records before first marker are dropped as invalid/noise.
@@ -105,7 +105,7 @@ def main() -> None:
         [
             rec_stat(2, 7, 1, 0, 1, 0),  # dropped before marker
             rec_rw(0x01, 0x100, 0x10, 0x0000, 11, 3),  # dropped before marker
-            rec_marker(5_000_000),
+            rec_marker(5_000_000, 1_710_000_050_000),
             rec_stat(4, 9, 2, 0, 1, 0),  # valid after marker
         ]
     )
@@ -115,7 +115,7 @@ def main() -> None:
     # With request-based counting, Read Count histogram should record one request.
     valid_request_count_32k = b"".join(
         [
-            rec_marker(6_000_000),
+            rec_marker(6_000_000, 1_710_000_060_000),
             rec_rw(0x02, 0x4000, 8, 0x0000, 120, 10),  # 32K write
             rec_rw(0x01, 0x4000, 8, 0x0000, 150, 20),  # 32K read
         ]
@@ -123,12 +123,12 @@ def main() -> None:
     (fixture_dir / "valid_request_count_32k.bin").write_bytes(valid_request_count_32k)
 
     # Invalid: marker timestamp is not strictly increasing, indicating overwrite.
-    # Marker is 8 bytes each: first at offset 0, second at offset 8.
-    invalid_marker_overwrite = rec_marker(2_000_000) + rec_marker(1_999_999)
+    # Marker is 16 bytes each: first at offset 0, second at offset 16.
+    invalid_marker_overwrite = rec_marker(2_000_000, 1_710_000_070_000) + rec_marker(1_999_999, 1_710_000_070_001)
     (fixture_dir / "invalid_marker_overwrite.bin").write_bytes(invalid_marker_overwrite)
 
     # Invalid: equal marker timestamp is also treated as non-increasing overwrite.
-    invalid_marker_nonincreasing = rec_marker(3_000_000) + rec_marker(3_000_000)
+    invalid_marker_nonincreasing = rec_marker(3_000_000, 1_710_000_080_000) + rec_marker(3_000_000, 1_710_000_080_001)
     (fixture_dir / "invalid_marker_nonincreasing.bin").write_bytes(invalid_marker_nonincreasing)
 
     # Invalid: RW reserved non-zero
@@ -145,7 +145,7 @@ def main() -> None:
     (fixture_dir / "invalid_trim_total_ranges.bin").write_bytes(invalid_trim_total)
 
     # Invalid: not 8-byte aligned tail fragment (has marker first).
-    invalid_alignment = rec_marker(1_000_000) + rec_stat(1, 1, 1, 0, 1, 0) + b"\xAA"
+    invalid_alignment = rec_marker(1_000_000, 1_710_000_090_000) + rec_stat(1, 1, 1, 0, 1, 0) + b"\xAA"
     (fixture_dir / "invalid_alignment.bin").write_bytes(invalid_alignment)
 
 

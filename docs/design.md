@@ -5,7 +5,7 @@
 This project reads data via Linux NVMe passthrough and runs a `post action` callback after each read chunk.  
 This document focuses on the `post action` subsystem design and its goals:
 
-- Parse multiple record formats according to the protocol (8B / 16B)
+- Parse protocol records with unified 16B alignment
 - Reconstruct fields precisely in little-endian order
 - Fail fast on malformed/truncated data with actionable errors
 - Provide optional debug observability without affecting the default fast path
@@ -19,10 +19,9 @@ This document focuses on the `post action` subsystem design and its goals:
 
 ## 3. Protocol and Record Definitions
 
-The current parser supports 5 opcodes and two record lengths:
+The current parser supports 5 opcodes and one aligned record length:
 
-- 16-byte records: `0x01` (Read), `0x02` (Write), `0x03` (Trim)
-- 8-byte records: `0x0F` (Stat), `0xFF` (Marker)
+- 16-byte records: `0x01` (Read), `0x02` (Write), `0x03` (Trim), `0x0F` (Stat), `0xFF` (Marker)
 
 ### 3.1 Read / Write (`0x01` / `0x02`) - 16B
 
@@ -61,16 +60,18 @@ The current parser supports 5 opcodes and two record lengths:
 | Hot write | 3B | 10 | Hot write volume (unit: 4KiB) |
 | Folding write | 3B | 13 | Folding/migration write volume (unit: 4KiB) |
 
-### 3.4 Marker (`0xFF`) - 8B
+### 3.4 Marker (`0xFF`) - 16B
 
 | Field | Size | Offset | Description |
 |---|---:|---:|---|
 | Opcode | 1B | 0 | `0xFF` |
 | Absolute time | 7B | 1 | High-precision absolute timestamp (microseconds) |
+| Unix timestamp | 8B | 8 | Unix timestamp in milliseconds |
 
 ### 3.5 Timestamp Semantics
 
 - `Marker.abs_time` is an absolute timestamp in microseconds (`us`).
+- `Marker.unix_time_ms` carries wall-clock Unix timestamp in milliseconds (`ms`).
 - For `Read/Write/Trim/Stat`, the 3-byte `time` field is interpreted as a relative delta (`time_rel`)
   against the most recent preceding marker.
 - Effective timestamp:
@@ -98,7 +99,7 @@ The parser now uses `load_le64_u(const unsigned char *p)` as the hot-path primit
 
 - Loads one unaligned 8-byte word via `memcpy`
 - Uses host-endian branch (no swap on little-endian hosts)
-- Decodes 8-byte records with one load and 16-byte records with two loads
+- Decodes records via one or two 8-byte little-endian loads depending on opcode layout
 - Extracts fields with bit masks and shifts
 
 ### 4.2 Record Dispatch and Boundary Safety
@@ -108,11 +109,11 @@ The parser now uses `load_le64_u(const unsigned char *p)` as the hot-path primit
 1. Validate `data != NULL` and alignment constraints
 2. Start scanning with `cursor = 0`
 3. Read `op = bytes[cursor]`
-4. Determine record size (8 or 16) from opcode
+4. Determine record type from opcode (protocol records are 16B aligned)
 5. Handle `op == 0x00` units:
-   - If the whole 8-byte record is all zero (`0x00 * 8`), treat as end-of-valid-log
+   - If the whole 16-byte record is all zero (`0x00 * 16`), treat as end-of-valid-log
      and return soft-stop (`errno = ENODATA`) to stop further parsing/reading
-   - If `op == 0x00` but payload is not all zero, treat as invalid/noise and skip one 8-byte unit
+   - If `op == 0x00` but payload is not all zero, treat as invalid/noise and skip one 16-byte unit
 6. Dispatch to one parser:
    - `parse_rw_record`
    - `parse_trim_group`
@@ -147,11 +148,11 @@ Implementation notes:
 - Unknown opcode -> counted as invalid and skipped by one aligned record unit
 - Non-zero reserved field -> counted as invalid and skipped
 - Records before first marker -> counted as invalid and skipped
-- Non-8-byte-aligned tail bytes -> counted as invalid tail fragment
+- Non-16-byte-aligned tail bytes -> counted as invalid tail fragment
 - Truncated record/group -> counted as invalid and skipped conservatively
 - Marker timestamp non-increasing (`current <= previous`) -> treated as overwrite and soft-stop
-- all-zero 8-byte record (`0x00 * 8`) -> treated as end-of-valid-log and soft-stop
-- `op == 0x00` with non-zero payload -> treated as invalid/noise and skipped by one 8-byte unit
+- all-zero 16-byte record (`0x00 * 16`) -> treated as end-of-valid-log and soft-stop
+- `op == 0x00` with non-zero payload -> treated as invalid/noise and skipped by one 16-byte unit
 
 ## 5. Error Handling Strategy
 
@@ -168,7 +169,7 @@ Compile-time macro `NVME_POST_ACTION_DEBUG` controls debug logs:
 
 - Default: `0` (off)
 - Set to `1` to print parsed fields for each record type
-- When `data_len < 8`, the "no complete 8-byte unit" message is printed only in debug mode
+- When `data_len < 16`, the "no complete 16-byte unit" message is printed only in debug mode
 - When termination marker is hit, a debug line is printed (in debug mode)
 - Invalid record count is reported in final debug read stats (`invalid_records=...`)
 
@@ -177,7 +178,7 @@ are parsed:
 
 - Default: `0` (off), Stat records are parsed and validated as before.
 - Set to `1` to skip Stat processing in post action:
-  - Stat records are consumed as 8-byte units
+  - Stat records are consumed as 16-byte units
   - No Stat field validation is performed
   - No invalid-record count is added for skipped Stat records
 

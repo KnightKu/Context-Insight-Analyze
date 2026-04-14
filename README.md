@@ -7,7 +7,7 @@ This project is an NVMe read-path tool based on Linux NVMe ioctl interfaces. It 
 - A pluggable post-action callback in the read path (default implementation includes structured record parsing)
 - Post-action parsing without file output (read data is validated/parsed in-memory only)
 - Trim group aggregation (`total_ranges > 1`) into a single object with `ranges[]`
-- Early termination marker support: an all-zero 8-byte record (`0x00` * 8) is treated as end-of-valid data and triggers soft-stop
+- Early termination marker support: an all-zero 16-byte record (`0x00` * 16) is treated as end-of-valid data and triggers soft-stop
 
 ## Documentation
 
