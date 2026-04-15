@@ -62,7 +62,6 @@ static int parse_u64_with_unit(const char *arg, uint64_t *out_value) {
 }
 
 int main(int argc, char *argv[]) {
-    int argi = 1;
     int debug_enabled = 0;
     int latency_enabled = 0;
     int format_json_enabled = 0;
@@ -74,66 +73,66 @@ int main(int argc, char *argv[]) {
     int read_size_dist_enabled = 0;
     int write_size_dist_enabled = 0;
     int trim_size_dist_enabled = 0;
-    while (argi < argc) {
+    const char *positionals[3] = {NULL, NULL, NULL};
+    int positional_count = 0;
+    for (int argi = 1; argi < argc; ++argi) {
         if (strcmp(argv[argi], "-D") == 0 || strcmp(argv[argi], "--debug") == 0) {
             debug_enabled = 1;
-            ++argi;
             continue;
         }
         if (strcmp(argv[argi], "-l") == 0 || strcmp(argv[argi], "--latency") == 0) {
             latency_enabled = 1;
-            ++argi;
             continue;
         }
         if (strcmp(argv[argi], "-j") == 0 || strcmp(argv[argi], "--format-json") == 0) {
             format_json_enabled = 1;
-            ++argi;
             continue;
         }
         if (strcmp(argv[argi], "-r") == 0 || strcmp(argv[argi], "--read-count") == 0) {
             lba_stats_read_count_enabled = 1;
-            ++argi;
             continue;
         }
         if (strcmp(argv[argi], "-w") == 0 || strcmp(argv[argi], "--w2fr") == 0) {
             lba_stats_w2fr_enabled = 1;
-            ++argi;
             continue;
         }
         if (strcmp(argv[argi], "-c") == 0 || strcmp(argv[argi], "--life-cycle") == 0) {
             lba_stats_life_cycle_enabled = 1;
-            ++argi;
             continue;
         }
         if (strcmp(argv[argi], "-q") == 0 || strcmp(argv[argi], "--qd-dist") == 0) {
             qd_dist_enabled = 1;
-            ++argi;
             continue;
         }
         if (strcmp(argv[argi], "-a") == 0 || strcmp(argv[argi], "--wa-dist") == 0) {
             wa_dist_enabled = 1;
-            ++argi;
             continue;
         }
         if (strcmp(argv[argi], "-R") == 0 || strcmp(argv[argi], "--read-size-dist") == 0) {
             read_size_dist_enabled = 1;
-            ++argi;
             continue;
         }
         if (strcmp(argv[argi], "-W") == 0 || strcmp(argv[argi], "--write-size-dist") == 0) {
             write_size_dist_enabled = 1;
-            ++argi;
             continue;
         }
         if (strcmp(argv[argi], "-T") == 0 || strcmp(argv[argi], "--trim-size-dist") == 0) {
             trim_size_dist_enabled = 1;
-            ++argi;
             continue;
         }
-        break;
+
+        if (argv[argi][0] == '-') {
+            fprintf(stderr, "unknown option: %s\n", argv[argi]);
+            return 1;
+        }
+        if (positional_count >= 3) {
+            fprintf(stderr, "too many positional arguments\n");
+            return 1;
+        }
+        positionals[positional_count++] = argv[argi];
     }
 
-    if ((argc - argi) != 3) {
+    if (positional_count != 3) {
         fprintf(stderr,
                 "usage: %s [-D|--debug] [-j|--format-json] [-l|--latency] "
                 "[-r|--read-count] [-w|--w2fr] [-c|--life-cycle] "
@@ -144,17 +143,17 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    const char *device_name = argv[argi];
+    const char *device_name = positionals[0];
     // slba and data_len share the same unit parser for consistent CLI behavior.
     uint64_t slba = 0ULL;
-    if (parse_u64_with_unit(argv[argi + 1], &slba) != 0) {
-        fprintf(stderr, "invalid slba: %s\n", argv[argi + 1]);
+    if (parse_u64_with_unit(positionals[1], &slba) != 0) {
+        fprintf(stderr, "invalid slba: %s\n", positionals[1]);
         return 1;
     }
 
     uint64_t data_len = 0;
-    if (parse_u64_with_unit(argv[argi + 2], &data_len) != 0 || data_len == 0ULL) {
-        fprintf(stderr, "invalid data_len: %s (examples: 128K, 64M, 1G, 1T)\n", argv[argi + 2]);
+    if (parse_u64_with_unit(positionals[2], &data_len) != 0 || data_len == 0ULL) {
+        fprintf(stderr, "invalid data_len: %s (examples: 128K, 64M, 1G, 1T)\n", positionals[2]);
         return 1;
     }
 
