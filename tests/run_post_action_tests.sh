@@ -123,6 +123,26 @@ if ! rg -i "Qos p10=.*p20=.*p30=.*p40=.*p50=.*p60=.*p70=.*p80=.*p90=.*p99=.*p99\
   exit 1
 fi
 
+echo "  JSON format expected for latency/read-write-trim distributions"
+if ! ./post_action_file_tester \
+  --format-json \
+  --latency \
+  --read-size-dist \
+  --write-size-dist \
+  --trim-size-dist \
+  "tests/fixtures/valid_mixed.bin" >/tmp/post_action_json.log 2>&1; then
+  echo "unexpected failure for json format output case" >&2
+  exit 1
+fi
+if ! rg -i "\"latency\"\\s*:\\s*\\{|\"read_size_dist\"\\s*:\\s*\\[|\"write_size_dist\"\\s*:\\s*\\[|\"trim_size_dist\"\\s*:\\s*\\[" "/tmp/post_action_json.log" >/dev/null; then
+  echo "missing json sections for latency/read-write-trim output" >&2
+  exit 1
+fi
+if rg -i "latency summary:|Read Size distribution \\(4K blocks\\):|Write Size distribution \\(4K blocks\\):|Trim Size distribution \\(4K blocks\\):" "/tmp/post_action_json.log" >/dev/null; then
+  echo "unexpected text-format sections in json mode output" >&2
+  exit 1
+fi
+
 echo "  CROSS-CHUNK marker continuity expected"
 if ! ./post_action_file_tester --split-bytes 16 "tests/fixtures/valid_relative_time_with_marker.bin" >/tmp/post_action_chunk_continuity.log 2>&1; then
   echo "unexpected failure for cross-chunk marker continuity case" >&2

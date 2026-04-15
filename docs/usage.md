@@ -28,7 +28,7 @@ Binary output:
 Current command format:
 
 ```bash
-./sfx_ctx_insight_analyze [-D|--debug] [-l|--latency] [-r|--read-count] [-w|--w2fr] [-c|--life-cycle] [-q|--qd-dist] [-a|--wa-dist] [-R|--read-size-dist] [-W|--write-size-dist] [-T|--trim-size-dist] <device_name> <slba[K|M|G|T]> <data_len[K|M|G|T]>
+./sfx_ctx_insight_analyze [-D|--debug] [-j|--format-json] [-l|--latency] [-r|--read-count] [-w|--w2fr] [-c|--life-cycle] [-q|--qd-dist] [-a|--wa-dist] [-R|--read-size-dist] [-W|--write-size-dist] [-T|--trim-size-dist] <device_name> <slba[K|M|G|T]> <data_len[K|M|G|T]>
 ```
 
 Argument details:
@@ -37,6 +37,7 @@ Argument details:
 - `slba`: start LBA, supports unit suffix `K/M/G/T` (case-insensitive)
 - `data_len`: read size in bytes, supports unit suffix `K/M/G/T` (case-insensitive)
 - `-D` / `--debug`: enables runtime debug mode
+- `-j` / `--format-json`: prints enabled `-l/-R/-W/-T` reports in JSON format
 - `-l` / `--latency`: enables fio-style latency summary output for post-action `read/write/trim`
 - `-r` / `--read-count`: enables `Read Count` distribution output
 - `-w` / `--w2fr`: enables `Write-to-First-Read Latency` real-time(ms) distribution output
@@ -55,6 +56,7 @@ Examples:
 ./sfx_ctx_insight_analyze /dev/nvme0n1 1024K 1T
 ./sfx_ctx_insight_analyze --debug /dev/nvme0n1 0 64M
 ./sfx_ctx_insight_analyze --latency /dev/nvme0n1 0 64M
+./sfx_ctx_insight_analyze --format-json --latency --read-size-dist --write-size-dist --trim-size-dist /dev/nvme0n1 0 64M
 ./sfx_ctx_insight_analyze -D -l /dev/nvme0n1 0 64M
 ./sfx_ctx_insight_analyze --read-count /dev/nvme0n1 0 64M
 ./sfx_ctx_insight_analyze --w2fr /dev/nvme0n1 0 64M
@@ -126,6 +128,7 @@ The default post action:
   - `trim`: use per-range relative `time` delta as trim latency sample
   - Output includes `count/min/max/avg`
   - Percentiles cover `p10`, `p20`, `p30`, `...`, `p90`, `p99`, `p99.9`, `p99.99`
+  - with `-j/--format-json`, output is a JSON object under key `latency`
 - Optional LBA stats summary (independent switches):
   - `-r` / `--read-count`: `Read Count` non-zero bucket distribution
   - `-w` / `--w2fr`: `Write-to-First-Read Latency` decoded real-time distribution (milliseconds)
@@ -138,6 +141,8 @@ The default post action:
   - `-R` / `--read-size-dist`: read size distribution (`length` field, 4K units)
   - `-W` / `--write-size-dist`: write size distribution (`length` field, 4K units)
   - `-T` / `--trim-size-dist`: trim size distribution (per-range `length`, 4K units)
+  - with `-j/--format-json`, enabled size distributions are emitted as JSON fields:
+    `read_size_dist`, `write_size_dist`, `trim_size_dist`
 
 ## 5. Read/Process Pipeline
 

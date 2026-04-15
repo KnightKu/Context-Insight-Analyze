@@ -27,6 +27,10 @@ int nvme_post_action_set_latency_enabled(int enabled);
 
 int nvme_post_action_get_latency_enabled(void);
 
+int nvme_post_action_set_json_format_enabled(int enabled);
+
+int nvme_post_action_get_json_format_enabled(void);
+
 void nvme_post_action_reset_latency_stats(void);
 
 void nvme_post_action_print_latency_report(void);

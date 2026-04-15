@@ -37,6 +37,8 @@ int nvme_read_set_write_size_dist(int enabled);
 
 int nvme_read_set_trim_size_dist(int enabled);
 
+int nvme_read_set_format_json(int enabled);
+
 int nvme_post_action_process(void *data,
                              uint32_t data_len,
                              uint64_t offset_bytes);

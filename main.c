@@ -65,6 +65,7 @@ int main(int argc, char *argv[]) {
     int argi = 1;
     int debug_enabled = 0;
     int latency_enabled = 0;
+    int format_json_enabled = 0;
     int lba_stats_read_count_enabled = 0;
     int lba_stats_w2fr_enabled = 0;
     int lba_stats_life_cycle_enabled = 0;
@@ -81,6 +82,11 @@ int main(int argc, char *argv[]) {
         }
         if (strcmp(argv[argi], "-l") == 0 || strcmp(argv[argi], "--latency") == 0) {
             latency_enabled = 1;
+            ++argi;
+            continue;
+        }
+        if (strcmp(argv[argi], "-j") == 0 || strcmp(argv[argi], "--format-json") == 0) {
+            format_json_enabled = 1;
             ++argi;
             continue;
         }
@@ -129,7 +135,7 @@ int main(int argc, char *argv[]) {
 
     if ((argc - argi) != 3) {
         fprintf(stderr,
-                "usage: %s [-D|--debug] [-l|--latency] "
+                "usage: %s [-D|--debug] [-j|--format-json] [-l|--latency] "
                 "[-r|--read-count] [-w|--w2fr] [-c|--life-cycle] "
                 "[-q|--qd-dist] [-a|--wa-dist] "
                 "[-R|--read-size-dist] [-W|--write-size-dist] [-T|--trim-size-dist] "
@@ -153,6 +159,7 @@ int main(int argc, char *argv[]) {
     }
 
     nvme_read_set_debug(debug_enabled);
+    nvme_read_set_format_json(format_json_enabled);
     nvme_read_set_latency(latency_enabled);
     nvme_read_set_lba_stats_read_count(lba_stats_read_count_enabled);
     nvme_read_set_lba_stats_w2fr(lba_stats_w2fr_enabled);
