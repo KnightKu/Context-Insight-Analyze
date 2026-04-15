@@ -63,6 +63,7 @@ static int parse_u64_with_unit(const char *arg, uint64_t *out_value) {
 int main(int argc, char *argv[]) {
     int argi = 1;
     int debug_enabled = 0;
+    int format_json_enabled = 0;
     int latency_enabled = 0;
     int read_count_stats_enabled = 0;
     int w2fr_stats_enabled = 0;
@@ -75,6 +76,11 @@ int main(int argc, char *argv[]) {
     while (argi < argc) {
         if (strcmp(argv[argi], "-D") == 0 || strcmp(argv[argi], "--debug") == 0) {
             debug_enabled = 1;
+            ++argi;
+            continue;
+        }
+        if (strcmp(argv[argi], "-j") == 0 || strcmp(argv[argi], "--format-json") == 0) {
+            format_json_enabled = 1;
             ++argi;
             continue;
         }
@@ -147,7 +153,7 @@ int main(int argc, char *argv[]) {
 
     if ((argc - argi) != 1 && (argc - argi) != 2) {
         fprintf(stderr,
-                "usage: %s [-D|--debug] [-l|--latency] [-r|--read-count] [-w|--w2fr] "
+                "usage: %s [-D|--debug] [-j|--format-json] [-l|--latency] [-r|--read-count] [-w|--w2fr] "
                 "[-c|--life-cycle] [-q|--qd-dist] [-a|--wa-dist] "
                 "[-R|--read-size-dist] [-W|--write-size-dist] [-T|--trim-size-dist] "
                 "[--split-bytes N] <input_file> [offset_bytes]\n",
@@ -213,6 +219,7 @@ int main(int argc, char *argv[]) {
     }
 
     nvme_read_set_debug(debug_enabled);
+    nvme_read_set_format_json(format_json_enabled);
     nvme_read_set_latency(latency_enabled);
     nvme_read_set_lba_stats_read_count(read_count_stats_enabled);
     nvme_read_set_lba_stats_w2fr(w2fr_stats_enabled);

@@ -111,6 +111,7 @@ static int g_post_action_wa_dist_enabled = 0;
 static int g_post_action_read_size_dist_enabled = 0;
 static int g_post_action_write_size_dist_enabled = 0;
 static int g_post_action_trim_size_dist_enabled = 0;
+static int g_post_action_json_format_enabled = 0;
 static pthread_mutex_t g_post_action_workload_mutex = PTHREAD_MUTEX_INITIALIZER;
 static uint64_t g_post_action_qd_hist[NVME_POST_ACTION_RATIO_BUCKETS];
 static uint64_t g_post_action_wa_hist[NVME_POST_ACTION_RATIO_BUCKETS];
@@ -308,6 +309,37 @@ static void print_histogram_section(const char *title,
                 (unsigned long long)hist[i],
                 pct);
     }
+}
+
+static void print_histogram_section_json(const char *json_key,
+                                         const uint64_t hist[10],
+                                         uint64_t total_samples,
+                                         const char *(*label_fn)(uint32_t),
+                                         int *need_comma) {
+    if (json_key == NULL || hist == NULL || label_fn == NULL || need_comma == NULL) {
+        return;
+    }
+    if (*need_comma != 0) {
+        fprintf(stderr, ",\n");
+    }
+    fprintf(stderr, "  \"%s\": {\n", json_key);
+    fprintf(stderr, "    \"total\": %llu,\n", (unsigned long long)total_samples);
+    fprintf(stderr, "    \"buckets\": [\n");
+    for (uint32_t i = 0U; i < 10U; ++i) {
+        double pct = 0.0;
+        if (total_samples != 0ULL) {
+            pct = ((double)hist[i] * 100.0) / (double)total_samples;
+        }
+        fprintf(stderr,
+                "      {\"label\":\"%s\",\"count\":%llu,\"ratio\":%.2f}%s\n",
+                label_fn(i),
+                (unsigned long long)hist[i],
+                pct,
+                (i + 1U < 10U) ? "," : "");
+    }
+    fprintf(stderr, "    ]\n");
+    fprintf(stderr, "  }");
+    *need_comma = 1;
 }
 
 static uint64_t marker_record_to_lba_locked(uint64_t record_offset_bytes) {
@@ -977,6 +1009,16 @@ int nvme_post_action_get_trim_size_dist_enabled(void) {
     return g_post_action_trim_size_dist_enabled;
 }
 
+int nvme_post_action_set_json_format_enabled(int enabled) {
+    g_post_action_json_format_enabled = (enabled != 0) ? 1 : 0;
+    nvme_post_action_latency_set_json_format(g_post_action_json_format_enabled);
+    return 0;
+}
+
+int nvme_post_action_get_json_format_enabled(void) {
+    return g_post_action_json_format_enabled;
+}
+
 void nvme_post_action_print_lba_stats_report(void) {
     if (g_post_action_lba_read_count_enabled == 0 &&
         g_post_action_lba_w2fr_enabled == 0 &&
@@ -996,7 +1038,36 @@ void nvme_post_action_print_workload_stats_report(void) {
         g_post_action_trim_size_dist_enabled == 0) {
         return;
     }
+    int json_enabled = g_post_action_json_format_enabled;
     pthread_mutex_lock(&g_post_action_workload_mutex);
+    if (json_enabled != 0) {
+        int need_comma = 0;
+        fprintf(stderr, "{\n");
+        if (g_post_action_read_size_dist_enabled != 0) {
+            print_histogram_section_json("read_size_dist",
+                                         g_post_action_read_size_hist,
+                                         g_post_action_read_size_samples,
+                                         label_io_size,
+                                         &need_comma);
+        }
+        if (g_post_action_write_size_dist_enabled != 0) {
+            print_histogram_section_json("write_size_dist",
+                                         g_post_action_write_size_hist,
+                                         g_post_action_write_size_samples,
+                                         label_io_size,
+                                         &need_comma);
+        }
+        if (g_post_action_trim_size_dist_enabled != 0) {
+            print_histogram_section_json("trim_size_dist",
+                                         g_post_action_trim_size_hist,
+                                         g_post_action_trim_size_samples,
+                                         label_io_size,
+                                         &need_comma);
+        }
+        fprintf(stderr, "\n}\n");
+        pthread_mutex_unlock(&g_post_action_workload_mutex);
+        return;
+    }
     if (g_post_action_qd_dist_enabled != 0) {
         print_histogram_section("QD distribution", "QD", g_post_action_qd_hist,
                                 g_post_action_qd_samples, label_qd);
