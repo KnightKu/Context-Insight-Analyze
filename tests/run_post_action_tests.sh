@@ -37,6 +37,13 @@ for f in "${PASS_CASES[@]}"; do
   ./post_action_file_tester "${f}" 0 >/dev/null 2>&1
 done
 
+echo "  PASS expected: mixed option ordering should work"
+./post_action_file_tester "tests/fixtures/valid_mixed.bin" --latency --read-size-dist --format-json >/tmp/post_action_mixed_order.log 2>&1
+if ! rg -i "\"latency\"|\"read_size_dist\"" "/tmp/post_action_mixed_order.log" >/dev/null; then
+  echo "mixed option ordering did not produce expected JSON sections" >&2
+  exit 1
+fi
+
 echo "[4/4] run invalid-data skip cases"
 for f in "${SKIP_CASES[@]}"; do
   echo "  SKIP expected (success with invalid-count in debug): ${f}"

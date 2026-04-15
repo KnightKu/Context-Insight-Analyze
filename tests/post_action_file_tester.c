@@ -73,6 +73,11 @@ int main(int argc, char *argv[]) {
     int read_size_dist_enabled = 0;
     int write_size_dist_enabled = 0;
     int trim_size_dist_enabled = 0;
+    uint64_t split_bytes = 0ULL;
+    int use_split = 0;
+    const char *input_file = NULL;
+    uint64_t offset_bytes = 0ULL;
+    int offset_specified = 0;
     while (argi < argc) {
         if (strcmp(argv[argi], "-D") == 0 || strcmp(argv[argi], "--debug") == 0) {
             debug_enabled = 1;
@@ -129,12 +134,6 @@ int main(int argc, char *argv[]) {
             ++argi;
             continue;
         }
-        break;
-    }
-
-    uint64_t split_bytes = 0ULL;
-    int use_split = 0;
-    while (argi < argc) {
         if (strcmp(argv[argi], "--split-bytes") == 0) {
             if ((argi + 1) >= argc) {
                 fprintf(stderr, "--split-bytes requires a value\n");
@@ -148,10 +147,29 @@ int main(int argc, char *argv[]) {
             argi += 2;
             continue;
         }
-        break;
+        if (argv[argi][0] == '-') {
+            fprintf(stderr, "unknown option: %s\n", argv[argi]);
+            return 2;
+        }
+        if (input_file == NULL) {
+            input_file = argv[argi];
+            ++argi;
+            continue;
+        }
+        if (offset_specified == 0) {
+            if (parse_u64_with_unit(argv[argi], &offset_bytes) != 0) {
+                fprintf(stderr, "invalid offset_bytes: %s\n", argv[argi]);
+                return 2;
+            }
+            offset_specified = 1;
+            ++argi;
+            continue;
+        }
+        fprintf(stderr, "unexpected positional argument: %s\n", argv[argi]);
+        return 2;
     }
 
-    if ((argc - argi) != 1 && (argc - argi) != 2) {
+    if (input_file == NULL) {
         fprintf(stderr,
                 "usage: %s [-D|--debug] [-j|--format-json] [-l|--latency] [-r|--read-count] [-w|--w2fr] "
                 "[-c|--life-cycle] [-q|--qd-dist] [-a|--wa-dist] "
@@ -160,16 +178,6 @@ int main(int argc, char *argv[]) {
                 argv[0]);
         return 2;
     }
-
-    uint64_t offset_bytes = 0ULL;
-    if ((argc - argi) == 2) {
-        if (parse_u64_with_unit(argv[argi + 1], &offset_bytes) != 0) {
-            fprintf(stderr, "invalid offset_bytes: %s\n", argv[argi + 1]);
-            return 2;
-        }
-    }
-
-    const char *input_file = argv[argi];
     FILE *fp = fopen(input_file, "rb");
     if (fp == NULL) {
         fprintf(stderr, "open %s failed: %s\n", input_file, strerror(errno));
