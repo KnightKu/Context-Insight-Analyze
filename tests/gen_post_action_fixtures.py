@@ -152,6 +152,22 @@ def main() -> None:
     invalid_marker_reserved = rec_marker(7_000_000, 1_710_000_100_000, marker_reserved=1)
     (fixture_dir / "invalid_marker_reserved.bin").write_bytes(invalid_marker_reserved)
 
+    # Valid window-filter stream:
+    # marker1 (outside target window) + one read
+    # marker2 (inside target window) + one read
+    # marker3 (outside target window) + one read
+    valid_time_window = b"".join(
+        [
+            rec_marker(8_000_000, 1_710_000_000_000),
+            rec_rw(0x01, 0x2000, 8, 0x0000, 111, 10),
+            rec_marker(8_100_000, 1_710_000_010_000),
+            rec_rw(0x01, 0x3000, 8, 0x0000, 222, 10),
+            rec_marker(8_200_000, 1_710_000_020_000),
+            rec_rw(0x01, 0x4000, 8, 0x0000, 333, 10),
+        ]
+    )
+    (fixture_dir / "valid_time_window.bin").write_bytes(valid_time_window)
+
 
 if __name__ == "__main__":
     main()

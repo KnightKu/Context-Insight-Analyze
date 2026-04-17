@@ -3,6 +3,7 @@
 #include "post_action.h"
 
 #include <errno.h>
+#include <inttypes.h>
 #include <pthread.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -88,6 +89,7 @@ typedef struct {
 
 typedef struct {
     uint64_t marker_abs_time_us;
+    uint64_t marker_unix_time_ms;
     int has_marker;
 } nvme_post_action_time_ref_t;
 
@@ -95,6 +97,7 @@ static pthread_mutex_t g_post_action_invalid_mutex = PTHREAD_MUTEX_INITIALIZER;
 static uint64_t g_post_action_invalid_records = 0ULL;
 static pthread_mutex_t g_post_action_marker_mutex = PTHREAD_MUTEX_INITIALIZER;
 static uint64_t g_post_action_last_marker_abs_time_us = 0ULL;
+static uint64_t g_post_action_last_marker_unix_time_ms = 0ULL;
 static int g_post_action_has_last_marker = 0;
 static uint64_t g_post_action_base_lba = 0ULL;
 static uint32_t g_post_action_sector_size = (uint32_t)NVME_LBA_SIZE_BYTES;
@@ -112,6 +115,10 @@ static int g_post_action_read_size_dist_enabled = 0;
 static int g_post_action_write_size_dist_enabled = 0;
 static int g_post_action_trim_size_dist_enabled = 0;
 static int g_post_action_json_format_enabled = 0;
+static int g_post_action_time_window_enabled = 0;
+static uint64_t g_post_action_time_start_ms = 0ULL;
+static uint64_t g_post_action_time_end_ms = UINT64_MAX;
+static int g_post_action_window_active = 1;
 static pthread_mutex_t g_post_action_workload_mutex = PTHREAD_MUTEX_INITIALIZER;
 static uint64_t g_post_action_qd_hist[NVME_POST_ACTION_RATIO_BUCKETS];
 static uint64_t g_post_action_wa_hist[NVME_POST_ACTION_RATIO_BUCKETS];
@@ -370,6 +377,52 @@ static int resolve_abs_time_us(uint32_t time_rel_us,
     return 0;
 }
 
+static int post_action_is_window_active(void) {
+    if (g_post_action_debug_enabled != 0) {
+        fprintf(stderr,
+                "window active? enabled=%d active=%d start=%" PRIu64 " end=%" PRIu64 "\n",
+                g_post_action_time_window_enabled,
+                g_post_action_window_active,
+                (uint64_t)g_post_action_time_start_ms,
+                (uint64_t)g_post_action_time_end_ms);
+    }
+    if (g_post_action_time_window_enabled == 0) {
+        return 1;
+    }
+    return g_post_action_window_active;
+}
+
+static int post_action_time_window_contains_abs_us(uint64_t abs_time_us) {
+    uint64_t start_ms = 0ULL;
+    uint64_t end_ms = UINT64_MAX;
+    int enabled = 0;
+    pthread_mutex_lock(&g_post_action_marker_mutex);
+    enabled = g_post_action_time_window_enabled;
+    start_ms = g_post_action_time_start_ms;
+    end_ms = g_post_action_time_end_ms;
+    pthread_mutex_unlock(&g_post_action_marker_mutex);
+    if (enabled == 0) {
+        return 1;
+    }
+    uint64_t abs_time_ms = abs_time_us / 1000ULL;
+    return (abs_time_ms >= start_ms && abs_time_ms <= end_ms) ? 1 : 0;
+}
+
+static int post_action_time_window_contains_unix_ms(uint64_t unix_time_ms) {
+    uint64_t start_ms = 0ULL;
+    uint64_t end_ms = UINT64_MAX;
+    int enabled = 0;
+    pthread_mutex_lock(&g_post_action_marker_mutex);
+    enabled = g_post_action_time_window_enabled;
+    start_ms = g_post_action_time_start_ms;
+    end_ms = g_post_action_time_end_ms;
+    pthread_mutex_unlock(&g_post_action_marker_mutex);
+    if (enabled == 0) {
+        return 1;
+    }
+    return (unix_time_ms >= start_ms && unix_time_ms <= end_ms) ? 1 : 0;
+}
+
 static inline uint64_t load_le64_u(const unsigned char *p) {
     uint64_t v = 0ULL;
     memcpy(&v, p, sizeof(v));
@@ -448,6 +501,13 @@ static int parse_rw_record(uint64_t record_lo,
         return -1;
     }
 
+    if (post_action_time_window_contains_abs_us(abs_time_us) == 0) {
+        return 0;
+    }
+
+    if (post_action_is_window_active() == 0) {
+        return 0;
+    }
     if (op == NVME_POST_ACTION_OP_WRITE) {
         nvme_post_action_stats_update_write(parsed.start_lba, (uint64_t)parsed.length, abs_time_us);
         nvme_post_action_latency_record_write(parsed.latency);
@@ -556,6 +616,7 @@ static int parse_trim_group(const unsigned char *bytes,
         return -1;
     }
 
+    int window_active = post_action_is_window_active();
     for (uint16_t i = 0; i < parsed.total_ranges; ++i) {
         uint32_t group_cursor = cursor + ((uint32_t)i * NVME_POST_ACTION_RECORD_BYTES_LONG);
         if ((data_len - group_cursor) < NVME_POST_ACTION_RECORD_BYTES_LONG) {
@@ -587,9 +648,13 @@ static int parse_trim_group(const unsigned char *bytes,
         if (resolve_abs_time_us(fields.time_rel, time_ref, &abs_time_us) != 0) {
             return -1;
         }
-        nvme_post_action_stats_update_write(fields.start_lba, (uint64_t)fields.length, abs_time_us);
-        nvme_post_action_latency_record_trim(fields.time_rel);
-        record_io_size(NVME_POST_ACTION_OP_TRIM, (uint64_t)fields.length);
+        if (post_action_time_window_contains_abs_us(abs_time_us) != 0) {
+        if (window_active != 0) {
+            nvme_post_action_stats_update_write(fields.start_lba, (uint64_t)fields.length, abs_time_us);
+            nvme_post_action_latency_record_trim(fields.time_rel);
+            record_io_size(NVME_POST_ACTION_OP_TRIM, (uint64_t)fields.length);
+        }
+        }
     }
     parsed.range_count = parsed.total_ranges;
     (void)parsed;
@@ -623,13 +688,18 @@ static int parse_stat_record(uint64_t record_lo,
     if (resolve_abs_time_us(parsed.time_rel, time_ref, &abs_time_us) != 0) {
         return -1;
     }
-    if (nvme_post_action_stats_record_stat(abs_time_us,
-                                           parsed.qd,
-                                           parsed.hot_write,
-                                           parsed.folding_write) != 0) {
-        return -1;
+    if (post_action_time_window_contains_abs_us(abs_time_us) != 0) {
+    if (post_action_is_window_active() == 0) {
+        return 0;
     }
-    record_qd_and_wa(parsed.qd, parsed.hot_write, parsed.folding_write);
+    if (nvme_post_action_stats_record_stat(abs_time_us,
+                                               parsed.qd,
+                                               parsed.hot_write,
+                                               parsed.folding_write) != 0) {
+            return -1;
+        }
+        record_qd_and_wa(parsed.qd, parsed.hot_write, parsed.folding_write);
+    }
 #if NVME_POST_ACTION_DEBUG
     fprintf(stderr,
             "post action stat: offset=%llu record=%u qd=%u time_rel=%u abs_time_us=%llu "
@@ -697,7 +767,18 @@ static int parse_marker_record(uint64_t record_lo,
         errno = ECANCELED;
         return -1;
     }
+    if (g_post_action_time_window_enabled != 0) {
+        if (parsed.unix_time_ms < g_post_action_time_start_ms ||
+            parsed.unix_time_ms > g_post_action_time_end_ms) {
+            g_post_action_window_active = 0;
+        } else {
+            g_post_action_window_active = 1;
+        }
+    } else {
+        g_post_action_window_active = 1;
+    }
     g_post_action_last_marker_abs_time_us = parsed.abs_time;
+    g_post_action_last_marker_unix_time_ms = parsed.unix_time_ms;
     g_post_action_has_last_marker = 1;
     pthread_mutex_unlock(&g_post_action_marker_mutex);
 
@@ -725,6 +806,7 @@ static int default_post_action(void *ctx, void *data, uint32_t data_len, uint64_
     // Keep time baseline continuous across callback invocations/chunks.
     pthread_mutex_lock(&g_post_action_marker_mutex);
     time_ref.marker_abs_time_us = g_post_action_last_marker_abs_time_us;
+    time_ref.marker_unix_time_ms = g_post_action_last_marker_unix_time_ms;
     time_ref.has_marker = g_post_action_has_last_marker;
     pthread_mutex_unlock(&g_post_action_marker_mutex);
     uint32_t parse_len = data_len;
@@ -915,7 +997,9 @@ int nvme_post_action_set_base_lba(uint64_t base_lba) {
     pthread_mutex_lock(&g_post_action_marker_mutex);
     g_post_action_base_lba = base_lba;
     g_post_action_last_marker_abs_time_us = 0ULL;
+    g_post_action_last_marker_unix_time_ms = 0ULL;
     g_post_action_has_last_marker = 0;
+    g_post_action_window_active = 1;
     pthread_mutex_unlock(&g_post_action_marker_mutex);
     return 0;
 }
@@ -1017,6 +1101,32 @@ int nvme_post_action_set_json_format_enabled(int enabled) {
 
 int nvme_post_action_get_json_format_enabled(void) {
     return g_post_action_json_format_enabled;
+}
+
+int nvme_post_action_set_time_window_ms(int enabled, uint64_t start_ms, uint64_t end_ms) {
+    if (enabled != 0 && start_ms > end_ms) {
+        errno = EINVAL;
+        return -1;
+    }
+    pthread_mutex_lock(&g_post_action_marker_mutex);
+    g_post_action_time_window_enabled = (enabled != 0) ? 1 : 0;
+    g_post_action_time_start_ms = start_ms;
+    g_post_action_time_end_ms = end_ms;
+    pthread_mutex_unlock(&g_post_action_marker_mutex);
+    return 0;
+}
+
+int nvme_post_action_get_time_window_ms(int *enabled, uint64_t *start_ms, uint64_t *end_ms) {
+    if (enabled == NULL || start_ms == NULL || end_ms == NULL) {
+        errno = EINVAL;
+        return -1;
+    }
+    pthread_mutex_lock(&g_post_action_marker_mutex);
+    *enabled = g_post_action_time_window_enabled;
+    *start_ms = g_post_action_time_start_ms;
+    *end_ms = g_post_action_time_end_ms;
+    pthread_mutex_unlock(&g_post_action_marker_mutex);
+    return 0;
 }
 
 void nvme_post_action_print_lba_stats_report(void) {

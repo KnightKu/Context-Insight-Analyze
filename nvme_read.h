@@ -39,6 +39,9 @@ int nvme_read_set_trim_size_dist(int enabled);
 
 int nvme_read_set_format_json(int enabled);
 
+int nvme_read_set_time_window(int has_start, uint64_t time_start_ms,
+                              int has_end, uint64_t time_end_ms);
+
 int nvme_post_action_process(void *data,
                              uint32_t data_len,
                              uint64_t offset_bytes);

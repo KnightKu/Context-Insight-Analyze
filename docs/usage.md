@@ -28,7 +28,7 @@ Binary output:
 Current command format:
 
 ```bash
-./sfx_ctx_insight_analyze [-D|--debug] [-j|--format-json] [-l|--latency] [-r|--read-count] [-w|--w2fr] [-c|--life-cycle] [-q|--qd-dist] [-a|--wa-dist] [-R|--read-size-dist] [-W|--write-size-dist] [-T|--trim-size-dist] <device_name> <slba[K|M|G|T]> <data_len[K|M|G|T]>
+./sfx_ctx_insight_analyze [-D|--debug] [-j|--format-json] [-l|--latency] [-r|--read-count] [-w|--w2fr] [-c|--life-cycle] [-q|--qd-dist] [-a|--wa-dist] [-R|--read-size-dist] [-W|--write-size-dist] [-T|--trim-size-dist] [-S|--time-start "YYYY-MM-DD HH:MM:SS"] [-E|--time-end "YYYY-MM-DD HH:MM:SS"] <device_name> <slba[K|M|G|T]> <data_len[K|M|G|T]>
 ```
 
 Argument details:
@@ -47,6 +47,8 @@ Argument details:
 - `-R` / `--read-size-dist`: enables read size distribution output (4K block units)
 - `-W` / `--write-size-dist`: enables write size distribution output (4K block units)
 - `-T` / `--trim-size-dist`: enables trim size distribution output (4K block units)
+- `-S` / `--time-start`: sets inclusive start of time window, format `YYYY-MM-DD HH:MM:SS`
+- `-E` / `--time-end`: sets inclusive end of time window, format `YYYY-MM-DD HH:MM:SS`
 
 Examples:
 
@@ -57,6 +59,7 @@ Examples:
 ./sfx_ctx_insight_analyze --debug /dev/nvme0n1 0 64M
 ./sfx_ctx_insight_analyze --latency /dev/nvme0n1 0 64M
 ./sfx_ctx_insight_analyze --format-json --latency --read-size-dist --write-size-dist --trim-size-dist /dev/nvme0n1 0 64M
+./sfx_ctx_insight_analyze --format-json --latency --read-size-dist --write-size-dist --trim-size-dist --time-start "2026-04-15 13:21:25" --time-end "2026-04-15 13:22:00" /dev/nvme0n1 0 64M
 ./sfx_ctx_insight_analyze -D -l /dev/nvme0n1 0 64M
 ./sfx_ctx_insight_analyze --read-count /dev/nvme0n1 0 64M
 ./sfx_ctx_insight_analyze --w2fr /dev/nvme0n1 0 64M

@@ -417,6 +417,16 @@ int nvme_read_set_format_json(int enabled) {
     return nvme_post_action_set_json_format_enabled(enabled);
 }
 
+int nvme_read_set_time_window(int has_start, uint64_t time_start_ms,
+                              int has_end, uint64_t time_end_ms) {
+    if (has_start == 0 && has_end == 0) {
+        return nvme_post_action_set_time_window_ms(0, 0ULL, UINT64_MAX);
+    }
+    uint64_t start_ms = (has_start != 0) ? time_start_ms : 0ULL;
+    uint64_t end_ms = (has_end != 0) ? time_end_ms : UINT64_MAX;
+    return nvme_post_action_set_time_window_ms(1, start_ms, end_ms);
+}
+
 int nvme_read_set_lba_stats_read_count(int enabled) {
     nvme_post_action_set_lba_read_count_enabled(enabled);
     return 0;
