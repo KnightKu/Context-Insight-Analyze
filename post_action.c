@@ -1095,6 +1095,21 @@ int nvme_post_action_get_trim_size_dist_enabled(void) {
     return g_post_action_trim_size_dist_enabled;
 }
 
+void nvme_post_action_reset_workload_stats(void) {
+    pthread_mutex_lock(&g_post_action_workload_mutex);
+    memset(g_post_action_qd_hist, 0, sizeof(g_post_action_qd_hist));
+    memset(g_post_action_wa_hist, 0, sizeof(g_post_action_wa_hist));
+    memset(g_post_action_read_size_hist, 0, sizeof(g_post_action_read_size_hist));
+    memset(g_post_action_write_size_hist, 0, sizeof(g_post_action_write_size_hist));
+    memset(g_post_action_trim_size_hist, 0, sizeof(g_post_action_trim_size_hist));
+    g_post_action_qd_samples = 0ULL;
+    g_post_action_wa_samples = 0ULL;
+    g_post_action_read_size_samples = 0ULL;
+    g_post_action_write_size_samples = 0ULL;
+    g_post_action_trim_size_samples = 0ULL;
+    pthread_mutex_unlock(&g_post_action_workload_mutex);
+}
+
 int nvme_post_action_set_json_format_enabled(int enabled) {
     g_post_action_json_format_enabled = (enabled != 0) ? 1 : 0;
     nvme_post_action_latency_set_json_format(g_post_action_json_format_enabled);
@@ -1181,6 +1196,20 @@ void nvme_post_action_print_workload_stats_report(void) {
     if (json_enabled != 0) {
         int need_comma = 0;
         fprintf(stderr, "{\n");
+        if (g_post_action_qd_dist_enabled != 0) {
+            print_histogram_section_json("qd_dist",
+                                         g_post_action_qd_hist,
+                                         g_post_action_qd_samples,
+                                         label_qd,
+                                         &need_comma);
+        }
+        if (g_post_action_wa_dist_enabled != 0) {
+            print_histogram_section_json("wa_dist",
+                                         g_post_action_wa_hist,
+                                         g_post_action_wa_samples,
+                                         label_wa,
+                                         &need_comma);
+        }
         if (g_post_action_read_size_dist_enabled != 0) {
             print_histogram_section_json("read_size_dist",
                                          g_post_action_read_size_hist,

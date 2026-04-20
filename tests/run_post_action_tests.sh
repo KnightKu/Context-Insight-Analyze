@@ -130,10 +130,12 @@ if ! rg -i "Qos p10=.*p20=.*p30=.*p40=.*p50=.*p60=.*p70=.*p80=.*p90=.*p99=.*p99\
   exit 1
 fi
 
-echo "  JSON format expected for latency/read-write-trim distributions"
+echo "  JSON format expected for latency/qd-wa/read-write-trim distributions"
 if ! ./post_action_file_tester \
   --format-json \
   --latency \
+  --qd-dist \
+  --wa-dist \
   --read-size-dist \
   --write-size-dist \
   --trim-size-dist \
@@ -141,8 +143,8 @@ if ! ./post_action_file_tester \
   echo "unexpected failure for json format output case" >&2
   exit 1
 fi
-if ! rg -i "\"latency\"\\s*:\\s*\\{|\"read_size_dist\"\\s*:\\s*\\[|\"write_size_dist\"\\s*:\\s*\\[|\"trim_size_dist\"\\s*:\\s*\\[" "/tmp/post_action_json.log" >/dev/null; then
-  echo "missing json sections for latency/read-write-trim output" >&2
+if ! rg -i "\"latency\"\\s*:\\s*\\{|\"qd_dist\"\\s*:\\s*\\{|\"wa_dist\"\\s*:\\s*\\{|\"read_size_dist\"\\s*:\\s*\\{|\"write_size_dist\"\\s*:\\s*\\{|\"trim_size_dist\"\\s*:\\s*\\{" "/tmp/post_action_json.log" >/dev/null; then
+  echo "missing json sections for latency/qd-wa/read-write-trim output" >&2
   exit 1
 fi
 if rg -i "latency summary:|Read Size distribution \\(4K blocks\\):|Write Size distribution \\(4K blocks\\):|Trim Size distribution \\(4K blocks\\):" "/tmp/post_action_json.log" >/dev/null; then
@@ -215,3 +217,7 @@ if ! rg -i "all-zero record detected|soft-stop" "/tmp/post_action_all_zero.log" 
 fi
 
 echo "all post-action tests passed"
+
+echo "[extra] build and run insight api tester"
+make insight_api_tester >/dev/null
+./insight_api_tester >/dev/null 2>&1
