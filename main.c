@@ -93,6 +93,8 @@ int main(int argc, char *argv[]) {
     int read_size_dist_enabled = 0;
     int write_size_dist_enabled = 0;
     int trim_size_dist_enabled = 0;
+    int block_size_set = 0;
+    uint64_t block_size_bytes = 0ULL;
     int time_start_set = 0;
     int time_end_set = 0;
     uint64_t time_start_ms = 0ULL;
@@ -144,6 +146,19 @@ int main(int argc, char *argv[]) {
             trim_size_dist_enabled = 1;
             continue;
         }
+        if (strcmp(argv[argi], "-b") == 0 || strcmp(argv[argi], "--block-size") == 0) {
+            if ((argi + 1) >= argc) {
+                fprintf(stderr, "%s requires a value\n", argv[argi]);
+                return 1;
+            }
+            if (parse_u64_with_unit(argv[argi + 1], &block_size_bytes) != 0 || block_size_bytes == 0ULL) {
+                fprintf(stderr, "invalid %s: %s\n", argv[argi], argv[argi + 1]);
+                return 1;
+            }
+            block_size_set = 1;
+            ++argi;
+            continue;
+        }
         if (strcmp(argv[argi], "-S") == 0 || strcmp(argv[argi], "--time-start") == 0) {
             if ((argi + 1) >= argc) {
                 fprintf(stderr, "%s requires a value in format \"YYYY-MM-DD HH:MM:SS\"\n",
@@ -192,6 +207,7 @@ int main(int argc, char *argv[]) {
                 "[-r|--read-count] [-w|--w2fr] [-c|--life-cycle] "
                 "[-q|--qd-dist] [-a|--wa-dist] "
                 "[-R|--read-size-dist] [-W|--write-size-dist] [-T|--trim-size-dist] "
+                "[-b|--block-size <bytes|K|M|G|T>] "
                 "[-S|--time-start \"YYYY-MM-DD HH:MM:SS\"] "
                 "[-E|--time-end \"YYYY-MM-DD HH:MM:SS\"] "
                 "<device_name> <slba[K|M|G|T]> <data_len[K|M|G|T]>\n",
@@ -228,6 +244,10 @@ int main(int argc, char *argv[]) {
     nvme_read_set_read_size_dist(read_size_dist_enabled);
     nvme_read_set_write_size_dist(write_size_dist_enabled);
     nvme_read_set_trim_size_dist(trim_size_dist_enabled);
+    if (nvme_read_set_block_size_bytes(block_size_set != 0 ? block_size_bytes : 0ULL) != 0) {
+        fprintf(stderr, "set block size failed: %s\n", strerror(errno));
+        return 1;
+    }
     if (nvme_read_set_time_window(time_start_set, time_start_ms,
                                   time_end_set, time_end_ms) != 0) {
         fprintf(stderr, "set time window failed: %s\n", strerror(errno));

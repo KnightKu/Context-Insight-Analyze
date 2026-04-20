@@ -427,6 +427,10 @@ int nvme_read_set_time_window(int has_start, uint64_t time_start_ms,
     return nvme_post_action_set_time_window_ms(1, start_ms, end_ms);
 }
 
+int nvme_read_set_block_size_bytes(uint64_t block_size_bytes) {
+    return nvme_post_action_set_block_size_bytes(block_size_bytes);
+}
+
 int nvme_read_set_lba_stats_read_count(int enabled) {
     nvme_post_action_set_lba_read_count_enabled(enabled);
     return 0;

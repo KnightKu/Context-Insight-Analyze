@@ -119,6 +119,7 @@ static int g_post_action_time_window_enabled = 0;
 static uint64_t g_post_action_time_start_ms = 0ULL;
 static uint64_t g_post_action_time_end_ms = UINT64_MAX;
 static int g_post_action_window_active = 1;
+static uint64_t g_post_action_block_size_lba = 0ULL;
 static pthread_mutex_t g_post_action_workload_mutex = PTHREAD_MUTEX_INITIALIZER;
 static uint64_t g_post_action_qd_hist[NVME_POST_ACTION_RATIO_BUCKETS];
 static uint64_t g_post_action_wa_hist[NVME_POST_ACTION_RATIO_BUCKETS];
@@ -408,19 +409,17 @@ static int post_action_time_window_contains_abs_us(uint64_t abs_time_us) {
     return (abs_time_ms >= start_ms && abs_time_ms <= end_ms) ? 1 : 0;
 }
 
-static int post_action_time_window_contains_unix_ms(uint64_t unix_time_ms) {
-    uint64_t start_ms = 0ULL;
-    uint64_t end_ms = UINT64_MAX;
-    int enabled = 0;
+static int post_action_block_size_accept_len_lba(uint64_t len_lba) {
     pthread_mutex_lock(&g_post_action_marker_mutex);
-    enabled = g_post_action_time_window_enabled;
-    start_ms = g_post_action_time_start_ms;
-    end_ms = g_post_action_time_end_ms;
+    uint64_t block_size_lba = g_post_action_block_size_lba;
     pthread_mutex_unlock(&g_post_action_marker_mutex);
-    if (enabled == 0) {
+    if (block_size_lba == 0ULL) {
         return 1;
     }
-    return (unix_time_ms >= start_ms && unix_time_ms <= end_ms) ? 1 : 0;
+    if (len_lba < block_size_lba) {
+        return 0;
+    }
+    return (len_lba % block_size_lba) == 0ULL ? 1 : 0;
 }
 
 static inline uint64_t load_le64_u(const unsigned char *p) {
@@ -506,6 +505,9 @@ static int parse_rw_record(uint64_t record_lo,
     }
 
     if (post_action_is_window_active() == 0) {
+        return 0;
+    }
+    if (post_action_block_size_accept_len_lba((uint64_t)parsed.length) == 0) {
         return 0;
     }
     if (op == NVME_POST_ACTION_OP_WRITE) {
@@ -648,12 +650,12 @@ static int parse_trim_group(const unsigned char *bytes,
         if (resolve_abs_time_us(fields.time_rel, time_ref, &abs_time_us) != 0) {
             return -1;
         }
-        if (post_action_time_window_contains_abs_us(abs_time_us) != 0) {
-        if (window_active != 0) {
+        if (post_action_time_window_contains_abs_us(abs_time_us) != 0 &&
+            window_active != 0 &&
+            post_action_block_size_accept_len_lba((uint64_t)fields.length) != 0) {
             nvme_post_action_stats_update_write(fields.start_lba, (uint64_t)fields.length, abs_time_us);
             nvme_post_action_latency_record_trim(fields.time_rel);
             record_io_size(NVME_POST_ACTION_OP_TRIM, (uint64_t)fields.length);
-        }
         }
     }
     parsed.range_count = parsed.total_ranges;
@@ -1114,6 +1116,32 @@ int nvme_post_action_set_time_window_ms(int enabled, uint64_t start_ms, uint64_t
     g_post_action_time_end_ms = end_ms;
     pthread_mutex_unlock(&g_post_action_marker_mutex);
     return 0;
+}
+
+int nvme_post_action_set_block_size_bytes(uint64_t block_size_bytes) {
+    uint64_t block_size_lba = 0ULL;
+    if (block_size_bytes != 0ULL) {
+        if ((block_size_bytes % NVME_LBA_SIZE_BYTES) != 0ULL) {
+            errno = EINVAL;
+            return -1;
+        }
+        block_size_lba = block_size_bytes / NVME_LBA_SIZE_BYTES;
+        if (block_size_lba == 0ULL) {
+            errno = EINVAL;
+            return -1;
+        }
+    }
+    pthread_mutex_lock(&g_post_action_marker_mutex);
+    g_post_action_block_size_lba = block_size_lba;
+    pthread_mutex_unlock(&g_post_action_marker_mutex);
+    return 0;
+}
+
+uint64_t nvme_post_action_get_block_size_bytes(void) {
+    pthread_mutex_lock(&g_post_action_marker_mutex);
+    uint64_t block_size_lba = g_post_action_block_size_lba;
+    pthread_mutex_unlock(&g_post_action_marker_mutex);
+    return block_size_lba * NVME_LBA_SIZE_BYTES;
 }
 
 int nvme_post_action_get_time_window_ms(int *enabled, uint64_t *start_ms, uint64_t *end_ms) {

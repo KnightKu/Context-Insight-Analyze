@@ -87,6 +87,16 @@ static int parse_datetime_ymdhms(const char *arg, uint64_t *out_ms) {
     return 0;
 }
 
+static int parse_block_size_bytes(const char *arg, uint64_t *out_bytes) {
+    if (parse_u64_with_unit(arg, out_bytes) != 0) {
+        return -1;
+    }
+    if (*out_bytes == 0ULL || (*out_bytes % NVME_LBA_SIZE_BYTES) != 0ULL) {
+        return -1;
+    }
+    return 0;
+}
+
 int main(int argc, char *argv[]) {
     int argi = 1;
     int debug_enabled = 0;
@@ -104,6 +114,8 @@ int main(int argc, char *argv[]) {
     int time_end_set = 0;
     uint64_t time_start_ms = 0ULL;
     uint64_t time_end_ms = 0ULL;
+    int block_size_set = 0;
+    uint64_t block_size_bytes = 0ULL;
     uint64_t split_bytes = 0ULL;
     int use_split = 0;
     const char *input_file = NULL;
@@ -163,6 +175,20 @@ int main(int argc, char *argv[]) {
         if (strcmp(argv[argi], "-T") == 0 || strcmp(argv[argi], "--trim-size-dist") == 0) {
             trim_size_dist_enabled = 1;
             ++argi;
+            continue;
+        }
+        if (strcmp(argv[argi], "-b") == 0 || strcmp(argv[argi], "--block-size") == 0) {
+            if ((argi + 1) >= argc) {
+                fprintf(stderr, "%s requires value (examples: 4K, 16K, 64K)\n", argv[argi]);
+                return 2;
+            }
+            if (parse_block_size_bytes(argv[argi + 1], &block_size_bytes) != 0) {
+                fprintf(stderr, "invalid %s: %s (must be positive and 4K-aligned)\n",
+                        argv[argi], argv[argi + 1]);
+                return 2;
+            }
+            block_size_set = 1;
+            argi += 2;
             continue;
         }
         if (strcmp(argv[argi], "-S") == 0 || strcmp(argv[argi], "--time-start") == 0) {
@@ -232,6 +258,7 @@ int main(int argc, char *argv[]) {
                 "[-c|--life-cycle] [-q|--qd-dist] [-a|--wa-dist] "
                 "[-R|--read-size-dist] [-W|--write-size-dist] [-T|--trim-size-dist] "
                 "[-S|--time-start \"YYYY-MM-DD HH:MM:SS\"] [-E|--time-end \"YYYY-MM-DD HH:MM:SS\"] "
+                "[-b|--block-size SIZE]\n"
                 "[--split-bytes N] <input_file> [offset_bytes]\n",
                 argv[0]);
         return 2;
@@ -298,6 +325,12 @@ int main(int argc, char *argv[]) {
     if (nvme_read_set_time_window(time_start_set, time_start_ms,
                                   time_end_set, time_end_ms) != 0) {
         fprintf(stderr, "set time window failed: %s\n", strerror(errno));
+        free(buf);
+        return 2;
+    }
+    uint64_t effective_block_size = (block_size_set != 0) ? block_size_bytes : 0ULL;
+    if (nvme_read_set_block_size_bytes(effective_block_size) != 0) {
+        fprintf(stderr, "set block size failed: %s\n", strerror(errno));
         free(buf);
         return 2;
     }

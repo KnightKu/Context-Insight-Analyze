@@ -35,6 +35,10 @@ int nvme_post_action_set_time_window_ms(int enabled, uint64_t start_ms, uint64_t
 
 int nvme_post_action_get_time_window_ms(int *enabled, uint64_t *start_ms, uint64_t *end_ms);
 
+int nvme_post_action_set_block_size_bytes(uint64_t block_size_bytes);
+
+uint64_t nvme_post_action_get_block_size_bytes(void);
+
 void nvme_post_action_reset_latency_stats(void);
 
 void nvme_post_action_print_latency_report(void);

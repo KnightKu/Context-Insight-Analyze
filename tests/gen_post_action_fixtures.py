@@ -168,6 +168,21 @@ def main() -> None:
     )
     (fixture_dir / "valid_time_window.bin").write_bytes(valid_time_window)
 
+    # Valid block-size-filter stream:
+    # block-size=16K (4 * 4K-LBA units), keep only lengths that are >=4 and multiple of 4.
+    valid_block_size_filter = b"".join(
+        [
+            rec_marker(9_000_000, 1_710_000_110_000),
+            rec_rw(0x01, 0x5000, 2, 0x0000, 101, 10),  # 8K, drop (<16K)
+            rec_rw(0x01, 0x6000, 4, 0x0000, 102, 20),  # 16K, keep
+            rec_rw(0x02, 0x7000, 6, 0x0000, 103, 30),  # 24K, drop (not multiple of 16K)
+            rec_rw(0x02, 0x8000, 8, 0x0000, 104, 40),  # 32K, keep
+            rec_trim(0x9000, 1, 0, 0, 3, 50),          # 12K, drop
+            rec_trim(0xA000, 1, 0, 0, 4, 60),          # 16K, keep
+        ]
+    )
+    (fixture_dir / "valid_block_size_filter.bin").write_bytes(valid_block_size_filter)
+
 
 if __name__ == "__main__":
     main()
