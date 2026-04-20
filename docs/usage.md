@@ -37,7 +37,7 @@ Argument details:
 - `slba`: start LBA, supports unit suffix `K/M/G/T` (case-insensitive)
 - `data_len`: read size in bytes, supports unit suffix `K/M/G/T` (case-insensitive)
 - `-D` / `--debug`: enables runtime debug mode
-- `-j` / `--format-json`: prints enabled `-l/-R/-W/-T` reports in JSON format
+- `-j` / `--format-json`: prints enabled `-l/-q/-a/-R/-W/-T` reports in JSON format
 - `-l` / `--latency`: enables fio-style latency summary output for post-action `read/write/trim`
 - `-r` / `--read-count`: enables `Read Count` distribution output
 - `-w` / `--w2fr`: enables `Write-to-First-Read Latency` real-time(ms) distribution output
@@ -153,8 +153,53 @@ The default post action:
     - `record_size_bytes >= block_size`
     - `record_size_bytes % block_size == 0`
   - `block-size` must be a positive multiple of fixed sector size `4096B`
-  - with `-j/--format-json`, enabled size distributions are emitted as JSON fields:
-    `read_size_dist`, `write_size_dist`, `trim_size_dist`
+  - with `-j/--format-json`, enabled workload distributions are emitted as JSON fields:
+    `qd_dist`, `wa_dist`, `read_size_dist`, `write_size_dist`, `trim_size_dist`
+
+## 9. API Library (`libinsight_api.a`)
+
+The project now provides a C library and header for programmatic JSON queries:
+
+- Header: `insight_api.h`
+- Static library: `libinsight_api.a`
+
+APIs:
+
+```c
+int get_read_latency_percentiles(const char *device,
+                                 uint64_t block_size,
+                                 const char *time_start,
+                                 const char *time_end,
+                                 char *json_buffer);
+
+int get_write_amplification(const char *device,
+                            uint64_t block_size,
+                            const char *time_start,
+                            const char *time_end,
+                            char *json_buffer);
+
+int get_qd_distribution(const char *device,
+                        uint64_t block_size,
+                        const char *time_start,
+                        const char *time_end,
+                        char *json_buffer);
+```
+
+Common input contract:
+
+- `device`: NVMe device path, same as CLI `<device_name>`
+- `block_size`: bytes, same meaning as `--block-size`; must be positive
+- `time_start` / `time_end`: format `YYYY-MM-DD HH:MM:SS`
+- `json_buffer`: output buffer for JSON string
+
+Execution equivalence:
+
+- `get_read_latency_percentiles(...)` ~=  
+  `./sfx_ctx_insight_analyze --format-json --latency --block-size=<block_size> -S <time_start> -E <time_end> <device> 0 11T`
+- `get_write_amplification(...)` ~=  
+  `./sfx_ctx_insight_analyze --format-json --wa-dist --block-size=<block_size> -S <time_start> -E <time_end> <device> 0 11T`
+- `get_qd_distribution(...)` ~=  
+  `./sfx_ctx_insight_analyze --format-json --qd-dist --block-size=<block_size> -S <time_start> -E <time_end> <device> 0 11T`
 
 ## 5. Read/Process Pipeline
 
