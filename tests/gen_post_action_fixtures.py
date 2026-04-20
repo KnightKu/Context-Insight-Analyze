@@ -152,6 +152,37 @@ def main() -> None:
     invalid_marker_reserved = rec_marker(7_000_000, 1_710_000_100_000, marker_reserved=1)
     (fixture_dir / "invalid_marker_reserved.bin").write_bytes(invalid_marker_reserved)
 
+    # Valid window-filter stream:
+    # marker1 (outside target window) + one read
+    # marker2 (inside target window) + one read
+    # marker3 (outside target window) + one read
+    valid_time_window = b"".join(
+        [
+            rec_marker(8_000_000, 1_710_000_000_000),
+            rec_rw(0x01, 0x2000, 8, 0x0000, 111, 10),
+            rec_marker(8_100_000, 1_710_000_010_000),
+            rec_rw(0x01, 0x3000, 8, 0x0000, 222, 10),
+            rec_marker(8_200_000, 1_710_000_020_000),
+            rec_rw(0x01, 0x4000, 8, 0x0000, 333, 10),
+        ]
+    )
+    (fixture_dir / "valid_time_window.bin").write_bytes(valid_time_window)
+
+    # Valid block-size-filter stream:
+    # block-size=16K (4 * 4K-LBA units), keep only lengths that are >=4 and multiple of 4.
+    valid_block_size_filter = b"".join(
+        [
+            rec_marker(9_000_000, 1_710_000_110_000),
+            rec_rw(0x01, 0x5000, 2, 0x0000, 101, 10),  # 8K, drop (<16K)
+            rec_rw(0x01, 0x6000, 4, 0x0000, 102, 20),  # 16K, keep
+            rec_rw(0x02, 0x7000, 6, 0x0000, 103, 30),  # 24K, drop (not multiple of 16K)
+            rec_rw(0x02, 0x8000, 8, 0x0000, 104, 40),  # 32K, keep
+            rec_trim(0x9000, 1, 0, 0, 3, 50),          # 12K, drop
+            rec_trim(0xA000, 1, 0, 0, 4, 60),          # 16K, keep
+        ]
+    )
+    (fixture_dir / "valid_block_size_filter.bin").write_bytes(valid_block_size_filter)
+
 
 if __name__ == "__main__":
     main()

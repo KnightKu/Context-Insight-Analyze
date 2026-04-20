@@ -150,6 +150,38 @@ if rg -i "latency summary:|Read Size distribution \\(4K blocks\\):|Write Size di
   exit 1
 fi
 
+echo "  TIME-WINDOW expected: -S/-E filters records by marker unix ms"
+if ! ./post_action_file_tester \
+  --format-json \
+  --latency \
+  --read-size-dist \
+  --time-start "2024-03-09 16:00:05" \
+  --time-end "2024-03-09 16:00:15" \
+  "tests/fixtures/valid_time_window.bin" >/tmp/post_action_time_window.log 2>&1; then
+  echo "unexpected failure for time-window output case" >&2
+  exit 1
+fi
+if ! rg "\"read\"\\s*:\\s*\\{|\"count\"\\s*:\\s*0|\"total\"\\s*:\\s*0" "/tmp/post_action_time_window.log" >/dev/null; then
+  echo "time-window filtered output does not show expected in-window samples" >&2
+  exit 1
+fi
+
+echo "  BLOCK-SIZE expected: -b/--block-size filters non-multiple and small records"
+if ! ./post_action_file_tester \
+  --format-json \
+  --latency \
+  --read-size-dist \
+  --trim-size-dist \
+  --block-size 32K \
+  "tests/fixtures/valid_block_size_filter.bin" >/tmp/post_action_block_size.log 2>&1; then
+  echo "unexpected failure for block-size filter output case" >&2
+  exit 1
+fi
+if ! rg "\"read\"\\s*:\\s*\\{|\"count\"\\s*:\\s*1|\"read_size_dist\"\\s*:\\s*\\{|\"total\"\\s*:\\s*1|\"trim_size_dist\"\\s*:\\s*\\{|\"total\"\\s*:\\s*1" "/tmp/post_action_block_size.log" >/dev/null; then
+  echo "block-size filtered output does not show expected accepted sample counts" >&2
+  exit 1
+fi
+
 echo "  CROSS-CHUNK marker continuity expected"
 if ! ./post_action_file_tester --split-bytes 16 "tests/fixtures/valid_relative_time_with_marker.bin" >/tmp/post_action_chunk_continuity.log 2>&1; then
   echo "unexpected failure for cross-chunk marker continuity case" >&2

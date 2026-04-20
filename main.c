@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 static int parse_u64_with_unit(const char *arg, uint64_t *out_value) {
     if (arg == NULL || out_value == NULL || *arg == '\0') {
@@ -61,6 +62,25 @@ static int parse_u64_with_unit(const char *arg, uint64_t *out_value) {
     return 0;
 }
 
+static int parse_time_window_ms(const char *arg, uint64_t *out_ms) {
+    if (arg == NULL || out_ms == NULL) {
+        return -1;
+    }
+    struct tm tm_val;
+    memset(&tm_val, 0, sizeof(tm_val));
+    char *end = strptime(arg, "%Y-%m-%d %H:%M:%S", &tm_val);
+    if (end == NULL || *end != '\0') {
+        return -1;
+    }
+    tm_val.tm_isdst = -1;
+    time_t ts = mktime(&tm_val);
+    if (ts < 0) {
+        return -1;
+    }
+    *out_ms = (uint64_t)ts * 1000ULL;
+    return 0;
+}
+
 int main(int argc, char *argv[]) {
     int debug_enabled = 0;
     int latency_enabled = 0;
@@ -73,6 +93,12 @@ int main(int argc, char *argv[]) {
     int read_size_dist_enabled = 0;
     int write_size_dist_enabled = 0;
     int trim_size_dist_enabled = 0;
+    int block_size_set = 0;
+    uint64_t block_size_bytes = 0ULL;
+    int time_start_set = 0;
+    int time_end_set = 0;
+    uint64_t time_start_ms = 0ULL;
+    uint64_t time_end_ms = 0ULL;
     const char *positionals[3] = {NULL, NULL, NULL};
     int positional_count = 0;
     for (int argi = 1; argi < argc; ++argi) {
@@ -120,6 +146,49 @@ int main(int argc, char *argv[]) {
             trim_size_dist_enabled = 1;
             continue;
         }
+        if (strcmp(argv[argi], "-b") == 0 || strcmp(argv[argi], "--block-size") == 0) {
+            if ((argi + 1) >= argc) {
+                fprintf(stderr, "%s requires a value\n", argv[argi]);
+                return 1;
+            }
+            if (parse_u64_with_unit(argv[argi + 1], &block_size_bytes) != 0 || block_size_bytes == 0ULL) {
+                fprintf(stderr, "invalid %s: %s\n", argv[argi], argv[argi + 1]);
+                return 1;
+            }
+            block_size_set = 1;
+            ++argi;
+            continue;
+        }
+        if (strcmp(argv[argi], "-S") == 0 || strcmp(argv[argi], "--time-start") == 0) {
+            if ((argi + 1) >= argc) {
+                fprintf(stderr, "%s requires a value in format \"YYYY-MM-DD HH:MM:SS\"\n",
+                        argv[argi]);
+                return 1;
+            }
+            if (parse_time_window_ms(argv[argi + 1], &time_start_ms) != 0) {
+                fprintf(stderr, "invalid %s: %s (expected: YYYY-MM-DD HH:MM:SS)\n",
+                        argv[argi], argv[argi + 1]);
+                return 1;
+            }
+            time_start_set = 1;
+            ++argi;
+            continue;
+        }
+        if (strcmp(argv[argi], "-E") == 0 || strcmp(argv[argi], "--time-end") == 0) {
+            if ((argi + 1) >= argc) {
+                fprintf(stderr, "%s requires a value in format \"YYYY-MM-DD HH:MM:SS\"\n",
+                        argv[argi]);
+                return 1;
+            }
+            if (parse_time_window_ms(argv[argi + 1], &time_end_ms) != 0) {
+                fprintf(stderr, "invalid %s: %s (expected: YYYY-MM-DD HH:MM:SS)\n",
+                        argv[argi], argv[argi + 1]);
+                return 1;
+            }
+            time_end_set = 1;
+            ++argi;
+            continue;
+        }
 
         if (argv[argi][0] == '-') {
             fprintf(stderr, "unknown option: %s\n", argv[argi]);
@@ -138,8 +207,15 @@ int main(int argc, char *argv[]) {
                 "[-r|--read-count] [-w|--w2fr] [-c|--life-cycle] "
                 "[-q|--qd-dist] [-a|--wa-dist] "
                 "[-R|--read-size-dist] [-W|--write-size-dist] [-T|--trim-size-dist] "
+                "[-b|--block-size <bytes|K|M|G|T>] "
+                "[-S|--time-start \"YYYY-MM-DD HH:MM:SS\"] "
+                "[-E|--time-end \"YYYY-MM-DD HH:MM:SS\"] "
                 "<device_name> <slba[K|M|G|T]> <data_len[K|M|G|T]>\n",
                 argv[0]);
+        return 1;
+    }
+    if (time_start_set != 0 && time_end_set != 0 && time_start_ms > time_end_ms) {
+        fprintf(stderr, "invalid time window: time-start must be <= time-end\n");
         return 1;
     }
 
@@ -168,6 +244,15 @@ int main(int argc, char *argv[]) {
     nvme_read_set_read_size_dist(read_size_dist_enabled);
     nvme_read_set_write_size_dist(write_size_dist_enabled);
     nvme_read_set_trim_size_dist(trim_size_dist_enabled);
+    if (nvme_read_set_block_size_bytes(block_size_set != 0 ? block_size_bytes : 0ULL) != 0) {
+        fprintf(stderr, "set block size failed: %s\n", strerror(errno));
+        return 1;
+    }
+    if (nvme_read_set_time_window(time_start_set, time_start_ms,
+                                  time_end_set, time_end_ms) != 0) {
+        fprintf(stderr, "set time window failed: %s\n", strerror(errno));
+        return 1;
+    }
 
     if (nvme_read(device_name, slba, data_len, NULL) != 0) {
         fprintf(stderr, "nvme_read failed: %s\n", strerror(errno));

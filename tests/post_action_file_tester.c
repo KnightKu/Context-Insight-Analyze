@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 static int parse_u64_with_unit(const char *arg, uint64_t *out_value) {
     if (arg == NULL || out_value == NULL || *arg == '\0') {
@@ -60,6 +61,42 @@ static int parse_u64_with_unit(const char *arg, uint64_t *out_value) {
     return 0;
 }
 
+static int parse_datetime_ymdhms(const char *arg, uint64_t *out_ms) {
+    if (arg == NULL || out_ms == NULL) {
+        return -1;
+    }
+    int y = 0, mon = 0, d = 0, h = 0, min = 0, s = 0;
+    if (sscanf(arg, "%d-%d-%d %d:%d:%d", &y, &mon, &d, &h, &min, &s) != 6) {
+        return -1;
+    }
+    struct tm tmv;
+    memset(&tmv, 0, sizeof(tmv));
+    tmv.tm_year = y - 1900;
+    tmv.tm_mon = mon - 1;
+    tmv.tm_mday = d;
+    tmv.tm_hour = h;
+    tmv.tm_min = min;
+    tmv.tm_sec = s;
+    tmv.tm_isdst = -1;
+
+    time_t ts = mktime(&tmv);
+    if (ts < 0) {
+        return -1;
+    }
+    *out_ms = (uint64_t)ts * 1000ULL;
+    return 0;
+}
+
+static int parse_block_size_bytes(const char *arg, uint64_t *out_bytes) {
+    if (parse_u64_with_unit(arg, out_bytes) != 0) {
+        return -1;
+    }
+    if (*out_bytes == 0ULL || (*out_bytes % NVME_LBA_SIZE_BYTES) != 0ULL) {
+        return -1;
+    }
+    return 0;
+}
+
 int main(int argc, char *argv[]) {
     int argi = 1;
     int debug_enabled = 0;
@@ -73,6 +110,12 @@ int main(int argc, char *argv[]) {
     int read_size_dist_enabled = 0;
     int write_size_dist_enabled = 0;
     int trim_size_dist_enabled = 0;
+    int time_start_set = 0;
+    int time_end_set = 0;
+    uint64_t time_start_ms = 0ULL;
+    uint64_t time_end_ms = 0ULL;
+    int block_size_set = 0;
+    uint64_t block_size_bytes = 0ULL;
     uint64_t split_bytes = 0ULL;
     int use_split = 0;
     const char *input_file = NULL;
@@ -134,6 +177,46 @@ int main(int argc, char *argv[]) {
             ++argi;
             continue;
         }
+        if (strcmp(argv[argi], "-b") == 0 || strcmp(argv[argi], "--block-size") == 0) {
+            if ((argi + 1) >= argc) {
+                fprintf(stderr, "%s requires value (examples: 4K, 16K, 64K)\n", argv[argi]);
+                return 2;
+            }
+            if (parse_block_size_bytes(argv[argi + 1], &block_size_bytes) != 0) {
+                fprintf(stderr, "invalid %s: %s (must be positive and 4K-aligned)\n",
+                        argv[argi], argv[argi + 1]);
+                return 2;
+            }
+            block_size_set = 1;
+            argi += 2;
+            continue;
+        }
+        if (strcmp(argv[argi], "-S") == 0 || strcmp(argv[argi], "--time-start") == 0) {
+            if ((argi + 1) >= argc) {
+                fprintf(stderr, "%s requires value format \"YYYY-MM-DD HH:MM:SS\"\n", argv[argi]);
+                return 2;
+            }
+            if (parse_datetime_ymdhms(argv[argi + 1], &time_start_ms) != 0) {
+                fprintf(stderr, "invalid %s: %s\n", argv[argi], argv[argi + 1]);
+                return 2;
+            }
+            time_start_set = 1;
+            argi += 2;
+            continue;
+        }
+        if (strcmp(argv[argi], "-E") == 0 || strcmp(argv[argi], "--time-end") == 0) {
+            if ((argi + 1) >= argc) {
+                fprintf(stderr, "%s requires value format \"YYYY-MM-DD HH:MM:SS\"\n", argv[argi]);
+                return 2;
+            }
+            if (parse_datetime_ymdhms(argv[argi + 1], &time_end_ms) != 0) {
+                fprintf(stderr, "invalid %s: %s\n", argv[argi], argv[argi + 1]);
+                return 2;
+            }
+            time_end_set = 1;
+            argi += 2;
+            continue;
+        }
         if (strcmp(argv[argi], "--split-bytes") == 0) {
             if ((argi + 1) >= argc) {
                 fprintf(stderr, "--split-bytes requires a value\n");
@@ -174,6 +257,8 @@ int main(int argc, char *argv[]) {
                 "usage: %s [-D|--debug] [-j|--format-json] [-l|--latency] [-r|--read-count] [-w|--w2fr] "
                 "[-c|--life-cycle] [-q|--qd-dist] [-a|--wa-dist] "
                 "[-R|--read-size-dist] [-W|--write-size-dist] [-T|--trim-size-dist] "
+                "[-S|--time-start \"YYYY-MM-DD HH:MM:SS\"] [-E|--time-end \"YYYY-MM-DD HH:MM:SS\"] "
+                "[-b|--block-size SIZE]\n"
                 "[--split-bytes N] <input_file> [offset_bytes]\n",
                 argv[0]);
         return 2;
@@ -237,6 +322,18 @@ int main(int argc, char *argv[]) {
     nvme_read_set_read_size_dist(read_size_dist_enabled);
     nvme_read_set_write_size_dist(write_size_dist_enabled);
     nvme_read_set_trim_size_dist(trim_size_dist_enabled);
+    if (nvme_read_set_time_window(time_start_set, time_start_ms,
+                                  time_end_set, time_end_ms) != 0) {
+        fprintf(stderr, "set time window failed: %s\n", strerror(errno));
+        free(buf);
+        return 2;
+    }
+    uint64_t effective_block_size = (block_size_set != 0) ? block_size_bytes : 0ULL;
+    if (nvme_read_set_block_size_bytes(effective_block_size) != 0) {
+        fprintf(stderr, "set block size failed: %s\n", strerror(errno));
+        free(buf);
+        return 2;
+    }
     if (nvme_post_action_set_sector_size((uint32_t)NVME_LBA_SIZE_BYTES) != 0) {
         fprintf(stderr, "post action set sector_size failed: %s\n", strerror(errno));
         free(buf);
