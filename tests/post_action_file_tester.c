@@ -371,6 +371,12 @@ int main(int argc, char *argv[]) {
                         "post action soft-stop: overwrite detected, stop further parse at offset=%" PRIu64 "\n",
                         offset_bytes);
             }
+        } else if (errno == EPIPE) {
+            if (debug_enabled != 0) {
+                fprintf(stderr,
+                        "post action soft-stop: marker time exceeded window end, stop further parse at offset=%" PRIu64 "\n",
+                        offset_bytes);
+            }
         } else if (errno == ENODATA) {
             if (debug_enabled != 0) {
                 fprintf(stderr,

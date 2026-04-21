@@ -152,7 +152,7 @@ if rg -i "latency summary:|Read Size distribution \\(4K blocks\\):|Write Size di
   exit 1
 fi
 
-echo "  TIME-WINDOW expected: -S/-E filters records by marker unix ms"
+echo "  TIME-WINDOW expected: -S/-E filters records by marker unix_time_ms window"
 if ! ./post_action_file_tester \
   --format-json \
   --latency \
@@ -163,11 +163,10 @@ if ! ./post_action_file_tester \
   echo "unexpected failure for time-window output case" >&2
   exit 1
 fi
-if ! rg "\"read\"\\s*:\\s*\\{|\"count\"\\s*:\\s*0|\"total\"\\s*:\\s*0" "/tmp/post_action_time_window.log" >/dev/null; then
-  echo "time-window filtered output does not show expected in-window samples" >&2
+if ! rg "\"read\"\\s*:\\s*\\{|\"count\"\\s*:\\s*1|\"read_size_dist\"\\s*:\\s*\\{|\"total\"\\s*:\\s*1" "/tmp/post_action_time_window.log" >/dev/null; then
+  echo "time-window filtered output does not show expected start-marker segment samples" >&2
   exit 1
 fi
-
 echo "  BLOCK-SIZE expected: -b/--block-size filters non-multiple and small records"
 if ! ./post_action_file_tester \
   --format-json \

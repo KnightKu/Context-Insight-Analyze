@@ -66,12 +66,23 @@ static int parse_time_window_ms(const char *arg, uint64_t *out_ms) {
     if (arg == NULL || out_ms == NULL) {
         return -1;
     }
-    struct tm tm_val;
-    memset(&tm_val, 0, sizeof(tm_val));
-    char *end = strptime(arg, "%Y-%m-%d %H:%M:%S", &tm_val);
-    if (end == NULL || *end != '\0') {
+    int y = 0;
+    int mon = 0;
+    int d = 0;
+    int h = 0;
+    int min = 0;
+    int s = 0;
+    if (sscanf(arg, "%d-%d-%d %d:%d:%d", &y, &mon, &d, &h, &min, &s) != 6) {
         return -1;
     }
+    struct tm tm_val;
+    memset(&tm_val, 0, sizeof(tm_val));
+    tm_val.tm_year = y - 1900;
+    tm_val.tm_mon = mon - 1;
+    tm_val.tm_mday = d;
+    tm_val.tm_hour = h;
+    tm_val.tm_min = min;
+    tm_val.tm_sec = s;
     tm_val.tm_isdst = -1;
     time_t ts = mktime(&tm_val);
     if (ts < 0) {
