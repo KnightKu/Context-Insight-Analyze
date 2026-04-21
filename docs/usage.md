@@ -201,6 +201,18 @@ Execution equivalence:
 - `get_qd_distribution(...)` ~=  
   `./sfx_ctx_insight_analyze --format-json --qd-dist --block-size=<block_size> -S <time_start> -E <time_end> <device> 0 11T`
 
+Runnable example:
+
+- Source: `examples/insight_api_example.c`
+- Build: `make insight_api_example`
+- Run:
+
+```bash
+./insight_api_example /dev/nvme0n1 "2024-03-09 16:00:05" "2024-03-09 16:00:15" 4096
+```
+
+This example calls all three APIs in sequence and prints each JSON payload from `json_buffer`.
+
 ## 5. Read/Process Pipeline
 
 The main read path uses a producer-consumer pipeline to overlap device reads and post-action processing:

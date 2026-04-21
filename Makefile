@@ -14,10 +14,13 @@ TEST_OBJS := $(TEST_SRCS:.c=.o)
 API_TEST_TARGET := insight_api_tester
 API_TEST_SRCS := tests/insight_api_tester.c
 API_TEST_OBJS := $(API_TEST_SRCS:.c=.o)
+API_EXAMPLE_TARGET := insight_api_example
+API_EXAMPLE_SRCS := examples/insight_api_example.c
+API_EXAMPLE_OBJS := $(API_EXAMPLE_SRCS:.c=.o)
 
 .PHONY: all clean test
 
-all: $(TARGET) $(LIB_TARGET)
+all: $(TARGET) $(LIB_TARGET) $(API_EXAMPLE_TARGET)
 
 $(TARGET): $(OBJS)
 	$(CC) $(CFLAGS) -o $@ $(OBJS) $(LDFLAGS)
@@ -31,6 +34,9 @@ $(TEST_TARGET): $(TEST_OBJS)
 $(API_TEST_TARGET): $(API_TEST_OBJS) $(LIB_TARGET)
 	$(CC) $(CFLAGS) -o $@ $(API_TEST_OBJS) $(LIB_TARGET) $(LDFLAGS)
 
+$(API_EXAMPLE_TARGET): $(API_EXAMPLE_OBJS) $(LIB_TARGET)
+	$(CC) $(CFLAGS) -o $@ $(API_EXAMPLE_OBJS) $(LIB_TARGET) $(LDFLAGS)
+
 %.o: %.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
@@ -38,4 +44,5 @@ test: $(TEST_TARGET)
 	bash tests/run_post_action_tests.sh
 
 clean:
-	rm -f $(OBJS) $(TARGET) $(LIB_OBJS) $(LIB_TARGET) $(TEST_OBJS) $(TEST_TARGET) $(API_TEST_OBJS) $(API_TEST_TARGET)
+	rm -f $(OBJS) $(TARGET) $(LIB_OBJS) $(LIB_TARGET) $(TEST_OBJS) $(TEST_TARGET) \
+		$(API_TEST_OBJS) $(API_TEST_TARGET) $(API_EXAMPLE_OBJS) $(API_EXAMPLE_TARGET)
