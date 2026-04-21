@@ -8,6 +8,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
 
 #include "post_action_latency.h"
 #include "post_action_stats.h"
@@ -250,6 +251,54 @@ static uint32_t bucket_index_io_size_4k(uint64_t len_lba) {
     }
     return 9U;
 }
+
+#if NVME_POST_ACTION_DEBUG
+static void print_marker_local_time(uint64_t unix_time_ms,
+                                    uint64_t offset_bytes,
+                                    uint32_t record_index) {
+    uint64_t sec64 = unix_time_ms / 1000ULL;
+    uint32_t ms = (uint32_t)(unix_time_ms % 1000ULL);
+    time_t ts = (time_t)sec64;
+    if ((uint64_t)ts != sec64) {
+        fprintf(stderr,
+                "post action marker local time: offset=%llu record=%u "
+                "unix_time_ms=%llu local=unavailable(time_t overflow)\n",
+                (unsigned long long)offset_bytes,
+                (unsigned int)record_index,
+                (unsigned long long)unix_time_ms);
+        return;
+    }
+    struct tm tm_local;
+    memset(&tm_local, 0, sizeof(tm_local));
+    if (localtime_r(&ts, &tm_local) == NULL) {
+        fprintf(stderr,
+                "post action marker local time: offset=%llu record=%u "
+                "unix_time_ms=%llu local=unavailable(localtime_r failed)\n",
+                (unsigned long long)offset_bytes,
+                (unsigned int)record_index,
+                (unsigned long long)unix_time_ms);
+        return;
+    }
+    char time_buf[32];
+    if (strftime(time_buf, sizeof(time_buf), "%Y-%m-%d %H:%M:%S", &tm_local) == 0U) {
+        fprintf(stderr,
+                "post action marker local time: offset=%llu record=%u "
+                "unix_time_ms=%llu local=unavailable(strftime failed)\n",
+                (unsigned long long)offset_bytes,
+                (unsigned int)record_index,
+                (unsigned long long)unix_time_ms);
+        return;
+    }
+    fprintf(stderr,
+            "post action marker local time: offset=%llu record=%u "
+            "unix_time_ms=%llu local=%s.%03u\n",
+            (unsigned long long)offset_bytes,
+            (unsigned int)record_index,
+            (unsigned long long)unix_time_ms,
+            time_buf,
+            (unsigned int)ms);
+}
+#endif
 
 static void record_qd_and_wa(uint16_t qd, uint32_t hot_write_4k, uint32_t folding_write_4k) {
     if (g_post_action_qd_dist_enabled == 0 && g_post_action_wa_dist_enabled == 0) {
@@ -783,6 +832,12 @@ static int parse_marker_record(uint64_t record_lo,
     g_post_action_last_marker_unix_time_ms = parsed.unix_time_ms;
     g_post_action_has_last_marker = 1;
     pthread_mutex_unlock(&g_post_action_marker_mutex);
+
+#if NVME_POST_ACTION_DEBUG
+    if (g_post_action_debug_enabled != 0) {
+        print_marker_local_time(parsed.unix_time_ms, offset_bytes, record_index);
+    }
+#endif
 
     time_ref->marker_abs_time_us = parsed.abs_time;
     time_ref->has_marker = 1;
