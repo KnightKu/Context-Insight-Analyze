@@ -152,13 +152,13 @@ if rg -i "latency summary:|Read Size distribution \\(4K blocks\\):|Write Size di
   exit 1
 fi
 
-echo "  TIME-WINDOW expected: -S/-E filters records by marker abs_time window"
+echo "  TIME-WINDOW expected: -S/-E filters records by marker unix_time_ms window"
 if ! ./post_action_file_tester \
   --format-json \
   --latency \
   --read-size-dist \
-  --time-start "1970-01-01 00:00:08" \
-  --time-end "1970-01-01 00:00:08" \
+  --time-start "2024-03-09 16:00:05" \
+  --time-end "2024-03-09 16:00:15" \
   "tests/fixtures/valid_time_window.bin" >/tmp/post_action_time_window.log 2>&1; then
   echo "unexpected failure for time-window output case" >&2
   exit 1

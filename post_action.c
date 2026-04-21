@@ -799,19 +799,17 @@ static int parse_marker_record(uint64_t record_lo,
         return -1;
     }
     int stop_due_to_window_end = 0;
-    uint64_t start_us = 0ULL;
-    uint64_t end_us = UINT64_MAX;
+    uint64_t start_ms = 0ULL;
+    uint64_t end_ms = UINT64_MAX;
     if (g_post_action_time_window_enabled != 0) {
-        // Time-window filtering is marker-driven and uses marker abs_time(us).
+        // Time-window filtering is marker-driven and uses marker unix_time_ms.
         // Statistics are collected only for records between the start/end boundary markers.
-        start_us = (g_post_action_time_start_ms > (UINT64_MAX / 1000ULL)) ?
-            UINT64_MAX : (g_post_action_time_start_ms * 1000ULL);
-        end_us = (g_post_action_time_end_ms > (UINT64_MAX / 1000ULL)) ?
-            UINT64_MAX : (g_post_action_time_end_ms * 1000ULL);
-        if (parsed.abs_time < start_us) {
+        start_ms = g_post_action_time_start_ms;
+        end_ms = g_post_action_time_end_ms;
+        if (parsed.unix_time_ms < start_ms) {
             g_post_action_window_started = 0;
             g_post_action_window_active = 0;
-        } else if (parsed.abs_time > end_us) {
+        } else if (parsed.unix_time_ms > end_ms) {
             stop_due_to_window_end = 1;
             g_post_action_window_active = 0;
         } else {
@@ -830,13 +828,13 @@ static int parse_marker_record(uint64_t record_lo,
     if (stop_due_to_window_end != 0) {
         if (g_post_action_debug_enabled != 0) {
             fprintf(stderr,
-                    "post action soft-stop: marker abs_time_us=%llu exceeded end_time_us=%llu "
-                    "offset=%llu record=%u (start_time_us=%llu)\n",
-                    (unsigned long long)parsed.abs_time,
-                    (unsigned long long)end_us,
+                    "post action soft-stop: marker unix_time_ms=%llu exceeded end_time_ms=%llu "
+                    "offset=%llu record=%u (start_time_ms=%llu)\n",
+                    (unsigned long long)parsed.unix_time_ms,
+                    (unsigned long long)end_ms,
                     (unsigned long long)offset_bytes,
                     (unsigned int)record_index,
-                    (unsigned long long)start_us);
+                    (unsigned long long)start_ms);
         }
         errno = EPIPE;
         return -1;
