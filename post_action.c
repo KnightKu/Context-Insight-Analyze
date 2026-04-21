@@ -120,6 +120,7 @@ static int g_post_action_time_window_enabled = 0;
 static uint64_t g_post_action_time_start_ms = 0ULL;
 static uint64_t g_post_action_time_end_ms = UINT64_MAX;
 static int g_post_action_window_active = 1;
+static int g_post_action_window_started = 1;
 static uint64_t g_post_action_block_size_lba = 0ULL;
 static pthread_mutex_t g_post_action_workload_mutex = PTHREAD_MUTEX_INITIALIZER;
 static uint64_t g_post_action_qd_hist[NVME_POST_ACTION_RATIO_BUCKETS];
@@ -430,8 +431,9 @@ static int resolve_abs_time_us(uint32_t time_rel_us,
 static int post_action_is_window_active(void) {
     if (g_post_action_debug_enabled != 0) {
         fprintf(stderr,
-                "window active? enabled=%d active=%d start=%" PRIu64 " end=%" PRIu64 "\n",
+                "window active? enabled=%d started=%d active=%d start_ms=%" PRIu64 " end_ms=%" PRIu64 "\n",
                 g_post_action_time_window_enabled,
+                g_post_action_window_started,
                 g_post_action_window_active,
                 (uint64_t)g_post_action_time_start_ms,
                 (uint64_t)g_post_action_time_end_ms);
@@ -440,22 +442,6 @@ static int post_action_is_window_active(void) {
         return 1;
     }
     return g_post_action_window_active;
-}
-
-static int post_action_time_window_contains_abs_us(uint64_t abs_time_us) {
-    uint64_t start_ms = 0ULL;
-    uint64_t end_ms = UINT64_MAX;
-    int enabled = 0;
-    pthread_mutex_lock(&g_post_action_marker_mutex);
-    enabled = g_post_action_time_window_enabled;
-    start_ms = g_post_action_time_start_ms;
-    end_ms = g_post_action_time_end_ms;
-    pthread_mutex_unlock(&g_post_action_marker_mutex);
-    if (enabled == 0) {
-        return 1;
-    }
-    uint64_t abs_time_ms = abs_time_us / 1000ULL;
-    return (abs_time_ms >= start_ms && abs_time_ms <= end_ms) ? 1 : 0;
 }
 
 static int post_action_block_size_accept_len_lba(uint64_t len_lba) {
@@ -537,6 +523,10 @@ static int parse_rw_record(uint64_t record_lo,
         }
         return -1;
     }
+    if (post_action_is_window_active() == 0) {
+        return 0;
+    }
+
     if (resolve_abs_time_us(parsed.time_rel, time_ref, &abs_time_us) != 0) {
         if (g_post_action_debug_enabled != 0) {
             fprintf(stderr,
@@ -547,14 +537,6 @@ static int parse_rw_record(uint64_t record_lo,
                     (unsigned int)parsed.time_rel);
         }
         return -1;
-    }
-
-    if (post_action_time_window_contains_abs_us(abs_time_us) == 0) {
-        return 0;
-    }
-
-    if (post_action_is_window_active() == 0) {
-        return 0;
     }
     if (post_action_block_size_accept_len_lba((uint64_t)parsed.length) == 0) {
         return 0;
@@ -695,17 +677,17 @@ static int parse_trim_group(const unsigned char *bytes,
         parsed.ranges[i].range_index = fields.range_index;
         parsed.ranges[i].length = fields.length;
         parsed.ranges[i].time_rel = fields.time_rel;
+        if (window_active == 0 ||
+            post_action_block_size_accept_len_lba((uint64_t)fields.length) == 0) {
+            continue;
+        }
         uint64_t abs_time_us = 0ULL;
         if (resolve_abs_time_us(fields.time_rel, time_ref, &abs_time_us) != 0) {
             return -1;
         }
-        if (post_action_time_window_contains_abs_us(abs_time_us) != 0 &&
-            window_active != 0 &&
-            post_action_block_size_accept_len_lba((uint64_t)fields.length) != 0) {
-            nvme_post_action_stats_update_write(fields.start_lba, (uint64_t)fields.length, abs_time_us);
-            nvme_post_action_latency_record_trim(fields.time_rel);
-            record_io_size(NVME_POST_ACTION_OP_TRIM, (uint64_t)fields.length);
-        }
+        nvme_post_action_stats_update_write(fields.start_lba, (uint64_t)fields.length, abs_time_us);
+        nvme_post_action_latency_record_trim(fields.time_rel);
+        record_io_size(NVME_POST_ACTION_OP_TRIM, (uint64_t)fields.length);
     }
     parsed.range_count = parsed.total_ranges;
     (void)parsed;
@@ -736,21 +718,19 @@ static int parse_stat_record(uint64_t record_lo,
         errno = EINVAL;
         return -1;
     }
-    if (resolve_abs_time_us(parsed.time_rel, time_ref, &abs_time_us) != 0) {
-        return -1;
-    }
-    if (post_action_time_window_contains_abs_us(abs_time_us) != 0) {
     if (post_action_is_window_active() == 0) {
         return 0;
     }
-    if (nvme_post_action_stats_record_stat(abs_time_us,
-                                               parsed.qd,
-                                               parsed.hot_write,
-                                               parsed.folding_write) != 0) {
-            return -1;
-        }
-        record_qd_and_wa(parsed.qd, parsed.hot_write, parsed.folding_write);
+    if (resolve_abs_time_us(parsed.time_rel, time_ref, &abs_time_us) != 0) {
+        return -1;
     }
+    if (nvme_post_action_stats_record_stat(abs_time_us,
+                                           parsed.qd,
+                                           parsed.hot_write,
+                                           parsed.folding_write) != 0) {
+        return -1;
+    }
+    record_qd_and_wa(parsed.qd, parsed.hot_write, parsed.folding_write);
 #if NVME_POST_ACTION_DEBUG
     fprintf(stderr,
             "post action stat: offset=%llu record=%u qd=%u time_rel=%u abs_time_us=%llu "
@@ -818,20 +798,49 @@ static int parse_marker_record(uint64_t record_lo,
         errno = ECANCELED;
         return -1;
     }
+    int stop_due_to_window_end = 0;
+    uint64_t start_us = 0ULL;
+    uint64_t end_us = UINT64_MAX;
     if (g_post_action_time_window_enabled != 0) {
-        if (parsed.unix_time_ms < g_post_action_time_start_ms ||
-            parsed.unix_time_ms > g_post_action_time_end_ms) {
+        // Time-window filtering is marker-driven and uses marker abs_time(us).
+        // Statistics are collected only for records between the start/end boundary markers.
+        start_us = (g_post_action_time_start_ms > (UINT64_MAX / 1000ULL)) ?
+            UINT64_MAX : (g_post_action_time_start_ms * 1000ULL);
+        end_us = (g_post_action_time_end_ms > (UINT64_MAX / 1000ULL)) ?
+            UINT64_MAX : (g_post_action_time_end_ms * 1000ULL);
+        if (parsed.abs_time < start_us) {
+            g_post_action_window_started = 0;
+            g_post_action_window_active = 0;
+        } else if (parsed.abs_time > end_us) {
+            stop_due_to_window_end = 1;
             g_post_action_window_active = 0;
         } else {
+            g_post_action_window_started = 1;
             g_post_action_window_active = 1;
         }
     } else {
+        g_post_action_window_started = 1;
         g_post_action_window_active = 1;
     }
     g_post_action_last_marker_abs_time_us = parsed.abs_time;
     g_post_action_last_marker_unix_time_ms = parsed.unix_time_ms;
     g_post_action_has_last_marker = 1;
     pthread_mutex_unlock(&g_post_action_marker_mutex);
+
+    if (stop_due_to_window_end != 0) {
+        if (g_post_action_debug_enabled != 0) {
+            fprintf(stderr,
+                    "post action soft-stop: marker abs_time_us=%llu exceeded end_time_us=%llu "
+                    "offset=%llu record=%u (start_time_us=%llu)\n",
+                    (unsigned long long)parsed.abs_time,
+                    (unsigned long long)end_us,
+                    (unsigned long long)offset_bytes,
+                    (unsigned int)record_index,
+                    (unsigned long long)start_us);
+        }
+        errno = EPIPE;
+        return -1;
+    }
 
 #if NVME_POST_ACTION_DEBUG
     if (g_post_action_debug_enabled != 0) {
@@ -1056,7 +1065,8 @@ int nvme_post_action_set_base_lba(uint64_t base_lba) {
     g_post_action_last_marker_abs_time_us = 0ULL;
     g_post_action_last_marker_unix_time_ms = 0ULL;
     g_post_action_has_last_marker = 0;
-    g_post_action_window_active = 1;
+    g_post_action_window_started = (g_post_action_time_window_enabled == 0) ? 1 : 0;
+    g_post_action_window_active = (g_post_action_time_window_enabled == 0) ? 1 : 0;
     pthread_mutex_unlock(&g_post_action_marker_mutex);
     return 0;
 }
@@ -1184,6 +1194,8 @@ int nvme_post_action_set_time_window_ms(int enabled, uint64_t start_ms, uint64_t
     g_post_action_time_window_enabled = (enabled != 0) ? 1 : 0;
     g_post_action_time_start_ms = start_ms;
     g_post_action_time_end_ms = end_ms;
+    g_post_action_window_started = (enabled != 0) ? 0 : 1;
+    g_post_action_window_active = (enabled != 0) ? 0 : 1;
     pthread_mutex_unlock(&g_post_action_marker_mutex);
     return 0;
 }

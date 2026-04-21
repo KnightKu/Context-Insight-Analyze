@@ -109,6 +109,12 @@ The default post action:
 - Interprets `time` fields in `read/write/trim/stat` as relative offsets (3B) from the latest previous marker
 - Records before the first marker are treated as invalid preamble/noise and dropped
 - Keeps marker time reference continuous across read chunks (stream-level marker continuity)
+- Optional marker-boundary time-window filtering (`-S/--time-start`, `-E/--time-end`):
+  - window boundary decision is based on **marker `abs_time`** (microseconds), not per-record relative time
+  - if current marker `abs_time < start-time`, records under this marker are discarded (no statistics update)
+  - if `start-time <= marker abs_time <= end-time`, records under this marker are included for statistics
+  - if marker `abs_time > end-time`, post-action enters soft-stop and stops further parse/read
+  - effectively, only records between the start/end boundary markers are counted
 - Requires marker timestamps to be strictly increasing:
   - if marker `abs_time` is non-increasing (`<=` previous marker), it is treated as overwrite
   - post-action enters soft-stop immediately: stop further log read/parse, but main flow keeps success path

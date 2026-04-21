@@ -152,22 +152,21 @@ if rg -i "latency summary:|Read Size distribution \\(4K blocks\\):|Write Size di
   exit 1
 fi
 
-echo "  TIME-WINDOW expected: -S/-E filters records by marker unix ms"
+echo "  TIME-WINDOW expected: -S/-E filters records by marker abs_time window"
 if ! ./post_action_file_tester \
   --format-json \
   --latency \
   --read-size-dist \
-  --time-start "2024-03-09 16:00:05" \
-  --time-end "2024-03-09 16:00:15" \
+  --time-start "1970-01-01 00:00:08" \
+  --time-end "1970-01-01 00:00:08" \
   "tests/fixtures/valid_time_window.bin" >/tmp/post_action_time_window.log 2>&1; then
   echo "unexpected failure for time-window output case" >&2
   exit 1
 fi
-if ! rg "\"read\"\\s*:\\s*\\{|\"count\"\\s*:\\s*0|\"total\"\\s*:\\s*0" "/tmp/post_action_time_window.log" >/dev/null; then
-  echo "time-window filtered output does not show expected in-window samples" >&2
+if ! rg "\"read\"\\s*:\\s*\\{|\"count\"\\s*:\\s*1|\"read_size_dist\"\\s*:\\s*\\{|\"total\"\\s*:\\s*1" "/tmp/post_action_time_window.log" >/dev/null; then
+  echo "time-window filtered output does not show expected start-marker segment samples" >&2
   exit 1
 fi
-
 echo "  BLOCK-SIZE expected: -b/--block-size filters non-multiple and small records"
 if ! ./post_action_file_tester \
   --format-json \

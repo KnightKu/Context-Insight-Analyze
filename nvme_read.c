@@ -276,9 +276,12 @@ static void *pipeline_worker_thread(void *arg) {
         nvme_pipeline_slot_t *slot = &state->slots[slot_idx];
         if (nvme_post_action_process(slot->buf, slot->len, slot->offset) != 0) {
             int saved_errno = errno == 0 ? EIO : errno;
-            if (saved_errno == ECANCELED || saved_errno == ENODATA) {
+            if (saved_errno == ECANCELED || saved_errno == ENODATA || saved_errno == EPIPE) {
                 const char *reason = (saved_errno == ECANCELED) ?
-                    "overwrite detected" : "all-zero termination marker";
+                    "overwrite detected" :
+                    ((saved_errno == ENODATA) ?
+                        "all-zero termination marker" :
+                        "time-window end marker reached");
                 fprintf(stderr,
                         "post action soft-stop at offset=%llu: %s, "
                         "stop further log read/parse\n",

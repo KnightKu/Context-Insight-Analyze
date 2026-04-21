@@ -168,6 +168,23 @@ def main() -> None:
     )
     (fixture_dir / "valid_time_window.bin").write_bytes(valid_time_window)
 
+    # Marker abs-time window fixture:
+    # start_us=8_050_000, end_us=8_150_000
+    # - marker 8_000_000 < start: drop records
+    # - marker 8_100_000 in window: keep records
+    # - marker 8_200_000 > end: soft-stop immediately
+    valid_marker_abs_window = b"".join(
+        [
+            rec_marker(8_000_000, 1_710_000_000_000),
+            rec_rw(0x01, 0x2100, 8, 0x0000, 111, 10),
+            rec_marker(8_100_000, 1_710_000_010_000),
+            rec_rw(0x01, 0x2200, 8, 0x0000, 222, 10),
+            rec_marker(8_200_000, 1_710_000_020_000),
+            rec_rw(0x01, 0x2300, 8, 0x0000, 333, 10),
+        ]
+    )
+    (fixture_dir / "valid_marker_abs_window.bin").write_bytes(valid_marker_abs_window)
+
     # Valid block-size-filter stream:
     # block-size=16K (4 * 4K-LBA units), keep only lengths that are >=4 and multiple of 4.
     valid_block_size_filter = b"".join(
