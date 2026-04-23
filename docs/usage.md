@@ -149,7 +149,9 @@ The default post action:
 - Optional workload distribution summary (independent switches):
   - `-q` / `--qd-dist`: `QD` distribution from Stat records
   - `-a` / `--wa-dist`: `WA` distribution from Stat records (`(hot_write + folding_write) / hot_write`)
-    - 10 fixed buckets compressed to range `1.0~5.0`: `[1.0,1.4) ... [4.6,5.0]`
+    - 10 fixed buckets:
+      `1.0`, `1.1-1.5`, `1.6-2.0`, `2.1-2.5`, `2.6-3.0`,
+      `3.1-3.5`, `3.6-4.0`, `4.1-4.5`, `4.6-5.0`, `>5.0`
   - `-R` / `--read-size-dist`: read size distribution (`length` field, 4K units)
   - `-W` / `--write-size-dist`: write size distribution (`length` field, 4K units)
   - `-T` / `--trim-size-dist`: trim size distribution (per-range `length`, 4K units)
@@ -189,6 +191,18 @@ int get_qd_distribution(const char *device,
                         const char *time_start,
                         const char *time_end,
                         char *json_buffer);
+
+int get_read_size_distribution(const char *device,
+                               uint64_t block_size,
+                               const char *time_start,
+                               const char *time_end,
+                               char *json_buffer);
+
+int get_write_size_distribution(const char *device,
+                                uint64_t block_size,
+                                const char *time_start,
+                                const char *time_end,
+                                char *json_buffer);
 ```
 
 Common input contract:
@@ -206,6 +220,10 @@ Execution equivalence:
   `./sfx_ctx_insight_analyze --format-json --wa-dist --block-size=<block_size> -S <time_start> -E <time_end> <device> 0 11T`
 - `get_qd_distribution(...)` ~=  
   `./sfx_ctx_insight_analyze --format-json --qd-dist --block-size=<block_size> -S <time_start> -E <time_end> <device> 0 11T`
+- `get_read_size_distribution(...)` ~=  
+  `./sfx_ctx_insight_analyze --format-json --read-size-dist --block-size=<block_size> -S <time_start> -E <time_end> <device> 0 11T`
+- `get_write_size_distribution(...)` ~=  
+  `./sfx_ctx_insight_analyze --format-json --write-size-dist --block-size=<block_size> -S <time_start> -E <time_end> <device> 0 11T`
 
 Runnable example:
 

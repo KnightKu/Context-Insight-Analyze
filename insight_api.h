@@ -27,6 +27,18 @@ int get_qd_distribution(const char *device,
                         const char *time_end,
                         char *json_buffer);
 
+int get_read_size_distribution(const char *device,
+                               uint64_t block_size,
+                               const char *time_start,
+                               const char *time_end,
+                               char *json_buffer);
+
+int get_write_size_distribution(const char *device,
+                                uint64_t block_size,
+                                const char *time_start,
+                                const char *time_end,
+                                char *json_buffer);
+
 #ifdef __cplusplus
 }
 #endif

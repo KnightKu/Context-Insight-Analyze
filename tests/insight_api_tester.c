@@ -41,5 +41,21 @@ int main(void) {
         return 1;
     }
 
+    errno = 0;
+    rc = get_read_size_distribution("/dev/null", 0ULL,
+                                    "2024-03-09 16:00:05", "2024-03-09 16:00:15",
+                                    json_buf);
+    if (expect_invalid("get_read_size_distribution(zero block_size)", rc) != 0) {
+        return 1;
+    }
+
+    errno = 0;
+    rc = get_write_size_distribution(NULL, 4096ULL,
+                                     "2024-03-09 16:00:05", "2024-03-09 16:00:15",
+                                     json_buf);
+    if (expect_invalid("get_write_size_distribution(NULL device)", rc) != 0) {
+        return 1;
+    }
+
     return 0;
 }

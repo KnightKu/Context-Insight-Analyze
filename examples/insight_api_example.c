@@ -58,7 +58,19 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "get_qd_distribution failed: %s\n", strerror(errno));
         return 4;
     }
-    printf("=== qd_distribution ===\n%s\n", json_buffer);
+    printf("=== qd_distribution ===\n%s\n\n", json_buffer);
+
+    if (get_read_size_distribution(device, block_size, time_start, time_end, json_buffer) != 0) {
+        fprintf(stderr, "get_read_size_distribution failed: %s\n", strerror(errno));
+        return 5;
+    }
+    printf("=== read_size_distribution ===\n%s\n\n", json_buffer);
+
+    if (get_write_size_distribution(device, block_size, time_start, time_end, json_buffer) != 0) {
+        fprintf(stderr, "get_write_size_distribution failed: %s\n", strerror(errno));
+        return 6;
+    }
+    printf("=== write_size_distribution ===\n%s\n", json_buffer);
 
     return 0;
 }
