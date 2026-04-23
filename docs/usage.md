@@ -191,6 +191,18 @@ int get_qd_distribution(const char *device,
                         const char *time_start,
                         const char *time_end,
                         char *json_buffer);
+
+int get_read_size_distribution(const char *device,
+                               uint64_t block_size,
+                               const char *time_start,
+                               const char *time_end,
+                               char *json_buffer);
+
+int get_write_size_distribution(const char *device,
+                                uint64_t block_size,
+                                const char *time_start,
+                                const char *time_end,
+                                char *json_buffer);
 ```
 
 Common input contract:
@@ -208,6 +220,10 @@ Execution equivalence:
   `./sfx_ctx_insight_analyze --format-json --wa-dist --block-size=<block_size> -S <time_start> -E <time_end> <device> 0 11T`
 - `get_qd_distribution(...)` ~=  
   `./sfx_ctx_insight_analyze --format-json --qd-dist --block-size=<block_size> -S <time_start> -E <time_end> <device> 0 11T`
+- `get_read_size_distribution(...)` ~=  
+  `./sfx_ctx_insight_analyze --format-json --read-size-dist --block-size=<block_size> -S <time_start> -E <time_end> <device> 0 11T`
+- `get_write_size_distribution(...)` ~=  
+  `./sfx_ctx_insight_analyze --format-json --write-size-dist --block-size=<block_size> -S <time_start> -E <time_end> <device> 0 11T`
 
 Runnable example:
 

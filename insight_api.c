@@ -20,7 +20,9 @@
 typedef enum {
     INSIGHT_QUERY_LATENCY = 0,
     INSIGHT_QUERY_WA = 1,
-    INSIGHT_QUERY_QD = 2
+    INSIGHT_QUERY_QD = 2,
+    INSIGHT_QUERY_READ_SIZE = 3,
+    INSIGHT_QUERY_WRITE_SIZE = 4
 } insight_query_type_t;
 
 static pthread_mutex_t g_insight_api_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -146,8 +148,8 @@ static int run_query_and_fill_json(const char *device,
         nvme_read_set_lba_stats_life_cycle(0) != 0 ||
         nvme_read_set_qd_dist(query_type == INSIGHT_QUERY_QD) != 0 ||
         nvme_read_set_wa_dist(query_type == INSIGHT_QUERY_WA) != 0 ||
-        nvme_read_set_read_size_dist(0) != 0 ||
-        nvme_read_set_write_size_dist(0) != 0 ||
+        nvme_read_set_read_size_dist(query_type == INSIGHT_QUERY_READ_SIZE) != 0 ||
+        nvme_read_set_write_size_dist(query_type == INSIGHT_QUERY_WRITE_SIZE) != 0 ||
         nvme_read_set_trim_size_dist(0) != 0 ||
         nvme_read_set_block_size_bytes(block_size) != 0 ||
         nvme_read_set_time_window(1, start_ms, 1, end_ms) != 0) {
@@ -251,4 +253,22 @@ int get_qd_distribution(const char *device,
                         char *json_buffer) {
     return run_query_and_fill_json(device, block_size, time_start, time_end,
                                    INSIGHT_QUERY_QD, json_buffer);
+}
+
+int get_read_size_distribution(const char *device,
+                               uint64_t block_size,
+                               const char *time_start,
+                               const char *time_end,
+                               char *json_buffer) {
+    return run_query_and_fill_json(device, block_size, time_start, time_end,
+                                   INSIGHT_QUERY_READ_SIZE, json_buffer);
+}
+
+int get_write_size_distribution(const char *device,
+                                uint64_t block_size,
+                                const char *time_start,
+                                const char *time_end,
+                                char *json_buffer) {
+    return run_query_and_fill_json(device, block_size, time_start, time_end,
+                                   INSIGHT_QUERY_WRITE_SIZE, json_buffer);
 }
