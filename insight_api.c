@@ -14,7 +14,7 @@
 #include <unistd.h>
 
 #define INSIGHT_SCAN_SLBA_BYTES 0ULL
-#define INSIGHT_SCAN_DATA_LEN_BYTES (11ULL * 1024ULL * 1024ULL * 1024ULL * 1024ULL)
+#define INSIGHT_SCAN_DATA_LEN_11T_BYTES (11ULL * 1024ULL * 1024ULL * 1024ULL * 1024ULL)
 #define INSIGHT_CAPTURE_MAX_BYTES (INSIGHT_JSON_BUFFER_BYTES * 4U)
 
 typedef enum {
@@ -57,6 +57,18 @@ static int parse_datetime_ymdhms(const char *arg, uint64_t *out_ms) {
     }
     *out_ms = (uint64_t)ts * 1000ULL;
     return 0;
+}
+
+static uint64_t insight_effective_scan_bytes(void) {
+    uint64_t log_span_bytes = 0ULL;
+    if (LOG_END_LBA > LOG_START_LBA) {
+        log_span_bytes = LOG_END_LBA - LOG_START_LBA;
+    }
+    if (log_span_bytes == 0ULL) {
+        return 0ULL;
+    }
+    return (INSIGHT_SCAN_DATA_LEN_11T_BYTES < log_span_bytes) ?
+        INSIGHT_SCAN_DATA_LEN_11T_BYTES : log_span_bytes;
 }
 
 static int capture_stderr_content(FILE *src, char *out, size_t out_size) {
@@ -174,7 +186,13 @@ static int run_query_and_fill_json(const char *device,
         goto out_capture;
     }
 
-    if (nvme_read(device, INSIGHT_SCAN_SLBA_BYTES, INSIGHT_SCAN_DATA_LEN_BYTES, NULL) != 0) {
+    uint64_t scan_bytes = insight_effective_scan_bytes();
+    if (scan_bytes == 0ULL) {
+        saved_errno = ERANGE;
+        ret = -1;
+        goto out_capture;
+    }
+    if (nvme_read(device, INSIGHT_SCAN_SLBA_BYTES, scan_bytes, NULL) != 0) {
         saved_errno = errno;
         ret = -1;
         goto out_capture;
