@@ -163,8 +163,8 @@ static const char *label_qd(uint32_t idx) {
 
 static const char *label_wa(uint32_t idx) {
     static const char *labels[10] = {
-        "[1.0,1.4)", "[1.4,1.8)", "[1.8,2.2)", "[2.2,2.6)", "[2.6,3.0)",
-        "[3.0,3.4)", "[3.4,3.8)", "[3.8,4.2)", "[4.2,4.6)", "[4.6,5.0]"
+        "1.0", "1.1-1.5", "1.6-2.0", "2.1-2.5", "2.6-3.0",
+        "3.1-3.5", "3.6-4.0", "4.1-4.5", "4.6-5.0", ">5.0"
     };
     return labels[idx < 10U ? idx : 9U];
 }
@@ -212,14 +212,35 @@ static uint32_t bucket_index_wa_x1000(uint32_t wa_x1000) {
     if (wa_x1000 <= 1000U) {
         return 0U;
     }
-    if (wa_x1000 >= 5000U) {
+    if (wa_x1000 <= 1500U) {
+        return 1U;
+    }
+    if (wa_x1000 <= 2000U) {
+        return 2U;
+    }
+    if (wa_x1000 <= 2500U) {
+        return 3U;
+    }
+    if (wa_x1000 <= 3000U) {
+        return 4U;
+    }
+    if (wa_x1000 <= 3500U) {
+        return 5U;
+    }
+    if (wa_x1000 <= 4000U) {
+        return 6U;
+    }
+    if (wa_x1000 <= 4500U) {
+        return 7U;
+    }
+    if (wa_x1000 <= 5000U) {
+        return 8U;
+    }
+    // Any WA > 5.0 is grouped into the tail bucket.
+    if (wa_x1000 > 5000U) {
         return 9U;
     }
-    uint32_t idx = (wa_x1000 - 1000U) / 400U;
-    if (idx >= NVME_POST_ACTION_RATIO_BUCKETS) {
-        idx = NVME_POST_ACTION_RATIO_BUCKETS - 1U;
-    }
-    return idx;
+    return 9U;
 }
 
 static uint32_t bucket_index_io_size_4k(uint64_t len_lba) {

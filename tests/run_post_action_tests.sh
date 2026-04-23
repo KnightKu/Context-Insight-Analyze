@@ -107,8 +107,8 @@ if ! rg -i "QD distribution:|WA distribution:|Read Size distribution \\(4K block
   echo "missing workload distribution output sections" >&2
   exit 1
 fi
-if ! rg "\\[1\\.0,1\\.4\\)|\\[4\\.6,5\\.0\\]" "/tmp/post_action_workload_stats.log" >/dev/null; then
-  echo "missing compressed WA bucket labels [1.0,1.4) or [4.6,5.0]" >&2
+if ! rg "WA\\s+1\\.0|WA\\s+>5\\.0" "/tmp/post_action_workload_stats.log" >/dev/null; then
+  echo "missing WA bucket labels 1.0 or >5.0" >&2
   exit 1
 fi
 if ! rg "Read Size\\s+4K|Write Size\\s+8K|Trim Size\\s+16K" "/tmp/post_action_workload_stats.log" >/dev/null; then

@@ -149,7 +149,9 @@ The default post action:
 - Optional workload distribution summary (independent switches):
   - `-q` / `--qd-dist`: `QD` distribution from Stat records
   - `-a` / `--wa-dist`: `WA` distribution from Stat records (`(hot_write + folding_write) / hot_write`)
-    - 10 fixed buckets compressed to range `1.0~5.0`: `[1.0,1.4) ... [4.6,5.0]`
+    - 10 fixed buckets:
+      `1.0`, `1.1-1.5`, `1.6-2.0`, `2.1-2.5`, `2.6-3.0`,
+      `3.1-3.5`, `3.6-4.0`, `4.1-4.5`, `4.6-5.0`, `>5.0`
   - `-R` / `--read-size-dist`: read size distribution (`length` field, 4K units)
   - `-W` / `--write-size-dist`: write size distribution (`length` field, 4K units)
   - `-T` / `--trim-size-dist`: trim size distribution (per-range `length`, 4K units)
