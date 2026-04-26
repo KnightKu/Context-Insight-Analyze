@@ -75,6 +75,14 @@ int nvme_post_action_set_trim_size_dist_enabled(int enabled);
 
 int nvme_post_action_get_trim_size_dist_enabled(void);
 
+int nvme_post_action_set_read_throughput_dist_enabled(int enabled);
+
+int nvme_post_action_get_read_throughput_dist_enabled(void);
+
+int nvme_post_action_set_write_throughput_dist_enabled(int enabled);
+
+int nvme_post_action_get_write_throughput_dist_enabled(void);
+
 void nvme_post_action_reset_workload_stats(void);
 
 void nvme_post_action_print_lba_stats_report(void);

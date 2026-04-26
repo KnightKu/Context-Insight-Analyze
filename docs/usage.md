@@ -203,6 +203,18 @@ int get_write_size_distribution(const char *device,
                                 const char *time_start,
                                 const char *time_end,
                                 char *json_buffer);
+
+int get_read_throughput_distribution(const char *device,
+                                     uint64_t block_size,
+                                     const char *time_start,
+                                     const char *time_end,
+                                     char *json_buffer);
+
+int get_write_throughput_distribution(const char *device,
+                                      uint64_t block_size,
+                                      const char *time_start,
+                                      const char *time_end,
+                                      char *json_buffer);
 ```
 
 Common input contract:
@@ -224,6 +236,10 @@ Execution equivalence:
   `./sfx_ctx_insight_analyze --format-json --read-size-dist --block-size=<block_size> -S <time_start> -E <time_end> <device> 0 11T`
 - `get_write_size_distribution(...)` ~=  
   `./sfx_ctx_insight_analyze --format-json --write-size-dist --block-size=<block_size> -S <time_start> -E <time_end> <device> 0 11T`
+- `get_read_throughput_distribution(...)` ~=  
+  `./sfx_ctx_insight_analyze --format-json --read-throughput-dist --block-size=<block_size> -S <time_start> -E <time_end> <device> 0 11T`
+- `get_write_throughput_distribution(...)` ~=  
+  `./sfx_ctx_insight_analyze --format-json --write-throughput-dist --block-size=<block_size> -S <time_start> -E <time_end> <device> 0 11T`
 
 Runnable example:
 
@@ -235,7 +251,7 @@ Runnable example:
 ./insight_api_example /dev/nvme0n1 "2024-03-09 16:00:05" "2024-03-09 16:00:15" 4096
 ```
 
-This example calls all three APIs in sequence and prints each JSON payload from `json_buffer`.
+This example calls all available insight APIs in sequence and prints each JSON payload from `json_buffer`.
 
 ## 5. Read/Process Pipeline
 
