@@ -37,6 +37,10 @@ int nvme_read_set_write_size_dist(int enabled);
 
 int nvme_read_set_trim_size_dist(int enabled);
 
+int nvme_read_set_read_throughput_dist(int enabled);
+
+int nvme_read_set_write_throughput_dist(int enabled);
+
 int nvme_read_set_format_json(int enabled);
 
 int nvme_read_set_time_window(int has_start, uint64_t time_start_ms,

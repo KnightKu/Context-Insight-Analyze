@@ -70,7 +70,19 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "get_write_size_distribution failed: %s\n", strerror(errno));
         return 6;
     }
-    printf("=== write_size_distribution ===\n%s\n", json_buffer);
+    printf("=== write_size_distribution ===\n%s\n\n", json_buffer);
+
+    if (get_read_throughput_distribution(device, block_size, time_start, time_end, json_buffer) != 0) {
+        fprintf(stderr, "get_read_throughput_distribution failed: %s\n", strerror(errno));
+        return 7;
+    }
+    printf("=== read_throughput_distribution ===\n%s\n\n", json_buffer);
+
+    if (get_write_throughput_distribution(device, block_size, time_start, time_end, json_buffer) != 0) {
+        fprintf(stderr, "get_write_throughput_distribution failed: %s\n", strerror(errno));
+        return 8;
+    }
+    printf("=== write_throughput_distribution ===\n%s\n", json_buffer);
 
     return 0;
 }
