@@ -74,6 +74,10 @@ void nvme_post_action_stats_print_ratio_summary(int print_read_count,
                                                 int print_w2fr,
                                                 int print_life_cycle);
 
+void nvme_post_action_stats_set_json_format_enabled(int enabled);
+
+int nvme_post_action_stats_get_json_format_enabled(void);
+
 void nvme_post_action_stats_print_read_count_ratio_summary(void);
 
 void nvme_post_action_stats_print_w2fr_ratio_summary(void);

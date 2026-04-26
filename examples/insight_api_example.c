@@ -84,5 +84,23 @@ int main(int argc, char *argv[]) {
     }
     printf("=== write_throughput_distribution ===\n%s\n", json_buffer);
 
+    if (get_read_count_distribution(device, block_size, time_start, time_end, json_buffer) != 0) {
+        fprintf(stderr, "get_read_count_distribution failed: %s\n", strerror(errno));
+        return 9;
+    }
+    printf("=== read_count_distribution ===\n%s\n\n", json_buffer);
+
+    if (get_write_to_first_read_distribution(device, block_size, time_start, time_end, json_buffer) != 0) {
+        fprintf(stderr, "get_write_to_first_read_distribution failed: %s\n", strerror(errno));
+        return 10;
+    }
+    printf("=== write_to_first_read_distribution ===\n%s\n\n", json_buffer);
+
+    if (get_lifecycle_distribution(device, block_size, time_start, time_end, json_buffer) != 0) {
+        fprintf(stderr, "get_lifecycle_distribution failed: %s\n", strerror(errno));
+        return 11;
+    }
+    printf("=== lifecycle_distribution ===\n%s\n", json_buffer);
+
     return 0;
 }

@@ -24,8 +24,17 @@ typedef enum {
     INSIGHT_QUERY_READ_SIZE = 3,
     INSIGHT_QUERY_WRITE_SIZE = 4,
     INSIGHT_QUERY_READ_THROUGHPUT = 5,
-    INSIGHT_QUERY_WRITE_THROUGHPUT = 6
+    INSIGHT_QUERY_WRITE_THROUGHPUT = 6,
+    INSIGHT_QUERY_READ_COUNT = 7,
+    INSIGHT_QUERY_W2FR = 8,
+    INSIGHT_QUERY_LIFECYCLE = 9
 } insight_query_type_t;
+
+static int insight_query_is_lba_ratio(insight_query_type_t query_type) {
+    return (query_type == INSIGHT_QUERY_READ_COUNT ||
+            query_type == INSIGHT_QUERY_W2FR ||
+            query_type == INSIGHT_QUERY_LIFECYCLE) ? 1 : 0;
+}
 
 static pthread_mutex_t g_insight_api_mutex = PTHREAD_MUTEX_INITIALIZER;
 
@@ -142,18 +151,24 @@ static int run_query_and_fill_json(const char *device,
     pthread_mutex_lock(&g_insight_api_mutex);
     json_buffer[0] = '\0';
 
+    int enable_lba = insight_query_is_lba_ratio(query_type);
     if (nvme_read_set_debug(0) != 0 ||
         nvme_read_set_format_json(1) != 0 ||
         nvme_read_set_latency(query_type == INSIGHT_QUERY_LATENCY) != 0 ||
-        nvme_read_set_lba_stats_read_count(0) != 0 ||
-        nvme_read_set_lba_stats_w2fr(0) != 0 ||
-        nvme_read_set_lba_stats_life_cycle(0) != 0 ||
-        nvme_read_set_qd_dist(query_type == INSIGHT_QUERY_QD) != 0 ||
-        nvme_read_set_wa_dist(query_type == INSIGHT_QUERY_WA) != 0 ||
-        nvme_read_set_read_size_dist(query_type == INSIGHT_QUERY_READ_SIZE) != 0 ||
-        nvme_read_set_write_size_dist(query_type == INSIGHT_QUERY_WRITE_SIZE) != 0 ||
-        nvme_read_set_read_throughput_dist(query_type == INSIGHT_QUERY_READ_THROUGHPUT) != 0 ||
-        nvme_read_set_write_throughput_dist(query_type == INSIGHT_QUERY_WRITE_THROUGHPUT) != 0 ||
+        nvme_read_set_lba_stats_read_count(enable_lba &&
+                                           query_type == INSIGHT_QUERY_READ_COUNT) != 0 ||
+        nvme_read_set_lba_stats_w2fr(enable_lba &&
+                                     query_type == INSIGHT_QUERY_W2FR) != 0 ||
+        nvme_read_set_lba_stats_life_cycle(enable_lba &&
+                                           query_type == INSIGHT_QUERY_LIFECYCLE) != 0 ||
+        nvme_read_set_qd_dist(enable_lba ? 0 : (query_type == INSIGHT_QUERY_QD)) != 0 ||
+        nvme_read_set_wa_dist(enable_lba ? 0 : (query_type == INSIGHT_QUERY_WA)) != 0 ||
+        nvme_read_set_read_size_dist(enable_lba ? 0 : (query_type == INSIGHT_QUERY_READ_SIZE)) != 0 ||
+        nvme_read_set_write_size_dist(enable_lba ? 0 : (query_type == INSIGHT_QUERY_WRITE_SIZE)) != 0 ||
+        nvme_read_set_read_throughput_dist(enable_lba ? 0 :
+                                           (query_type == INSIGHT_QUERY_READ_THROUGHPUT)) != 0 ||
+        nvme_read_set_write_throughput_dist(enable_lba ? 0 :
+                                            (query_type == INSIGHT_QUERY_WRITE_THROUGHPUT)) != 0 ||
         nvme_read_set_trim_size_dist(0) != 0 ||
         nvme_read_set_block_size_bytes(block_size) != 0 ||
         nvme_read_set_time_window(1, start_ms, 1, end_ms) != 0) {
@@ -293,4 +308,31 @@ int get_write_throughput_distribution(const char *device,
                                       char *json_buffer) {
     return run_query_and_fill_json(device, block_size, time_start, time_end,
                                    INSIGHT_QUERY_WRITE_THROUGHPUT, json_buffer);
+}
+
+int get_read_count_distribution(const char *device,
+                                uint64_t block_size,
+                                const char *time_start,
+                                const char *time_end,
+                                char *json_buffer) {
+    return run_query_and_fill_json(device, block_size, time_start, time_end,
+                                   INSIGHT_QUERY_READ_COUNT, json_buffer);
+}
+
+int get_write_to_first_read_distribution(const char *device,
+                                         uint64_t block_size,
+                                         const char *time_start,
+                                         const char *time_end,
+                                         char *json_buffer) {
+    return run_query_and_fill_json(device, block_size, time_start, time_end,
+                                   INSIGHT_QUERY_W2FR, json_buffer);
+}
+
+int get_lifecycle_distribution(const char *device,
+                               uint64_t block_size,
+                               const char *time_start,
+                               const char *time_end,
+                               char *json_buffer) {
+    return run_query_and_fill_json(device, block_size, time_start, time_end,
+                                   INSIGHT_QUERY_LIFECYCLE, json_buffer);
 }

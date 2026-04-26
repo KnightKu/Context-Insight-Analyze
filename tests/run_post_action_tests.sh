@@ -68,6 +68,25 @@ if ! rg -i "Read Count.*bytes=|Life Cycle.*bytes=" "/tmp/post_action_lba_stats.l
   exit 1
 fi
 
+echo "  LBA-STATS JSON expected for read-count/w2fr/life-cycle"
+if ! ./post_action_file_tester \
+  --format-json \
+  --read-count \
+  --w2fr \
+  --life-cycle \
+  "tests/fixtures/valid_mixed.bin" >/tmp/post_action_lba_json.log 2>&1; then
+  echo "unexpected failure for lba stats json output case" >&2
+  exit 1
+fi
+if ! rg -i "\"read_count_distribution\"\\s*:\\s*\\{|\"write_to_first_read_distribution\"\\s*:\\s*\\{|\"lifecycle_distribution\"\\s*:\\s*\\{" "/tmp/post_action_lba_json.log" >/dev/null; then
+  echo "missing json sections for lba read-count/w2fr/life-cycle output" >&2
+  exit 1
+fi
+if rg -i "Read Count distribution:|Write-to-First-Read Latency\\(real ms\\) distribution:|Life Cycle\\(real ms\\) distribution:" "/tmp/post_action_lba_json.log" >/dev/null; then
+  echo "unexpected text-format lba sections in json mode output" >&2
+  exit 1
+fi
+
 echo "  LBA-STATS selective output expected"
 if ! ./post_action_file_tester --read-count "tests/fixtures/valid_mixed.bin" >/tmp/post_action_lba_read_only.log 2>&1; then
   echo "unexpected failure for lba read-count output case" >&2

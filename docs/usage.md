@@ -37,7 +37,7 @@ Argument details:
 - `slba`: start LBA, supports unit suffix `K/M/G/T` (case-insensitive)
 - `data_len`: read size in bytes, supports unit suffix `K/M/G/T` (case-insensitive)
 - `-D` / `--debug`: enables runtime debug mode
-- `-j` / `--format-json`: prints enabled `-l/-q/-a/-R/-W/-T` reports in JSON format
+- `-j` / `--format-json`: prints enabled `-l/-r/-w/-c/-q/-a/-R/-W/-T` reports in JSON format
 - `-l` / `--latency`: enables fio-style latency summary output for post-action `read/write/trim`
 - `-r` / `--read-count`: enables `Read Count` distribution output
 - `-w` / `--w2fr`: enables `Write-to-First-Read Latency` real-time(ms) distribution output
@@ -215,6 +215,24 @@ int get_write_throughput_distribution(const char *device,
                                       const char *time_start,
                                       const char *time_end,
                                       char *json_buffer);
+
+int get_read_count_distribution(const char *device,
+                                uint64_t block_size,
+                                const char *time_start,
+                                const char *time_end,
+                                char *json_buffer);
+
+int get_write_to_first_read_distribution(const char *device,
+                                         uint64_t block_size,
+                                         const char *time_start,
+                                         const char *time_end,
+                                         char *json_buffer);
+
+int get_lifecycle_distribution(const char *device,
+                               uint64_t block_size,
+                               const char *time_start,
+                               const char *time_end,
+                               char *json_buffer);
 ```
 
 Common input contract:
@@ -240,6 +258,12 @@ Execution equivalence:
   `./sfx_ctx_insight_analyze --format-json --read-throughput-dist --block-size=<block_size> -S <time_start> -E <time_end> <device> 0 11T`
 - `get_write_throughput_distribution(...)` ~=  
   `./sfx_ctx_insight_analyze --format-json --write-throughput-dist --block-size=<block_size> -S <time_start> -E <time_end> <device> 0 11T`
+- `get_read_count_distribution(...)` ~=  
+  `./sfx_ctx_insight_analyze --format-json --read-count --block-size=<block_size> -S <time_start> -E <time_end> <device> 0 11T`
+- `get_write_to_first_read_distribution(...)` ~=  
+  `./sfx_ctx_insight_analyze --format-json --w2fr --block-size=<block_size> -S <time_start> -E <time_end> <device> 0 11T`
+- `get_lifecycle_distribution(...)` ~=  
+  `./sfx_ctx_insight_analyze --format-json --life-cycle --block-size=<block_size> -S <time_start> -E <time_end> <device> 0 11T`
 
 Runnable example:
 
