@@ -1276,6 +1276,7 @@ void nvme_post_action_reset_workload_stats(void) {
 int nvme_post_action_set_json_format_enabled(int enabled) {
     g_post_action_json_format_enabled = (enabled != 0) ? 1 : 0;
     nvme_post_action_latency_set_json_format(g_post_action_json_format_enabled);
+    nvme_post_action_stats_set_json_format_enabled(g_post_action_json_format_enabled);
     return 0;
 }
 
