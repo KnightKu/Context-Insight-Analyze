@@ -35,6 +35,7 @@
 #define NVME_POST_ACTION_U56_MASK 0x00FFFFFFFFFFFFFFULL
 #define NVME_POST_ACTION_TRIM_MAX_RANGES 256U
 #define NVME_POST_ACTION_RATIO_BUCKETS 10U
+#define NVME_POST_ACTION_THROUGHPUT_BUCKETS 17U
 
 typedef struct {
     uint8_t op;
@@ -130,8 +131,8 @@ static uint64_t g_post_action_wa_hist[NVME_POST_ACTION_RATIO_BUCKETS];
 static uint64_t g_post_action_read_size_hist[NVME_POST_ACTION_RATIO_BUCKETS];
 static uint64_t g_post_action_write_size_hist[NVME_POST_ACTION_RATIO_BUCKETS];
 static uint64_t g_post_action_trim_size_hist[NVME_POST_ACTION_RATIO_BUCKETS];
-static uint64_t g_post_action_read_tp_hist[NVME_POST_ACTION_RATIO_BUCKETS];
-static uint64_t g_post_action_write_tp_hist[NVME_POST_ACTION_RATIO_BUCKETS];
+static uint64_t g_post_action_read_tp_hist[NVME_POST_ACTION_THROUGHPUT_BUCKETS];
+static uint64_t g_post_action_write_tp_hist[NVME_POST_ACTION_THROUGHPUT_BUCKETS];
 static uint64_t g_post_action_qd_samples = 0ULL;
 static uint64_t g_post_action_wa_samples = 0ULL;
 static uint64_t g_post_action_read_size_samples = 0ULL;
@@ -184,11 +185,15 @@ static const char *label_io_size(uint32_t idx) {
 }
 
 static const char *label_throughput(uint32_t idx) {
-    static const char *labels[10] = {
-        "0-1GiB/s", "1-2GiB/s", "2-3GiB/s", "3-4GiB/s", "4-5GiB/s",
-        "5-6GiB/s", "6-7GiB/s", "7-8GiB/s", "8-9GiB/s", ">=16GiB/s"
+    static const char *labels[NVME_POST_ACTION_THROUGHPUT_BUCKETS] = {
+        "0-1GiB/s", "1-2GiB/s", "2-3GiB/s", "3-4GiB/s",
+        "4-5GiB/s", "5-6GiB/s", "6-7GiB/s", "7-8GiB/s",
+        "8-9GiB/s", "9-10GiB/s", "10-11GiB/s", "11-12GiB/s",
+        "12-13GiB/s", "13-14GiB/s", "14-15GiB/s", "15-16GiB/s",
+        ">=16GiB/s"
     };
-    return labels[idx < 10U ? idx : 9U];
+    return labels[idx < NVME_POST_ACTION_THROUGHPUT_BUCKETS ? idx :
+                  (NVME_POST_ACTION_THROUGHPUT_BUCKETS - 1U)];
 }
 
 static uint32_t bucket_index_qd(uint16_t qd) {
@@ -289,17 +294,13 @@ static uint32_t bucket_index_io_size_4k(uint64_t len_lba) {
 }
 
 static uint32_t bucket_index_throughput_gib_per_s(uint32_t gib_per_s) {
-    // Bucket grain is 1GiB/s with a hard cap at 16GiB/s.
+    // Bucket grain is strict 1GiB/s bins through 16GiB/s, with >=16GiB/s tail.
     // Buckets:
-    //   0: 0-1, 1:1-2, ..., 8:8-9, 9:>=16
-    // 9-15GiB/s are merged into bucket 8 due to fixed 10 buckets.
+    //   0:0-1, 1:1-2, ..., 15:15-16, 16:>=16
     if (gib_per_s >= 16U) {
-        return NVME_POST_ACTION_RATIO_BUCKETS - 1U;
+        return NVME_POST_ACTION_THROUGHPUT_BUCKETS - 1U;
     }
-    if (gib_per_s <= 8U) {
-        return gib_per_s;
-    }
-    return NVME_POST_ACTION_RATIO_BUCKETS - 2U;
+    return gib_per_s;
 }
 
 #if NVME_POST_ACTION_DEBUG
@@ -425,14 +426,15 @@ static void record_throughput(uint8_t op, uint16_t len_lba, uint32_t latency_us)
 
 static void print_histogram_section(const char *title,
                                     const char *item_name,
-                                    const uint64_t hist[10],
+                                    const uint64_t *hist,
+                                    uint32_t bucket_count,
                                     uint64_t total_samples,
                                     const char *(*label_fn)(uint32_t)) {
-    if (hist == NULL || label_fn == NULL) {
+    if (hist == NULL || label_fn == NULL || bucket_count == 0U) {
         return;
     }
     fprintf(stderr, "%s:\n", title);
-    for (uint32_t i = 0U; i < 10U; ++i) {
+    for (uint32_t i = 0U; i < bucket_count; ++i) {
         double pct = 0.0;
         if (total_samples != 0ULL) {
             pct = ((double)hist[i] * 100.0) / (double)total_samples;
@@ -446,11 +448,13 @@ static void print_histogram_section(const char *title,
 }
 
 static void print_histogram_section_json(const char *json_key,
-                                         const uint64_t hist[10],
+                                         const uint64_t *hist,
+                                         uint32_t bucket_count,
                                          uint64_t total_samples,
                                          const char *(*label_fn)(uint32_t),
                                          int *need_comma) {
-    if (json_key == NULL || hist == NULL || label_fn == NULL || need_comma == NULL) {
+    if (json_key == NULL || hist == NULL || label_fn == NULL ||
+        need_comma == NULL || bucket_count == 0U) {
         return;
     }
     if (*need_comma != 0) {
@@ -459,7 +463,7 @@ static void print_histogram_section_json(const char *json_key,
     fprintf(stderr, "  \"%s\": {\n", json_key);
     fprintf(stderr, "    \"total\": %llu,\n", (unsigned long long)total_samples);
     fprintf(stderr, "    \"buckets\": [\n");
-    for (uint32_t i = 0U; i < 10U; ++i) {
+    for (uint32_t i = 0U; i < bucket_count; ++i) {
         double pct = 0.0;
         if (total_samples != 0ULL) {
             pct = ((double)hist[i] * 100.0) / (double)total_samples;
@@ -469,7 +473,7 @@ static void print_histogram_section_json(const char *json_key,
                 label_fn(i),
                 (unsigned long long)hist[i],
                 pct,
-                (i + 1U < 10U) ? "," : "");
+                (i + 1U < bucket_count) ? "," : "");
     }
     fprintf(stderr, "    ]\n");
     fprintf(stderr, "  }");
@@ -1367,6 +1371,7 @@ void nvme_post_action_print_workload_stats_report(void) {
         if (g_post_action_qd_dist_enabled != 0) {
             print_histogram_section_json("qd_dist",
                                          g_post_action_qd_hist,
+                                         NVME_POST_ACTION_RATIO_BUCKETS,
                                          g_post_action_qd_samples,
                                          label_qd,
                                          &need_comma);
@@ -1374,6 +1379,7 @@ void nvme_post_action_print_workload_stats_report(void) {
         if (g_post_action_wa_dist_enabled != 0) {
             print_histogram_section_json("wa_dist",
                                          g_post_action_wa_hist,
+                                         NVME_POST_ACTION_RATIO_BUCKETS,
                                          g_post_action_wa_samples,
                                          label_wa,
                                          &need_comma);
@@ -1381,6 +1387,7 @@ void nvme_post_action_print_workload_stats_report(void) {
         if (g_post_action_read_size_dist_enabled != 0) {
             print_histogram_section_json("read_size_dist",
                                          g_post_action_read_size_hist,
+                                         NVME_POST_ACTION_RATIO_BUCKETS,
                                          g_post_action_read_size_samples,
                                          label_io_size,
                                          &need_comma);
@@ -1388,6 +1395,7 @@ void nvme_post_action_print_workload_stats_report(void) {
         if (g_post_action_write_size_dist_enabled != 0) {
             print_histogram_section_json("write_size_dist",
                                          g_post_action_write_size_hist,
+                                         NVME_POST_ACTION_RATIO_BUCKETS,
                                          g_post_action_write_size_samples,
                                          label_io_size,
                                          &need_comma);
@@ -1395,6 +1403,7 @@ void nvme_post_action_print_workload_stats_report(void) {
         if (g_post_action_trim_size_dist_enabled != 0) {
             print_histogram_section_json("trim_size_dist",
                                          g_post_action_trim_size_hist,
+                                         NVME_POST_ACTION_RATIO_BUCKETS,
                                          g_post_action_trim_size_samples,
                                          label_io_size,
                                          &need_comma);
@@ -1402,6 +1411,7 @@ void nvme_post_action_print_workload_stats_report(void) {
         if (g_post_action_read_tp_dist_enabled != 0) {
             print_histogram_section_json("read_throughput_dist",
                                          g_post_action_read_tp_hist,
+                                         NVME_POST_ACTION_THROUGHPUT_BUCKETS,
                                          g_post_action_read_tp_samples,
                                          label_throughput,
                                          &need_comma);
@@ -1409,6 +1419,7 @@ void nvme_post_action_print_workload_stats_report(void) {
         if (g_post_action_write_tp_dist_enabled != 0) {
             print_histogram_section_json("write_throughput_dist",
                                          g_post_action_write_tp_hist,
+                                         NVME_POST_ACTION_THROUGHPUT_BUCKETS,
                                          g_post_action_write_tp_samples,
                                          label_throughput,
                                          &need_comma);
@@ -1419,35 +1430,44 @@ void nvme_post_action_print_workload_stats_report(void) {
     }
     if (g_post_action_qd_dist_enabled != 0) {
         print_histogram_section("QD distribution", "QD", g_post_action_qd_hist,
+                                NVME_POST_ACTION_RATIO_BUCKETS,
                                 g_post_action_qd_samples, label_qd);
     }
     if (g_post_action_wa_dist_enabled != 0) {
         print_histogram_section("WA distribution", "WA", g_post_action_wa_hist,
+                                NVME_POST_ACTION_RATIO_BUCKETS,
                                 g_post_action_wa_samples, label_wa);
     }
     if (g_post_action_read_size_dist_enabled != 0) {
         print_histogram_section("Read Size distribution (4K blocks)", "Read Size",
-                                g_post_action_read_size_hist, g_post_action_read_size_samples,
+                                g_post_action_read_size_hist, NVME_POST_ACTION_RATIO_BUCKETS,
+                                g_post_action_read_size_samples,
                                 label_io_size);
     }
     if (g_post_action_write_size_dist_enabled != 0) {
         print_histogram_section("Write Size distribution (4K blocks)", "Write Size",
-                                g_post_action_write_size_hist, g_post_action_write_size_samples,
+                                g_post_action_write_size_hist, NVME_POST_ACTION_RATIO_BUCKETS,
+                                g_post_action_write_size_samples,
                                 label_io_size);
     }
     if (g_post_action_trim_size_dist_enabled != 0) {
         print_histogram_section("Trim Size distribution (4K blocks)", "Trim Size",
-                                g_post_action_trim_size_hist, g_post_action_trim_size_samples,
+                                g_post_action_trim_size_hist, NVME_POST_ACTION_RATIO_BUCKETS,
+                                g_post_action_trim_size_samples,
                                 label_io_size);
     }
     if (g_post_action_read_tp_dist_enabled != 0) {
         print_histogram_section("Read Throughput distribution (GiB/s)", "Read Throughput",
-                                g_post_action_read_tp_hist, g_post_action_read_tp_samples,
+                                g_post_action_read_tp_hist,
+                                NVME_POST_ACTION_THROUGHPUT_BUCKETS,
+                                g_post_action_read_tp_samples,
                                 label_throughput);
     }
     if (g_post_action_write_tp_dist_enabled != 0) {
         print_histogram_section("Write Throughput distribution (GiB/s)", "Write Throughput",
-                                g_post_action_write_tp_hist, g_post_action_write_tp_samples,
+                                g_post_action_write_tp_hist,
+                                NVME_POST_ACTION_THROUGHPUT_BUCKETS,
+                                g_post_action_write_tp_samples,
                                 label_throughput);
     }
     pthread_mutex_unlock(&g_post_action_workload_mutex);

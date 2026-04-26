@@ -258,6 +258,8 @@ Execution equivalence:
   `./sfx_ctx_insight_analyze --format-json --read-throughput-dist --block-size=<block_size> -S <time_start> -E <time_end> <device> 0 11T`
 - `get_write_throughput_distribution(...)` ~=  
   `./sfx_ctx_insight_analyze --format-json --write-throughput-dist --block-size=<block_size> -S <time_start> -E <time_end> <device> 0 11T`
+  - throughput buckets use strict `1GiB/s` granularity through `16GiB/s`:
+    `0-1`, `1-2`, ..., `15-16`, and tail bucket `>=16GiB/s` (no 9~15 compression)
 - `get_read_count_distribution(...)` ~=  
   `./sfx_ctx_insight_analyze --format-json --read-count --block-size=<block_size> -S <time_start> -E <time_end> <device> 0 11T`
 - `get_write_to_first_read_distribution(...)` ~=  
