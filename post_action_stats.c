@@ -389,9 +389,6 @@ void nvme_post_action_stats_print_ratio_summary(int print_read_count,
             }
             fprintf(stderr, "  \"read_count_distribution\": {\n");
             fprintf(stderr, "    \"total\": %" PRIu64 ",\n", read_total);
-            fprintf(stderr, "    \"non_zero_buckets\": %" PRIu64 ",\n",
-                    summary.read_count_non_zero_buckets);
-            fprintf(stderr, "    \"bucket_total\": %" PRIu64 ",\n", total_buckets);
             fprintf(stderr, "    \"buckets\": [\n");
             for (uint32_t i = 0U; i < NVME_POST_ACTION_RATIO_BUCKETS; ++i) {
                 char label[32];
@@ -416,9 +413,6 @@ void nvme_post_action_stats_print_ratio_summary(int print_read_count,
             }
             fprintf(stderr, "  \"write_to_first_read_distribution\": {\n");
             fprintf(stderr, "    \"total\": %" PRIu64 ",\n", w2fr_total);
-            fprintf(stderr, "    \"non_zero_buckets\": %" PRIu64 ",\n",
-                    summary.w2fr_non_zero_buckets);
-            fprintf(stderr, "    \"bucket_total\": %" PRIu64 ",\n", total_buckets);
             fprintf(stderr, "    \"buckets\": [\n");
             for (uint32_t i = 0U; i < NVME_POST_ACTION_RATIO_BUCKETS; ++i) {
                 char label[32];
@@ -442,9 +436,6 @@ void nvme_post_action_stats_print_ratio_summary(int print_read_count,
             }
             fprintf(stderr, "  \"lifecycle_distribution\": {\n");
             fprintf(stderr, "    \"total\": %" PRIu64 ",\n", life_total);
-            fprintf(stderr, "    \"non_zero_buckets\": %" PRIu64 ",\n",
-                    summary.life_cycle_non_zero_buckets);
-            fprintf(stderr, "    \"bucket_total\": %" PRIu64 ",\n", total_buckets);
             fprintf(stderr, "    \"buckets\": [\n");
             for (uint32_t i = 0U; i < NVME_POST_ACTION_RATIO_BUCKETS; ++i) {
                 char label[32];
