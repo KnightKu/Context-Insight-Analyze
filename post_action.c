@@ -176,10 +176,10 @@ static const char *label_wa(uint32_t idx) {
     return labels[idx < 10U ? idx : 9U];
 }
 
-static const char *label_io_size(uint32_t idx) {
+static const char *label_io_size_range(uint32_t idx) {
     static const char *labels[10] = {
-        "0", "4K", "8K", "16K", "32K",
-        "64K", "128K", "256K", "512K", ">=1M"
+        "0", "(0,4K]", "(4K,8K]", "(8K,16K]", "(16K,32K]",
+        "(32K,64K]", "(64K,128K]", "(128K,256K]", "(256K,512K]", ">512K"
     };
     return labels[idx < 10U ? idx : 9U];
 }
@@ -1389,7 +1389,7 @@ void nvme_post_action_print_workload_stats_report(void) {
                                          g_post_action_read_size_hist,
                                          NVME_POST_ACTION_RATIO_BUCKETS,
                                          g_post_action_read_size_samples,
-                                         label_io_size,
+                                         label_io_size_range,
                                          &need_comma);
         }
         if (g_post_action_write_size_dist_enabled != 0) {
@@ -1397,7 +1397,7 @@ void nvme_post_action_print_workload_stats_report(void) {
                                          g_post_action_write_size_hist,
                                          NVME_POST_ACTION_RATIO_BUCKETS,
                                          g_post_action_write_size_samples,
-                                         label_io_size,
+                                         label_io_size_range,
                                          &need_comma);
         }
         if (g_post_action_trim_size_dist_enabled != 0) {
@@ -1405,7 +1405,7 @@ void nvme_post_action_print_workload_stats_report(void) {
                                          g_post_action_trim_size_hist,
                                          NVME_POST_ACTION_RATIO_BUCKETS,
                                          g_post_action_trim_size_samples,
-                                         label_io_size,
+                                         label_io_size_range,
                                          &need_comma);
         }
         if (g_post_action_read_tp_dist_enabled != 0) {
@@ -1442,19 +1442,19 @@ void nvme_post_action_print_workload_stats_report(void) {
         print_histogram_section("Read Size distribution (4K blocks)", "Read Size",
                                 g_post_action_read_size_hist, NVME_POST_ACTION_RATIO_BUCKETS,
                                 g_post_action_read_size_samples,
-                                label_io_size);
+                                label_io_size_range);
     }
     if (g_post_action_write_size_dist_enabled != 0) {
         print_histogram_section("Write Size distribution (4K blocks)", "Write Size",
                                 g_post_action_write_size_hist, NVME_POST_ACTION_RATIO_BUCKETS,
                                 g_post_action_write_size_samples,
-                                label_io_size);
+                                label_io_size_range);
     }
     if (g_post_action_trim_size_dist_enabled != 0) {
         print_histogram_section("Trim Size distribution (4K blocks)", "Trim Size",
                                 g_post_action_trim_size_hist, NVME_POST_ACTION_RATIO_BUCKETS,
                                 g_post_action_trim_size_samples,
-                                label_io_size);
+                                label_io_size_range);
     }
     if (g_post_action_read_tp_dist_enabled != 0) {
         print_histogram_section("Read Throughput distribution (GiB/s)", "Read Throughput",

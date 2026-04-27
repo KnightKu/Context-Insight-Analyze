@@ -37,16 +37,16 @@ Argument details:
 - `slba`: start LBA, supports unit suffix `K/M/G/T` (case-insensitive)
 - `data_len`: read size in bytes, supports unit suffix `K/M/G/T` (case-insensitive)
 - `-D` / `--debug`: enables runtime debug mode
-- `-j` / `--format-json`: prints enabled `-l/-r/-w/-c/-q/-a/-R/-W/-T` reports in JSON format
+- `-j` / `--format-json`: prints enabled `-l/-r/-w/-c/-q/-a/-R/-W/-T` reports in JSON format (`-l` key: `latency_percentiles`)
 - `-l` / `--latency`: enables fio-style latency summary output for post-action `read/write/trim`
 - `-r` / `--read-count`: enables `Read Count` distribution output
-- `-w` / `--w2fr`: enables `Write-to-First-Read Latency` real-time(ms) distribution output
-- `-c` / `--life-cycle`: enables `LBA Life Cycle` real-time(ms) distribution output
+- `-w` / `--w2fr`: enables `Write-to-First-Read Latency` real-time(ms) distribution output (tail split to `[1h,4h)` and `>=4h`)
+- `-c` / `--life-cycle`: enables `LBA Life Cycle` real-time(ms) distribution output (tail split to `[1h,4h)` and `>=4h`)
 - `-q` / `--qd-dist`: enables `QD` distribution output
 - `-a` / `--wa-dist`: enables `WA` (write amplification) distribution output
-- `-R` / `--read-size-dist`: enables read size distribution output (4K block units)
-- `-W` / `--write-size-dist`: enables write size distribution output (4K block units)
-- `-T` / `--trim-size-dist`: enables trim size distribution output (4K block units)
+- `-R` / `--read-size-dist`: enables read size distribution output (range buckets in 4K block units)
+- `-W` / `--write-size-dist`: enables write size distribution output (range buckets in 4K block units)
+- `-T` / `--trim-size-dist`: enables trim size distribution output (range buckets in 4K block units)
 - `-S` / `--time-start`: sets inclusive start of time window, format `YYYY-MM-DD HH:MM:SS`
 - `-E` / `--time-end`: sets inclusive end of time window, format `YYYY-MM-DD HH:MM:SS`
 - `-b` / `--block-size`: filters `read/write/trim` records by I/O size. Records are dropped when
@@ -140,11 +140,14 @@ The default post action:
   - `trim`: use per-range relative `time` delta as trim latency sample
   - Output includes `count/min/max/avg`
   - Percentiles cover `p10`, `p20`, `p30`, `...`, `p90`, `p99`, `p99.9`, `p99.99`
-  - with `-j/--format-json`, output is a JSON object under key `latency`
+  - with `-j/--format-json`, output is a JSON object under key `latency_percentiles`
 - Optional LBA stats summary (independent switches):
   - `-r` / `--read-count`: `Read Count` non-zero bucket distribution
   - `-w` / `--w2fr`: `Write-to-First-Read Latency` decoded real-time distribution (milliseconds)
   - `-c` / `--life-cycle`: `LBA Life Cycle` decoded real-time distribution (milliseconds)
+  - for `w2fr/life-cycle`, tail latency buckets are:
+    `...`, `[30m,1h)`, `[1h,4h)`, `>=4h`
+  - for `read-count/life-cycle` APIs, bucket payload `bytes` is emitted as `bytes_mib` (MiB)
   - Output format is segmented ratio buckets, similar to `-l/--latency` style
 - Optional workload distribution summary (independent switches):
   - `-q` / `--qd-dist`: `QD` distribution from Stat records
@@ -152,9 +155,12 @@ The default post action:
     - 10 fixed buckets:
       `1.0`, `1.1-1.5`, `1.6-2.0`, `2.1-2.5`, `2.6-3.0`,
       `3.1-3.5`, `3.6-4.0`, `4.1-4.5`, `4.6-5.0`, `>5.0`
-  - `-R` / `--read-size-dist`: read size distribution (`length` field, 4K units)
-  - `-W` / `--write-size-dist`: write size distribution (`length` field, 4K units)
-  - `-T` / `--trim-size-dist`: trim size distribution (per-range `length`, 4K units)
+  - `-R` / `--read-size-dist`: read size distribution by ranges (`length` field, 4K units),
+    for example `(0,4K]`, `(4K,8K]`, ..., `>512K`
+  - `-W` / `--write-size-dist`: write size distribution by ranges (`length` field, 4K units),
+    for example `(0,4K]`, `(4K,8K]`, ..., `>512K`
+  - `-T` / `--trim-size-dist`: trim size distribution by ranges (per-range `length`, 4K units),
+    for example `(0,4K]`, `(4K,8K]`, ..., `>512K`
 - Optional block-size record filter (`-b/--block-size`):
   - applies to `read/write/trim` records before stats/latency/workload updates
   - record is accepted only when:
