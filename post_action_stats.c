@@ -360,6 +360,7 @@ void nvme_post_action_stats_print_ratio_summary(int print_read_count,
     nvme_post_action_lba_ratio_summary_t summary;
     pthread_mutex_lock(&g_stats_mutex);
     int rc = build_lba_ratio_summary_locked(&summary);
+    uint64_t total_buckets = g_bucket_count;
     int json_enabled = g_stats_json_format_enabled;
     pthread_mutex_unlock(&g_stats_mutex);
     if (rc != 0) {
