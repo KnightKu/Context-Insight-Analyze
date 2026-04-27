@@ -184,14 +184,6 @@ static const char *label_io_size_range(uint32_t idx) {
     return labels[idx < 10U ? idx : 9U];
 }
 
-static const char *label_io_size_exact(uint32_t idx) {
-    static const char *labels[10] = {
-        "0", "4K", "8K", "16K", "32K",
-        "64K", "128K", "256K", "512K", ">=1M"
-    };
-    return labels[idx < 10U ? idx : 9U];
-}
-
 static const char *label_throughput(uint32_t idx) {
     static const char *labels[NVME_POST_ACTION_THROUGHPUT_BUCKETS] = {
         "0-1GiB/s", "1-2GiB/s", "2-3GiB/s", "3-4GiB/s",
@@ -1413,7 +1405,7 @@ void nvme_post_action_print_workload_stats_report(void) {
                                          g_post_action_trim_size_hist,
                                          NVME_POST_ACTION_RATIO_BUCKETS,
                                          g_post_action_trim_size_samples,
-                                         label_io_size_exact,
+                                         label_io_size_range,
                                          &need_comma);
         }
         if (g_post_action_read_tp_dist_enabled != 0) {
@@ -1462,7 +1454,7 @@ void nvme_post_action_print_workload_stats_report(void) {
         print_histogram_section("Trim Size distribution (4K blocks)", "Trim Size",
                                 g_post_action_trim_size_hist, NVME_POST_ACTION_RATIO_BUCKETS,
                                 g_post_action_trim_size_samples,
-                                label_io_size_exact);
+                                label_io_size_range);
     }
     if (g_post_action_read_tp_dist_enabled != 0) {
         print_histogram_section("Read Throughput distribution (GiB/s)", "Read Throughput",

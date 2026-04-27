@@ -138,7 +138,7 @@ if ! rg "WA\\s+1\\.0|WA\\s+>5\\.0" "/tmp/post_action_workload_stats.log" >/dev/n
   echo "missing WA bucket labels 1.0 or >5.0" >&2
   exit 1
 fi
-if ! rg "Read Size\\s+\\(0,4K\\]|Write Size\\s+\\(4K,8K\\]|Trim Size\\s+16K" "/tmp/post_action_workload_stats.log" >/dev/null; then
+if ! rg "Read Size\\s+\\(0,4K\\]|Write Size\\s+\\(4K,8K\\]|Trim Size\\s+\\(8K,16K\\]" "/tmp/post_action_workload_stats.log" >/dev/null; then
   echo "missing expected IO-size bucket labels in workload output" >&2
   exit 1
 fi

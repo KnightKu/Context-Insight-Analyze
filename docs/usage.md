@@ -46,7 +46,7 @@ Argument details:
 - `-a` / `--wa-dist`: enables `WA` (write amplification) distribution output
 - `-R` / `--read-size-dist`: enables read size distribution output (range buckets in 4K block units)
 - `-W` / `--write-size-dist`: enables write size distribution output (range buckets in 4K block units)
-- `-T` / `--trim-size-dist`: enables trim size distribution output (4K block units)
+- `-T` / `--trim-size-dist`: enables trim size distribution output (range buckets in 4K block units)
 - `-S` / `--time-start`: sets inclusive start of time window, format `YYYY-MM-DD HH:MM:SS`
 - `-E` / `--time-end`: sets inclusive end of time window, format `YYYY-MM-DD HH:MM:SS`
 - `-b` / `--block-size`: filters `read/write/trim` records by I/O size. Records are dropped when
@@ -159,7 +159,8 @@ The default post action:
     for example `(0,4K]`, `(4K,8K]`, ..., `>512K`
   - `-W` / `--write-size-dist`: write size distribution by ranges (`length` field, 4K units),
     for example `(0,4K]`, `(4K,8K]`, ..., `>512K`
-  - `-T` / `--trim-size-dist`: trim size distribution (per-range `length`, 4K units)
+  - `-T` / `--trim-size-dist`: trim size distribution by ranges (per-range `length`, 4K units),
+    for example `(0,4K]`, `(4K,8K]`, ..., `>512K`
 - Optional block-size record filter (`-b/--block-size`):
   - applies to `read/write/trim` records before stats/latency/workload updates
   - record is accepted only when:
