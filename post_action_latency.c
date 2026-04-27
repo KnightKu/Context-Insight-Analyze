@@ -244,7 +244,7 @@ void nvme_post_action_latency_print_summary(void) {
     if (json_enabled != 0) {
         int printed_any = 0;
         fprintf(stderr, "{\n");
-        fprintf(stderr, "  \"latency\": {\n");
+        fprintf(stderr, "  \"latency_percentiles\": {\n");
         print_bucket_json(&read_copy, &printed_any);
         print_bucket_json(&write_copy, &printed_any);
         print_bucket_json(&trim_copy, &printed_any);

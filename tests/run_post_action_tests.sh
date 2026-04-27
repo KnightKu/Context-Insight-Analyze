@@ -39,7 +39,7 @@ done
 
 echo "  PASS expected: mixed option ordering should work"
 ./post_action_file_tester "tests/fixtures/valid_mixed.bin" --latency --read-size-dist --format-json >/tmp/post_action_mixed_order.log 2>&1
-if ! rg -i "\"latency\"|\"read_size_dist\"" "/tmp/post_action_mixed_order.log" >/dev/null; then
+if ! rg -i "\"latency_percentiles\"|\"read_size_dist\"" "/tmp/post_action_mixed_order.log" >/dev/null; then
   echo "mixed option ordering did not produce expected JSON sections" >&2
   exit 1
 fi
@@ -63,8 +63,8 @@ if ! rg -i "Read Count distribution|Write-to-First-Read Latency\\(real ms\\) dis
   echo "missing segmented lba-stats output sections" >&2
   exit 1
 fi
-if ! rg -i "Read Count.*bytes=|Life Cycle.*bytes=" "/tmp/post_action_lba_stats.log" >/dev/null; then
-  echo "missing data-volume bytes column for read-count/life-cycle output" >&2
+if ! rg -i "Read Count.*bytes_mib=|Life Cycle.*bytes_mib=" "/tmp/post_action_lba_stats.log" >/dev/null; then
+  echo "missing data-volume bytes_mib column for read-count/life-cycle output" >&2
   exit 1
 fi
 
@@ -80,6 +80,14 @@ if ! ./post_action_file_tester \
 fi
 if ! rg -i "\"read_count_distribution\"\\s*:\\s*\\{|\"write_to_first_read_distribution\"\\s*:\\s*\\{|\"lifecycle_distribution\"\\s*:\\s*\\{" "/tmp/post_action_lba_json.log" >/dev/null; then
   echo "missing json sections for lba read-count/w2fr/life-cycle output" >&2
+  exit 1
+fi
+if ! rg -i "\"bytes_mib\"\\s*:" "/tmp/post_action_lba_json.log" >/dev/null; then
+  echo "missing bytes_mib field in lba read-count/lifecycle json output" >&2
+  exit 1
+fi
+if ! rg -i "\\[1h,4h\\)|>=4h" "/tmp/post_action_lba_json.log" >/dev/null; then
+  echo "missing split tail buckets [1h,4h) or >=4h in lba latency json output" >&2
   exit 1
 fi
 if rg -i "Read Count distribution:|Write-to-First-Read Latency\\(real ms\\) distribution:|Life Cycle\\(real ms\\) distribution:" "/tmp/post_action_lba_json.log" >/dev/null; then
@@ -130,8 +138,8 @@ if ! rg "WA\\s+1\\.0|WA\\s+>5\\.0" "/tmp/post_action_workload_stats.log" >/dev/n
   echo "missing WA bucket labels 1.0 or >5.0" >&2
   exit 1
 fi
-if ! rg "Read Size\\s+4K|Write Size\\s+8K|Trim Size\\s+16K" "/tmp/post_action_workload_stats.log" >/dev/null; then
-  echo "missing explicit IO-size labels (4K/8K/16K...) in workload output" >&2
+if ! rg "Read Size\\s+\\(0,4K\\]|Write Size\\s+\\(4K,8K\\]|Trim Size\\s+16K" "/tmp/post_action_workload_stats.log" >/dev/null; then
+  echo "missing expected IO-size bucket labels in workload output" >&2
   exit 1
 fi
 
@@ -162,7 +170,7 @@ if ! ./post_action_file_tester \
   echo "unexpected failure for json format output case" >&2
   exit 1
 fi
-if ! rg -i "\"latency\"\\s*:\\s*\\{|\"qd_dist\"\\s*:\\s*\\{|\"wa_dist\"\\s*:\\s*\\{|\"read_size_dist\"\\s*:\\s*\\{|\"write_size_dist\"\\s*:\\s*\\{|\"trim_size_dist\"\\s*:\\s*\\{" "/tmp/post_action_json.log" >/dev/null; then
+if ! rg -i "\"latency_percentiles\"\\s*:\\s*\\{|\"qd_dist\"\\s*:\\s*\\{|\"wa_dist\"\\s*:\\s*\\{|\"read_size_dist\"\\s*:\\s*\\{|\"write_size_dist\"\\s*:\\s*\\{|\"trim_size_dist\"\\s*:\\s*\\{" "/tmp/post_action_json.log" >/dev/null; then
   echo "missing json sections for latency/qd-wa/read-write-trim output" >&2
   exit 1
 fi
