@@ -69,6 +69,16 @@ int get_lifecycle_distribution(const char *device,
                                const char *time_end,
                                char *json_buffer);
 
+int get_nand_write_volume(const char *device,
+                          const char *time_start,
+                          const char *time_end,
+                          char *json_buffer);
+
+int get_gc_data_movement(const char *device,
+                         const char *time_start,
+                         const char *time_end,
+                         char *json_buffer);
+
 #ifdef __cplusplus
 }
 #endif

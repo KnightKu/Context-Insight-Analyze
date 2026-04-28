@@ -100,7 +100,19 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "get_lifecycle_distribution failed: %s\n", strerror(errno));
         return 11;
     }
-    printf("=== lifecycle_distribution ===\n%s\n", json_buffer);
+    printf("=== lifecycle_distribution ===\n%s\n\n", json_buffer);
+
+    if (get_nand_write_volume(device, time_start, time_end, json_buffer) != 0) {
+        fprintf(stderr, "get_nand_write_volume failed: %s\n", strerror(errno));
+        return 12;
+    }
+    printf("=== nand_write_volume ===\n%s\n\n", json_buffer);
+
+    if (get_gc_data_movement(device, time_start, time_end, json_buffer) != 0) {
+        fprintf(stderr, "get_gc_data_movement failed: %s\n", strerror(errno));
+        return 13;
+    }
+    printf("=== gc_data_movement ===\n%s\n", json_buffer);
 
     return 0;
 }

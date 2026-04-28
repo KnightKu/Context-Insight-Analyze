@@ -517,6 +517,94 @@ if (get_lifecycle_distribution("/dev/nvme0n1", 4096,
 
 ---
 
+### 3.11 `get_nand_write_volume`
+
+```c
+int get_nand_write_volume(const char *device,
+                          const char *time_start,
+                          const char *time_end,
+                          char *json_buffer);
+```
+
+Function:
+
+- Query total NAND write volume from stat records in the input time window.
+- The source field is `hot_write` from each stat record.
+- `hot_write` is in 4KiB units, and output is converted to MiB.
+
+Top-level JSON objects:
+
+- `query`
+- `result`
+
+JSON field meanings:
+
+- `query.api`: API function name (`get_nand_write_volume`)
+- `query.device`: input `device` value
+- `query.time_start`: input `time_start` value
+- `query.time_end`: input `time_end` value
+- `result.nand_write_volume.unit`: always `MiB`
+- `result.nand_write_volume.total_mib`: sum of all stat-record `hot_write` values
+  within the time window, converted from 4KiB units to MiB
+
+Demo:
+
+```c
+char json[INSIGHT_JSON_BUFFER_BYTES];
+if (get_nand_write_volume("/dev/nvme0n1",
+                          "2026-04-26 10:05:05",
+                          "2026-04-26 12:10:05",
+                          json) == 0) {
+    puts(json);
+}
+```
+
+---
+
+### 3.12 `get_gc_data_movement`
+
+```c
+int get_gc_data_movement(const char *device,
+                         const char *time_start,
+                         const char *time_end,
+                         char *json_buffer);
+```
+
+Function:
+
+- Query total GC data movement from stat records in the input time window.
+- The source field is `folding_write` from each stat record.
+- `folding_write` is in 4KiB units, and output is converted to MiB.
+
+Top-level JSON objects:
+
+- `query`
+- `result`
+
+JSON field meanings:
+
+- `query.api`: API function name (`get_gc_data_movement`)
+- `query.device`: input `device` value
+- `query.time_start`: input `time_start` value
+- `query.time_end`: input `time_end` value
+- `result.gc_data_movement.unit`: always `MiB`
+- `result.gc_data_movement.total_mib`: sum of all stat-record `folding_write`
+  values within the time window, converted from 4KiB units to MiB
+
+Demo:
+
+```c
+char json[INSIGHT_JSON_BUFFER_BYTES];
+if (get_gc_data_movement("/dev/nvme0n1",
+                         "2026-04-26 10:05:05",
+                         "2026-04-26 12:10:05",
+                         json) == 0) {
+    puts(json);
+}
+```
+
+---
+
 ## 4. Complete Demo Program (embedded source)
 
 The full demo source from `examples/insight_api_example.c` is embedded below, so you can
@@ -625,7 +713,19 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "get_lifecycle_distribution failed: %s\n", strerror(errno));
         return 11;
     }
-    printf("=== lifecycle_distribution ===\n%s\n", json_buffer);
+    printf("=== lifecycle_distribution ===\n%s\n\n", json_buffer);
+
+    if (get_nand_write_volume(device, time_start, time_end, json_buffer) != 0) {
+        fprintf(stderr, "get_nand_write_volume failed: %s\n", strerror(errno));
+        return 12;
+    }
+    printf("=== nand_write_volume ===\n%s\n\n", json_buffer);
+
+    if (get_gc_data_movement(device, time_start, time_end, json_buffer) != 0) {
+        fprintf(stderr, "get_gc_data_movement failed: %s\n", strerror(errno));
+        return 13;
+    }
+    printf("=== gc_data_movement ===\n%s\n", json_buffer);
 
     return 0;
 }

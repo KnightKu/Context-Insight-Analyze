@@ -97,5 +97,21 @@ int main(void) {
         return 1;
     }
 
+    errno = 0;
+    rc = get_nand_write_volume(NULL,
+                               "2024-03-09 16:00:05", "2024-03-09 16:00:15",
+                               json_buf);
+    if (expect_invalid("get_nand_write_volume(NULL device)", rc) != 0) {
+        return 1;
+    }
+
+    errno = 0;
+    rc = get_gc_data_movement("/dev/null",
+                              "bad-time", "2024-03-09 16:00:15",
+                              json_buf);
+    if (expect_invalid("get_gc_data_movement(invalid time_start)", rc) != 0) {
+        return 1;
+    }
+
     return 0;
 }

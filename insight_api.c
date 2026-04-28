@@ -4,6 +4,7 @@
 
 #include "nvme_read.h"
 #include "post_action.h"
+#include "post_action_stats.h"
 
 #include <errno.h>
 #include <pthread.h>
@@ -27,7 +28,9 @@ typedef enum {
     INSIGHT_QUERY_WRITE_THROUGHPUT = 6,
     INSIGHT_QUERY_READ_COUNT = 7,
     INSIGHT_QUERY_W2FR = 8,
-    INSIGHT_QUERY_LIFECYCLE = 9
+    INSIGHT_QUERY_LIFECYCLE = 9,
+    INSIGHT_QUERY_NAND_WRITE_VOLUME = 10,
+    INSIGHT_QUERY_GC_DATA_MOVEMENT = 11
 } insight_query_type_t;
 
 static int insight_query_is_lba_ratio(insight_query_type_t query_type) {
@@ -36,7 +39,19 @@ static int insight_query_is_lba_ratio(insight_query_type_t query_type) {
             query_type == INSIGHT_QUERY_LIFECYCLE) ? 1 : 0;
 }
 
+static int insight_query_is_stat_volume(insight_query_type_t query_type) {
+    return (query_type == INSIGHT_QUERY_NAND_WRITE_VOLUME ||
+            query_type == INSIGHT_QUERY_GC_DATA_MOVEMENT) ? 1 : 0;
+}
+
 static pthread_mutex_t g_insight_api_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+static int run_query_and_fill_json(const char *device,
+                                   uint64_t block_size,
+                                   const char *time_start,
+                                   const char *time_end,
+                                   insight_query_type_t query_type,
+                                   char *json_buffer);
 
 static int parse_datetime_ymdhms(const char *arg, uint64_t *out_ms) {
     if (arg == NULL || out_ms == NULL) {
@@ -263,6 +278,135 @@ static int compose_lifecycle_query_json(const char *device,
     return 0;
 }
 
+static int compose_stat_volume_json(const char *api_name,
+                                    const char *result_key,
+                                    const char *device,
+                                    const char *time_start,
+                                    const char *time_end,
+                                    double volume_mib,
+                                    char *json_buffer) {
+    if (api_name == NULL || result_key == NULL || device == NULL || time_start == NULL ||
+        time_end == NULL || json_buffer == NULL) {
+        errno = EINVAL;
+        return -1;
+    }
+    size_t pos = 0U;
+    int n = snprintf(json_buffer + pos, INSIGHT_JSON_BUFFER_BYTES - pos,
+                     "{\n"
+                     "  \"query\": {\n"
+                     "    \"api\": \"");
+    if (n < 0 || (size_t)n >= (INSIGHT_JSON_BUFFER_BYTES - pos)) {
+        errno = ENOSPC;
+        return -1;
+    }
+    pos += (size_t)n;
+    if (append_json_escaped_string(json_buffer, INSIGHT_JSON_BUFFER_BYTES, &pos, api_name) != 0) {
+        return -1;
+    }
+    n = snprintf(json_buffer + pos, INSIGHT_JSON_BUFFER_BYTES - pos,
+                 "\",\n"
+                 "    \"device\": \"");
+    if (n < 0 || (size_t)n >= (INSIGHT_JSON_BUFFER_BYTES - pos)) {
+        errno = ENOSPC;
+        return -1;
+    }
+    pos += (size_t)n;
+    if (append_json_escaped_string(json_buffer, INSIGHT_JSON_BUFFER_BYTES, &pos, device) != 0) {
+        return -1;
+    }
+    n = snprintf(json_buffer + pos, INSIGHT_JSON_BUFFER_BYTES - pos,
+                 "\",\n"
+                 "    \"time_start\": \"");
+    if (n < 0 || (size_t)n >= (INSIGHT_JSON_BUFFER_BYTES - pos)) {
+        errno = ENOSPC;
+        return -1;
+    }
+    pos += (size_t)n;
+    if (append_json_escaped_string(json_buffer, INSIGHT_JSON_BUFFER_BYTES, &pos, time_start) != 0) {
+        return -1;
+    }
+    n = snprintf(json_buffer + pos, INSIGHT_JSON_BUFFER_BYTES - pos,
+                 "\",\n"
+                 "    \"time_end\": \"");
+    if (n < 0 || (size_t)n >= (INSIGHT_JSON_BUFFER_BYTES - pos)) {
+        errno = ENOSPC;
+        return -1;
+    }
+    pos += (size_t)n;
+    if (append_json_escaped_string(json_buffer, INSIGHT_JSON_BUFFER_BYTES, &pos, time_end) != 0) {
+        return -1;
+    }
+    n = snprintf(json_buffer + pos, INSIGHT_JSON_BUFFER_BYTES - pos,
+                 "\"\n"
+                 "  },\n"
+                 "  \"result\": {\n"
+                 "    \"%s\": {\n"
+                 "      \"unit\": \"MiB\",\n"
+                 "      \"total_mib\": %.2f\n"
+                 "    }\n"
+                 "  }\n"
+                 "}",
+                 result_key, volume_mib);
+    if (n < 0 || (size_t)n >= (INSIGHT_JSON_BUFFER_BYTES - pos)) {
+        errno = ENOSPC;
+        return -1;
+    }
+    return 0;
+}
+
+static int extract_stat_volume_from_samples(const char *device,
+                                            uint64_t block_size,
+                                            const char *time_start,
+                                            const char *time_end,
+                                            insight_query_type_t query_type,
+                                            char *json_buffer) {
+    if (device == NULL || time_start == NULL || time_end == NULL || json_buffer == NULL ||
+        insight_query_is_stat_volume(query_type) == 0) {
+        errno = EINVAL;
+        return -1;
+    }
+    char scratch_json[INSIGHT_JSON_BUFFER_BYTES];
+    if (run_query_and_fill_json(device, block_size, time_start, time_end,
+                                query_type, scratch_json) != 0) {
+        return -1;
+    }
+    (void)scratch_json;
+
+    uint64_t sample_count = 0ULL;
+    if (nvme_post_action_stats_get_stat_sample_count(&sample_count) != 0) {
+        return -1;
+    }
+    uint64_t sum_4k = 0ULL;
+    for (uint64_t i = 0ULL; i < sample_count; ++i) {
+        nvme_post_action_stat_sample_t sample;
+        if (nvme_post_action_stats_get_stat_sample(i, &sample) != 0) {
+            return -1;
+        }
+        if (query_type == INSIGHT_QUERY_NAND_WRITE_VOLUME) {
+            sum_4k += (uint64_t)sample.hot_write_4k;
+        } else {
+            sum_4k += (uint64_t)sample.folding_write_4k;
+        }
+    }
+    double volume_mib = (double)sum_4k * 4.0 / 1024.0;
+    if (query_type == INSIGHT_QUERY_NAND_WRITE_VOLUME) {
+        return compose_stat_volume_json("get_nand_write_volume",
+                                        "nand_write_volume",
+                                        device,
+                                        time_start,
+                                        time_end,
+                                        volume_mib,
+                                        json_buffer);
+    }
+    return compose_stat_volume_json("get_gc_data_movement",
+                                    "gc_data_movement",
+                                    device,
+                                    time_start,
+                                    time_end,
+                                    volume_mib,
+                                    json_buffer);
+}
+
 static int run_query_and_fill_json(const char *device,
                                    uint64_t block_size,
                                    const char *time_start,
@@ -288,6 +432,7 @@ static int run_query_and_fill_json(const char *device,
     json_buffer[0] = '\0';
 
     int enable_lba = insight_query_is_lba_ratio(query_type);
+    int enable_stat_volume = insight_query_is_stat_volume(query_type);
     if (nvme_read_set_debug(0) != 0 ||
         nvme_read_set_format_json(1) != 0 ||
         nvme_read_set_latency(query_type == INSIGHT_QUERY_LATENCY) != 0 ||
@@ -297,7 +442,8 @@ static int run_query_and_fill_json(const char *device,
                                      query_type == INSIGHT_QUERY_W2FR) != 0 ||
         nvme_read_set_lba_stats_life_cycle(enable_lba &&
                                            query_type == INSIGHT_QUERY_LIFECYCLE) != 0 ||
-        nvme_read_set_qd_dist(enable_lba ? 0 : (query_type == INSIGHT_QUERY_QD)) != 0 ||
+        nvme_read_set_qd_dist(enable_stat_volume ? 1 :
+                              (enable_lba ? 0 : (query_type == INSIGHT_QUERY_QD))) != 0 ||
         nvme_read_set_wa_dist(enable_lba ? 0 : (query_type == INSIGHT_QUERY_WA)) != 0 ||
         nvme_read_set_read_size_dist(enable_lba ? 0 : (query_type == INSIGHT_QUERY_READ_SIZE)) != 0 ||
         nvme_read_set_write_size_dist(enable_lba ? 0 : (query_type == INSIGHT_QUERY_WRITE_SIZE)) != 0 ||
@@ -476,4 +622,28 @@ int get_lifecycle_distribution(const char *device,
     }
     return compose_lifecycle_query_json(device, block_size, time_start, time_end,
                                         result_json, json_buffer);
+}
+
+int get_nand_write_volume(const char *device,
+                          const char *time_start,
+                          const char *time_end,
+                          char *json_buffer) {
+    return extract_stat_volume_from_samples(device,
+                                            NVME_LBA_SIZE_BYTES,
+                                            time_start,
+                                            time_end,
+                                            INSIGHT_QUERY_NAND_WRITE_VOLUME,
+                                            json_buffer);
+}
+
+int get_gc_data_movement(const char *device,
+                         const char *time_start,
+                         const char *time_end,
+                         char *json_buffer) {
+    return extract_stat_volume_from_samples(device,
+                                            NVME_LBA_SIZE_BYTES,
+                                            time_start,
+                                            time_end,
+                                            INSIGHT_QUERY_GC_DATA_MOVEMENT,
+                                            json_buffer);
 }
