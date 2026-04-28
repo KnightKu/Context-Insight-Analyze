@@ -148,11 +148,11 @@ JSON field meanings:
 - `query.block_size`: input `block_size` value (bytes)
 - `query.time_start`: input `time_start` value
 - `query.time_end`: input `time_end` value
-- `result.latency_percentiles.read|write|trim.count`: sample count
-- `result.latency_percentiles.read|write|trim.min_us`: minimum latency in microseconds
-- `result.latency_percentiles.read|write|trim.max_us`: maximum latency in microseconds
-- `result.latency_percentiles.read|write|trim.avg_us`: average latency in microseconds
-- `result.latency_percentiles.read|write|trim.percentiles_us.pXX`: percentile latency in microseconds
+- `result.read|write|trim.count`: sample count
+- `result.read|write|trim.min_us`: minimum latency in microseconds
+- `result.read|write|trim.max_us`: maximum latency in microseconds
+- `result.read|write|trim.avg_us`: average latency in microseconds
+- `result.read|write|trim.percentiles_us.pXX`: percentile latency in microseconds
 
 Demo:
 
@@ -196,7 +196,7 @@ JSON field meanings:
 - `query.block_size`: input `block_size` value (bytes)
 - `query.time_start`: input `time_start` value
 - `query.time_end`: input `time_end` value
-- `result.write_amplification`: computed WA value over all stat records in the window
+- `result`: computed WA value over all stat records in the window
   (`hot_write` and `folding_write` are both 4KiB-unit counters in stat records)
 
 Demo:
@@ -239,10 +239,10 @@ JSON field meanings:
 - `query.block_size`: input `block_size` value (bytes)
 - `query.time_start`: input `time_start` value
 - `query.time_end`: input `time_end` value
-- `result.qd_dist.total`: total QD samples counted
-- `result.qd_dist.buckets[].label`: QD range label
-- `result.qd_dist.buckets[].count`: sample count in this QD range
-- `result.qd_dist.buckets[].ratio`: percentage of this range in `total`
+- `result.total`: total QD samples counted
+- `result.buckets[].label`: QD range label
+- `result.buckets[].count`: sample count in this QD range
+- `result.buckets[].ratio`: percentage of this range in `total`
 
 Demo:
 
@@ -284,10 +284,10 @@ JSON field meanings:
 - `query.block_size`: input `block_size` value (bytes)
 - `query.time_start`: input `time_start` value
 - `query.time_end`: input `time_end` value
-- `result.read_size_dist.total`: total read-size samples counted
-- `result.read_size_dist.buckets[].label`: range label (for example `(0,4K]`)
-- `result.read_size_dist.buckets[].count`: sample count in this range
-- `result.read_size_dist.buckets[].ratio`: percentage of this range in `total`
+- `result.total`: total read-size samples counted
+- `result.buckets[].label`: range label (for example `(0,4K]`)
+- `result.buckets[].count`: sample count in this range
+- `result.buckets[].ratio`: percentage of this range in `total`
 
 Demo:
 
@@ -329,10 +329,10 @@ JSON field meanings:
 - `query.block_size`: input `block_size` value (bytes)
 - `query.time_start`: input `time_start` value
 - `query.time_end`: input `time_end` value
-- `result.write_size_dist.total`: total write-size samples counted
-- `result.write_size_dist.buckets[].label`: range label
-- `result.write_size_dist.buckets[].count`: sample count in this range
-- `result.write_size_dist.buckets[].ratio`: percentage of this range in `total`
+- `result.total`: total write-size samples counted
+- `result.buckets[].label`: range label
+- `result.buckets[].count`: sample count in this range
+- `result.buckets[].ratio`: percentage of this range in `total`
 
 Demo:
 
@@ -374,10 +374,10 @@ JSON field meanings:
 - `query.block_size`: input `block_size` value (bytes)
 - `query.time_start`: input `time_start` value
 - `query.time_end`: input `time_end` value
-- `result.read_throughput_dist.total`: total read-throughput samples counted
-- `result.read_throughput_dist.buckets[].label`: throughput range label (GiB/s)
-- `result.read_throughput_dist.buckets[].count`: sample count in this range
-- `result.read_throughput_dist.buckets[].ratio`: percentage of this range in `total`
+- `result.total`: total read-throughput samples counted
+- `result.buckets[].label`: throughput range label (GiB/s)
+- `result.buckets[].count`: sample count in this range
+- `result.buckets[].ratio`: percentage of this range in `total`
 
 Demo:
 
@@ -419,10 +419,10 @@ JSON field meanings:
 - `query.block_size`: input `block_size` value (bytes)
 - `query.time_start`: input `time_start` value
 - `query.time_end`: input `time_end` value
-- `result.write_throughput_dist.total`: total write-throughput samples counted
-- `result.write_throughput_dist.buckets[].label`: throughput range label (GiB/s)
-- `result.write_throughput_dist.buckets[].count`: sample count in this range
-- `result.write_throughput_dist.buckets[].ratio`: percentage of this range in `total`
+- `result.total`: total write-throughput samples counted
+- `result.buckets[].label`: throughput range label (GiB/s)
+- `result.buckets[].count`: sample count in this range
+- `result.buckets[].ratio`: percentage of this range in `total`
 
 Demo:
 
@@ -464,11 +464,11 @@ JSON field meanings:
 - `query.block_size`: input `block_size` value (bytes)
 - `query.time_start`: input `time_start` value
 - `query.time_end`: input `time_end` value
-- `result.read_count_distribution.total`: total read-count samples counted
-- `result.read_count_distribution.buckets[].label`: read-count range label
-- `result.read_count_distribution.buckets[].count`: sample count in this range
-- `result.read_count_distribution.buckets[].ratio`: percentage of this range in `total`
-- `result.read_count_distribution.buckets[].bytes_mib`: aggregated data size in MiB for this range
+- `result.total`: total read-count samples counted
+- `result.buckets[].label`: read-count range label
+- `result.buckets[].count`: sample count in this range
+- `result.buckets[].ratio`: percentage of this range in `total`
+- `result.buckets[].bytes_mib`: aggregated data size in MiB for this range
 
 Demo:
 
@@ -510,10 +510,10 @@ JSON field meanings:
 - `query.block_size`: input `block_size` value (bytes)
 - `query.time_start`: input `time_start` value
 - `query.time_end`: input `time_end` value
-- `result.write_to_first_read_distribution.total`: total W2FR samples counted
-- `result.write_to_first_read_distribution.buckets[].label`: latency range label
-- `result.write_to_first_read_distribution.buckets[].count`: sample count in this range
-- `result.write_to_first_read_distribution.buckets[].ratio`: percentage of this range in `total`
+- `result.total`: total W2FR samples counted
+- `result.buckets[].label`: latency range label
+- `result.buckets[].count`: sample count in this range
+- `result.buckets[].ratio`: percentage of this range in `total`
 
 Demo:
 
@@ -555,11 +555,11 @@ JSON field meanings:
 - `query.block_size`: input `block_size` value (bytes)
 - `query.time_start`: input `time_start` value
 - `query.time_end`: input `time_end` value
-- `result.lifecycle_distribution.total`: total lifecycle samples counted
-- `result.lifecycle_distribution.buckets[].label`: latency range label
-- `result.lifecycle_distribution.buckets[].count`: sample count in this range
-- `result.lifecycle_distribution.buckets[].ratio`: percentage of this range in `total`
-- `result.lifecycle_distribution.buckets[].bytes_mib`: aggregated data size in MiB for this range
+- `result.total`: total lifecycle samples counted
+- `result.buckets[].label`: latency range label
+- `result.buckets[].count`: sample count in this range
+- `result.buckets[].ratio`: percentage of this range in `total`
+- `result.buckets[].bytes_mib`: aggregated data size in MiB for this range
 
 Example JSON shape:
 
@@ -573,12 +573,10 @@ Example JSON shape:
     "time_end": "2026-04-26 12:10:05"
   },
   "result": {
-    "lifecycle_distribution": {
-      "total": 0,
-      "buckets": [
-        {"label":"[1s,5s)","count":0,"ratio":0.0,"bytes_mib":0.0}
-      ]
-    }
+    "total": 0,
+    "buckets": [
+      {"label":"[1s,5s)","count":0,"ratio":0.0,"bytes_mib":0.0}
+    ]
   }
 }
 ```

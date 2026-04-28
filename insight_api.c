@@ -293,6 +293,113 @@ static int compose_query_result_json(const char *api_name,
     return 0;
 }
 
+static void skip_json_ws(const char **p) {
+    while (**p == ' ' || **p == '\t' || **p == '\n' || **p == '\r') {
+        ++(*p);
+    }
+}
+
+static int flatten_single_root_object(const char *input_json,
+                                      char *flattened_json,
+                                      size_t flattened_json_size) {
+    if (input_json == NULL || flattened_json == NULL || flattened_json_size == 0U) {
+        errno = EINVAL;
+        return -1;
+    }
+    const char *p = input_json;
+    skip_json_ws(&p);
+    if (*p != '{') {
+        errno = EINVAL;
+        return -1;
+    }
+    ++p;
+    skip_json_ws(&p);
+    if (*p != '\"') {
+        errno = EINVAL;
+        return -1;
+    }
+    ++p;
+    while (*p != '\0') {
+        if (*p == '\\' && p[1] != '\0') {
+            p += 2;
+            continue;
+        }
+        if (*p == '\"') {
+            ++p;
+            break;
+        }
+        ++p;
+    }
+    if (*(p - 1) != '\"') {
+        errno = EINVAL;
+        return -1;
+    }
+    skip_json_ws(&p);
+    if (*p != ':') {
+        errno = EINVAL;
+        return -1;
+    }
+    ++p;
+    skip_json_ws(&p);
+    if (*p != '{') {
+        errno = EINVAL;
+        return -1;
+    }
+    const char *value_start = p;
+    int depth = 0;
+    while (*p != '\0') {
+        if (*p == '\"') {
+            ++p;
+            while (*p != '\0') {
+                if (*p == '\\' && p[1] != '\0') {
+                    p += 2;
+                    continue;
+                }
+                if (*p == '\"') {
+                    ++p;
+                    break;
+                }
+                ++p;
+            }
+            continue;
+        }
+        if (*p == '{') {
+            ++depth;
+        } else if (*p == '}') {
+            --depth;
+            if (depth == 0) {
+                ++p;
+                break;
+            }
+        }
+        ++p;
+    }
+    if (depth != 0) {
+        errno = EINVAL;
+        return -1;
+    }
+    const char *value_end = p;
+    skip_json_ws(&p);
+    if (*p != '}') {
+        errno = EINVAL;
+        return -1;
+    }
+    ++p;
+    skip_json_ws(&p);
+    if (*p != '\0') {
+        errno = EINVAL;
+        return -1;
+    }
+    size_t out_len = (size_t)(value_end - value_start);
+    if (out_len >= flattened_json_size) {
+        errno = ENOSPC;
+        return -1;
+    }
+    memcpy(flattened_json, value_start, out_len);
+    flattened_json[out_len] = '\0';
+    return 0;
+}
+
 static int compose_write_amplification_result_json(double wa_value,
                                                    char *result_json,
                                                    size_t result_json_size) {
@@ -450,9 +557,14 @@ static int run_query_and_fill_wrapped_json(const char *device,
         errno = EINVAL;
         return -1;
     }
-    char result_json[INSIGHT_JSON_BUFFER_BYTES];
+    char raw_result_json[INSIGHT_JSON_BUFFER_BYTES];
     if (run_query_and_fill_json(device, block_size, time_start, time_end,
-                                query_type, result_json) != 0) {
+                                query_type, raw_result_json) != 0) {
+        return -1;
+    }
+    char flattened_result_json[INSIGHT_JSON_BUFFER_BYTES];
+    if (flatten_single_root_object(raw_result_json, flattened_result_json,
+                                   sizeof(flattened_result_json)) != 0) {
         return -1;
     }
     return compose_query_result_json(api_name,
@@ -461,7 +573,7 @@ static int run_query_and_fill_wrapped_json(const char *device,
                                      block_size,
                                      time_start,
                                      time_end,
-                                     result_json,
+                                     flattened_result_json,
                                      json_buffer);
 }
 
