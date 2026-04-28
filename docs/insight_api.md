@@ -1,280 +1,456 @@
 # Insight API Reference (`insight_api.h`)
 
-This document describes all public APIs declared in `insight_api.h`.
+This document is the authoritative API reference for all public interfaces in
+`insight_api.h`.
 
-## 1. Overview
+## 1. Build and Link
 
-The insight API library provides JSON-based query functions for NVMe insight data.
-
-- Header: `insight_api.h`
-- Static library: `libinsight_api.a`
-- JSON output buffer size macro: `INSIGHT_JSON_BUFFER_BYTES` (65536 bytes)
-
-All APIs share this signature pattern:
-
-```c
-int api_name(const char *device,
-             uint64_t block_size,
-             const char *time_start,
-             const char *time_end,
-             char *json_buffer);
-```
-
-## 2. Build and Link
-
-From repository root:
+Build from repository root:
 
 ```bash
 make clean && make
 ```
 
-Link your application with:
+Include and link:
 
-- `libinsight_api.a`
-- `-lpthread`
+- Header: `insight_api.h`
+- Static library: `libinsight_api.a`
+- Linker flag: `-lpthread`
 
-## 3. Common Input Contract
+## 2. Common Contract
 
-### `device`
+All APIs use the same parameter pattern:
 
-- NVMe device path (example: `/dev/nvme0n1`)
-- Must not be `NULL`
+- `device`: NVMe device path (for example `/dev/nvme0n1`), must not be `NULL`
+- `block_size`: bytes, must be positive, semantics equivalent to CLI `--block-size`
+- `time_start` / `time_end`: format `YYYY-MM-DD HH:MM:SS`, and `time_start <= time_end`
+- `json_buffer`: caller-provided output buffer, must not be `NULL`
+  - recommended size: `INSIGHT_JSON_BUFFER_BYTES` (65536)
 
-### `block_size`
+Return value:
 
-- Unit: bytes
-- Same semantics as CLI `--block-size`
-- Must be positive (`> 0`)
+- `0`: success, JSON string is written into `json_buffer`
+- `-1`: failure, `errno` indicates reason
 
-### `time_start`, `time_end`
-
-- Format: `YYYY-MM-DD HH:MM:SS`
-- Local time (`mktime` based)
-- Must satisfy `time_start <= time_end`
-
-### `json_buffer`
-
-- Caller-provided output buffer
-- Must not be `NULL`
-- Recommended size: `INSIGHT_JSON_BUFFER_BYTES`
-
-## 4. Return Value and Error Handling
-
-All APIs return:
-
-- `0`: success, JSON written into `json_buffer`
-- `-1`: failure, `errno` set
-
-Common `errno` values:
+Typical `errno`:
 
 - `EINVAL`: invalid arguments or invalid time format/range
-- `ERANGE`: scan range invalid/out of log range
-- `ENODATA`: JSON payload not found in captured output
-- `ENOSPC`: output JSON does not fit in `json_buffer`
-- `ENOMEM`: allocation failure
-- `EIO`: I/O or internal capture/restore failure
+- `ERANGE`: invalid scan range
+- `ENODATA`: no JSON payload captured
+- `ENOSPC`: output buffer too small
+- `ENOMEM`: memory allocation failure
+- `EIO`: I/O or internal pipeline error
 
-## 5. Thread Safety and Runtime Behavior
+Thread safety:
 
-- APIs are serialized by an internal global mutex (thread-safe, but not parallelized).
-- Each API call performs an independent scan and parse pass.
-- Time-window filtering is marker-driven (based on marker unix timestamp in milliseconds).
+- APIs are protected by an internal global mutex, so concurrent callers are serialized.
 
-## 6. Public APIs
+---
 
-## 6.1 `get_read_latency_percentiles`
+## 3. API Details
+
+### 3.1 `get_read_latency_percentiles`
 
 ```c
-int get_read_latency_percentiles(...);
+int get_read_latency_percentiles(const char *device,
+                                 uint64_t block_size,
+                                 const char *time_start,
+                                 const char *time_end,
+                                 char *json_buffer);
 ```
 
-CLI equivalence:
+Function:
 
-```bash
-./sfx_ctx_insight_analyze --format-json --latency --block-size=<block_size> \
-  -S <time_start> -E <time_end> <device> 0 11T
-```
+- Query read/write/trim latency summary and percentile statistics.
 
-Top-level JSON key:
+Top-level JSON object:
 
 - `latency_percentiles`
 
-Schema:
+JSON field meanings:
 
-```json
-{
-  "latency_percentiles": {
-    "read|write|trim": {
-      "count": 0,
-      "min_us": 0,
-      "max_us": 0,
-      "avg_us": 0.0,
-      "percentiles_us": {
-        "p10": 0,
-        "p20": 0,
-        "p30": 0,
-        "p40": 0,
-        "p50": 0,
-        "p60": 0,
-        "p70": 0,
-        "p80": 0,
-        "p90": 0,
-        "p99": 0,
-        "p99_9": 0,
-        "p99_99": 0
-      }
-    }
-  }
+- `latency_percentiles.read|write|trim.count`: sample count
+- `latency_percentiles.read|write|trim.min_us`: minimum latency in microseconds
+- `latency_percentiles.read|write|trim.max_us`: maximum latency in microseconds
+- `latency_percentiles.read|write|trim.avg_us`: average latency in microseconds
+- `latency_percentiles.read|write|trim.percentiles_us.pXX`: percentile latency in microseconds
+
+Demo:
+
+```c
+char json[INSIGHT_JSON_BUFFER_BYTES];
+if (get_read_latency_percentiles("/dev/nvme0n1", 4096,
+                                 "2026-04-26 10:05:05",
+                                 "2026-04-26 12:10:05",
+                                 json) == 0) {
+    puts(json);
 }
 ```
 
-## 6.2 `get_write_amplification`
+---
+
+### 3.2 `get_write_amplification`
 
 ```c
-int get_write_amplification(...);
+int get_write_amplification(const char *device,
+                            uint64_t block_size,
+                            const char *time_start,
+                            const char *time_end,
+                            char *json_buffer);
 ```
 
-Top-level key: `wa_dist`
+Function:
 
-```json
-{
-  "wa_dist": {
-    "total": 0,
-    "buckets": [
-      {"label":"1.0","count":0,"ratio":0.0}
-    ]
-  }
+- Query write-amplification distribution from stat records.
+
+Top-level JSON object:
+
+- `wa_dist`
+
+JSON field meanings:
+
+- `wa_dist.total`: total WA samples counted
+- `wa_dist.buckets[].label`: WA range label
+- `wa_dist.buckets[].count`: sample count in this WA range
+- `wa_dist.buckets[].ratio`: percentage of this range in `total`
+
+Demo:
+
+```c
+char json[INSIGHT_JSON_BUFFER_BYTES];
+if (get_write_amplification("/dev/nvme0n1", 4096,
+                            "2026-04-26 10:05:05",
+                            "2026-04-26 12:10:05",
+                            json) == 0) {
+    puts(json);
 }
 ```
 
-Bucket labels:
+---
 
-`1.0`, `1.1-1.5`, `1.6-2.0`, `2.1-2.5`, `2.6-3.0`,
-`3.1-3.5`, `3.6-4.0`, `4.1-4.5`, `4.6-5.0`, `>5.0`
-
-## 6.3 `get_qd_distribution`
+### 3.3 `get_qd_distribution`
 
 ```c
-int get_qd_distribution(...);
+int get_qd_distribution(const char *device,
+                        uint64_t block_size,
+                        const char *time_start,
+                        const char *time_end,
+                        char *json_buffer);
 ```
 
-Top-level key: `qd_dist`
+Function:
 
-Bucket labels:
+- Query queue-depth (QD) distribution from stat records.
 
-`0`, `1`, `2`, `3-4`, `5-8`, `9-16`, `17-32`, `33-64`, `65-128`, `>=129`
+Top-level JSON object:
 
-## 6.4 `get_read_size_distribution`
+- `qd_dist`
+
+JSON field meanings:
+
+- `qd_dist.total`: total QD samples counted
+- `qd_dist.buckets[].label`: QD range label
+- `qd_dist.buckets[].count`: sample count in this QD range
+- `qd_dist.buckets[].ratio`: percentage of this range in `total`
+
+Demo:
 
 ```c
-int get_read_size_distribution(...);
-```
-
-Top-level key: `read_size_dist`
-
-Range bucket labels:
-
-`0`, `(0,4K]`, `(4K,8K]`, `(8K,16K]`, `(16K,32K]`,
-`(32K,64K]`, `(64K,128K]`, `(128K,256K]`, `(256K,512K]`, `>512K`
-
-## 6.5 `get_write_size_distribution`
-
-```c
-int get_write_size_distribution(...);
-```
-
-Top-level key: `write_size_dist`
-
-Range bucket labels are the same as `read_size_dist`.
-
-## 6.6 `get_read_throughput_distribution`
-
-```c
-int get_read_throughput_distribution(...);
-```
-
-Top-level key: `read_throughput_dist`
-
-Bucket granularity:
-
-- strict `1GiB/s` bins through `16GiB/s`
-- labels: `0-1`, `1-2`, ..., `15-16`, `>=16GiB/s`
-
-## 6.7 `get_write_throughput_distribution`
-
-```c
-int get_write_throughput_distribution(...);
-```
-
-Top-level key: `write_throughput_dist`
-
-Bucket semantics are the same as `read_throughput_dist`.
-
-## 6.8 `get_read_count_distribution`
-
-```c
-int get_read_count_distribution(...);
-```
-
-Top-level key: `read_count_distribution`
-
-Schema:
-
-```json
-{
-  "read_count_distribution": {
-    "total": 0,
-    "buckets": [
-      {"label":"1-25","count":0,"ratio":0.0,"bytes_mib":0.0}
-    ]
-  }
+char json[INSIGHT_JSON_BUFFER_BYTES];
+if (get_qd_distribution("/dev/nvme0n1", 4096,
+                        "2026-04-26 10:05:05",
+                        "2026-04-26 12:10:05",
+                        json) == 0) {
+    puts(json);
 }
 ```
 
-Read-count bucket labels:
+---
 
-`0`, `1-25`, `26-50`, `51-75`, `76-100`,
-`101-125`, `126-150`, `151-175`, `176-200`, `201-255`
-
-## 6.9 `get_write_to_first_read_distribution`
+### 3.4 `get_read_size_distribution`
 
 ```c
-int get_write_to_first_read_distribution(...);
+int get_read_size_distribution(const char *device,
+                               uint64_t block_size,
+                               const char *time_start,
+                               const char *time_end,
+                               char *json_buffer);
 ```
 
-Top-level key: `write_to_first_read_distribution`
+Function:
 
-Latency bucket labels:
+- Query read I/O size distribution (range buckets).
 
-`0ms`, `(0ms,1s)`, `[1s,5s)`, `[5s,10s)`, `[10s,30s)`,
-`[30s,1m)`, `[1m,5m)`, `[5m,30m)`, `[30m,1h)`, `[1h,4h)`, `>=4h`
+Top-level JSON object:
 
-## 6.10 `get_lifecycle_distribution`
+- `read_size_dist`
+
+JSON field meanings:
+
+- `read_size_dist.total`: total read-size samples counted
+- `read_size_dist.buckets[].label`: range label (for example `(0,4K]`)
+- `read_size_dist.buckets[].count`: sample count in this range
+- `read_size_dist.buckets[].ratio`: percentage of this range in `total`
+
+Demo:
 
 ```c
-int get_lifecycle_distribution(...);
+char json[INSIGHT_JSON_BUFFER_BYTES];
+if (get_read_size_distribution("/dev/nvme0n1", 4096,
+                               "2026-04-26 10:05:05",
+                               "2026-04-26 12:10:05",
+                               json) == 0) {
+    puts(json);
+}
 ```
 
-Top-level key: `lifecycle_distribution`
+---
 
-Same latency bucket labels as `get_write_to_first_read_distribution`.
+### 3.5 `get_write_size_distribution`
 
-Each bucket includes:
+```c
+int get_write_size_distribution(const char *device,
+                                uint64_t block_size,
+                                const char *time_start,
+                                const char *time_end,
+                                char *json_buffer);
+```
 
-- `count`
-- `ratio`
-- `bytes_mib`
+Function:
 
-## 7. Example Program
+- Query write I/O size distribution (range buckets).
 
-See:
+Top-level JSON object:
+
+- `write_size_dist`
+
+JSON field meanings:
+
+- `write_size_dist.total`: total write-size samples counted
+- `write_size_dist.buckets[].label`: range label
+- `write_size_dist.buckets[].count`: sample count in this range
+- `write_size_dist.buckets[].ratio`: percentage of this range in `total`
+
+Demo:
+
+```c
+char json[INSIGHT_JSON_BUFFER_BYTES];
+if (get_write_size_distribution("/dev/nvme0n1", 4096,
+                                "2026-04-26 10:05:05",
+                                "2026-04-26 12:10:05",
+                                json) == 0) {
+    puts(json);
+}
+```
+
+---
+
+### 3.6 `get_read_throughput_distribution`
+
+```c
+int get_read_throughput_distribution(const char *device,
+                                     uint64_t block_size,
+                                     const char *time_start,
+                                     const char *time_end,
+                                     char *json_buffer);
+```
+
+Function:
+
+- Query read throughput distribution.
+
+Top-level JSON object:
+
+- `read_throughput_dist`
+
+JSON field meanings:
+
+- `read_throughput_dist.total`: total read-throughput samples counted
+- `read_throughput_dist.buckets[].label`: throughput range label (GiB/s)
+- `read_throughput_dist.buckets[].count`: sample count in this range
+- `read_throughput_dist.buckets[].ratio`: percentage of this range in `total`
+
+Demo:
+
+```c
+char json[INSIGHT_JSON_BUFFER_BYTES];
+if (get_read_throughput_distribution("/dev/nvme0n1", 4096,
+                                     "2026-04-26 10:05:05",
+                                     "2026-04-26 12:10:05",
+                                     json) == 0) {
+    puts(json);
+}
+```
+
+---
+
+### 3.7 `get_write_throughput_distribution`
+
+```c
+int get_write_throughput_distribution(const char *device,
+                                      uint64_t block_size,
+                                      const char *time_start,
+                                      const char *time_end,
+                                      char *json_buffer);
+```
+
+Function:
+
+- Query write throughput distribution.
+
+Top-level JSON object:
+
+- `write_throughput_dist`
+
+JSON field meanings:
+
+- `write_throughput_dist.total`: total write-throughput samples counted
+- `write_throughput_dist.buckets[].label`: throughput range label (GiB/s)
+- `write_throughput_dist.buckets[].count`: sample count in this range
+- `write_throughput_dist.buckets[].ratio`: percentage of this range in `total`
+
+Demo:
+
+```c
+char json[INSIGHT_JSON_BUFFER_BYTES];
+if (get_write_throughput_distribution("/dev/nvme0n1", 4096,
+                                      "2026-04-26 10:05:05",
+                                      "2026-04-26 12:10:05",
+                                      json) == 0) {
+    puts(json);
+}
+```
+
+---
+
+### 3.8 `get_read_count_distribution`
+
+```c
+int get_read_count_distribution(const char *device,
+                                uint64_t block_size,
+                                const char *time_start,
+                                const char *time_end,
+                                char *json_buffer);
+```
+
+Function:
+
+- Query request-based read-count distribution.
+
+Top-level JSON object:
+
+- `read_count_distribution`
+
+JSON field meanings:
+
+- `read_count_distribution.total`: total read-count samples counted
+- `read_count_distribution.buckets[].label`: read-count range label
+- `read_count_distribution.buckets[].count`: sample count in this range
+- `read_count_distribution.buckets[].ratio`: percentage of this range in `total`
+- `read_count_distribution.buckets[].bytes_mib`: aggregated data size in MiB for this range
+
+Demo:
+
+```c
+char json[INSIGHT_JSON_BUFFER_BYTES];
+if (get_read_count_distribution("/dev/nvme0n1", 4096,
+                                "2026-04-26 10:05:05",
+                                "2026-04-26 12:10:05",
+                                json) == 0) {
+    puts(json);
+}
+```
+
+---
+
+### 3.9 `get_write_to_first_read_distribution`
+
+```c
+int get_write_to_first_read_distribution(const char *device,
+                                         uint64_t block_size,
+                                         const char *time_start,
+                                         const char *time_end,
+                                         char *json_buffer);
+```
+
+Function:
+
+- Query write-to-first-read latency distribution.
+
+Top-level JSON object:
+
+- `write_to_first_read_distribution`
+
+JSON field meanings:
+
+- `write_to_first_read_distribution.total`: total W2FR samples counted
+- `write_to_first_read_distribution.buckets[].label`: latency range label
+- `write_to_first_read_distribution.buckets[].count`: sample count in this range
+- `write_to_first_read_distribution.buckets[].ratio`: percentage of this range in `total`
+
+Demo:
+
+```c
+char json[INSIGHT_JSON_BUFFER_BYTES];
+if (get_write_to_first_read_distribution("/dev/nvme0n1", 4096,
+                                         "2026-04-26 10:05:05",
+                                         "2026-04-26 12:10:05",
+                                         json) == 0) {
+    puts(json);
+}
+```
+
+---
+
+### 3.10 `get_lifecycle_distribution`
+
+```c
+int get_lifecycle_distribution(const char *device,
+                               uint64_t block_size,
+                               const char *time_start,
+                               const char *time_end,
+                               char *json_buffer);
+```
+
+Function:
+
+- Query lifecycle latency distribution.
+
+Top-level JSON object:
+
+- `lifecycle_distribution`
+
+JSON field meanings:
+
+- `lifecycle_distribution.total`: total lifecycle samples counted
+- `lifecycle_distribution.buckets[].label`: latency range label
+- `lifecycle_distribution.buckets[].count`: sample count in this range
+- `lifecycle_distribution.buckets[].ratio`: percentage of this range in `total`
+- `lifecycle_distribution.buckets[].bytes_mib`: aggregated data size in MiB for this range
+
+Demo:
+
+```c
+char json[INSIGHT_JSON_BUFFER_BYTES];
+if (get_lifecycle_distribution("/dev/nvme0n1", 4096,
+                               "2026-04-26 10:05:05",
+                               "2026-04-26 12:10:05",
+                               json) == 0) {
+    puts(json);
+}
+```
+
+---
+
+## 4. Complete Demo Program
+
+A complete runnable sample that calls all APIs is provided in:
 
 - `examples/insight_api_example.c`
 
-Run:
+Build and run:
 
 ```bash
+make insight_api_example
 sudo ./insight_api_example /dev/nvme0n1 "2026-04-26 10:05:05" "2026-04-26 12:10:05"
 ```
-
-The example invokes all public APIs and prints each returned JSON payload.
