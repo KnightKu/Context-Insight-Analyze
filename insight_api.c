@@ -590,7 +590,7 @@ static int run_query_and_fill_wrapped_json(const char *device,
     if (insight_query_total_key_should_rename(query_type) != 0) {
         char *p = strstr(flattened_result_json, "\"total\":");
         if (p != NULL) {
-            memcpy(p + 1, "simpling", 8U);
+            memcpy(p + 1, "sampling", 8U);
         }
     }
     return compose_query_result_json(api_name,
