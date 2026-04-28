@@ -248,20 +248,20 @@ Common input contract:
 Execution equivalence:
 
 - `get_read_latency_percentiles(...)` ~=  
-  `./sfx_ctx_insight_analyze --format-json --latency --block-size=4096 -S <time_start> -E <time_end> <device> 0 11T`
+  `./sfx_ctx_insight_analyze --format-json --latency -S <time_start> -E <time_end> <device> 0 11T`
 - `get_write_amplification(...)`:
   - scans stat records in the given time window and returns a single WA value
   - formula: `(sum(hot_write) + sum(folding_write)) / sum(hot_write)`
   - `hot_write` and `folding_write` are stat-record 4KiB units
-- `get_write_amplification(...)` uses fixed `block_size=4096` internally
+- `get_write_amplification(...)` uses `block_size=0` internally (no block-size filtering)
 - `get_qd_distribution(...)` ~=  
-  `./sfx_ctx_insight_analyze --format-json --qd-dist --block-size=4096 -S <time_start> -E <time_end> <device> 0 11T`
+  `./sfx_ctx_insight_analyze --format-json --qd-dist -S <time_start> -E <time_end> <device> 0 11T`
 - `get_read_size_distribution(...)` ~=  
   `./sfx_ctx_insight_analyze --format-json --read-size-dist --block-size=<block_size> -S <time_start> -E <time_end> <device> 0 11T`
 - `get_write_size_distribution(...)` ~=  
   `./sfx_ctx_insight_analyze --format-json --write-size-dist --block-size=<block_size> -S <time_start> -E <time_end> <device> 0 11T`
 - `get_read_throughput_distribution(...)` ~=  
-  `./sfx_ctx_insight_analyze --format-json --read-throughput-dist --block-size=4096 -S <time_start> -E <time_end> <device> 0 11T`
+  `./sfx_ctx_insight_analyze --format-json --read-throughput-dist -S <time_start> -E <time_end> <device> 0 11T`
 - `get_write_throughput_distribution(...)` ~=  
   `./sfx_ctx_insight_analyze --format-json --write-throughput-dist --block-size=<block_size> -S <time_start> -E <time_end> <device> 0 11T`
   - throughput buckets use strict `1GiB/s` granularity through `16GiB/s`:

@@ -45,7 +45,6 @@ static int insight_query_is_stat_volume(insight_query_type_t query_type) {
 }
 
 static pthread_mutex_t g_insight_api_mutex = PTHREAD_MUTEX_INITIALIZER;
-static const uint64_t INSIGHT_DEFAULT_API_BLOCK_SIZE_BYTES = NVME_LBA_SIZE_BYTES;
 
 static int run_query_and_fill_json(const char *device,
                                    uint64_t block_size,
@@ -426,7 +425,7 @@ static int extract_write_amplification_from_samples(const char *device,
                                                     const char *time_end,
                                                     char *json_buffer) {
     if (device == NULL || time_start == NULL || time_end == NULL ||
-        json_buffer == NULL || block_size == 0ULL) {
+        json_buffer == NULL) {
         errno = EINVAL;
         return -1;
     }
@@ -578,28 +577,18 @@ static int run_query_and_fill_wrapped_json(const char *device,
                                      json_buffer);
 }
 
-static int run_query_and_fill_wrapped_json_default_block(const char *device,
-                                                         const char *time_start,
-                                                         const char *time_end,
-                                                         insight_query_type_t query_type,
-                                                         const char *api_name,
-                                                         char *json_buffer) {
-    return run_query_and_fill_wrapped_json(device,
-                                           INSIGHT_DEFAULT_API_BLOCK_SIZE_BYTES,
-                                           time_start,
-                                           time_end,
-                                           query_type,
-                                           api_name,
-                                           json_buffer);
-}
-
 static int run_query_and_fill_json(const char *device,
                                    uint64_t block_size,
                                    const char *time_start,
                                    const char *time_end,
                                    insight_query_type_t query_type,
                                    char *json_buffer) {
-    if (device == NULL || json_buffer == NULL || block_size == 0ULL ||
+    int allow_zero_block = (query_type == INSIGHT_QUERY_LATENCY ||
+                            query_type == INSIGHT_QUERY_WA ||
+                            query_type == INSIGHT_QUERY_QD ||
+                            query_type == INSIGHT_QUERY_READ_THROUGHPUT) ? 1 : 0;
+    if (device == NULL || json_buffer == NULL ||
+        (block_size == 0ULL && allow_zero_block == 0) ||
         time_start == NULL || time_end == NULL) {
         errno = EINVAL;
         return -1;
@@ -719,17 +708,17 @@ int get_read_latency_percentiles(const char *device,
                                  const char *time_start,
                                  const char *time_end,
                                  char *json_buffer) {
-    return run_query_and_fill_wrapped_json_default_block(device, time_start, time_end,
-                                                         INSIGHT_QUERY_LATENCY,
-                                                         "get_read_latency_percentiles",
-                                                         json_buffer);
+    return run_query_and_fill_wrapped_json(device, 0ULL, time_start, time_end,
+                                           INSIGHT_QUERY_LATENCY,
+                                           "get_read_latency_percentiles",
+                                           json_buffer);
 }
 
 int get_write_amplification(const char *device,
                             const char *time_start,
                             const char *time_end,
                             char *json_buffer) {
-    return extract_write_amplification_from_samples(device, INSIGHT_DEFAULT_API_BLOCK_SIZE_BYTES,
+    return extract_write_amplification_from_samples(device, 0ULL,
                                                     time_start, time_end,
                                                     json_buffer);
 }
@@ -738,10 +727,10 @@ int get_qd_distribution(const char *device,
                         const char *time_start,
                         const char *time_end,
                         char *json_buffer) {
-    return run_query_and_fill_wrapped_json_default_block(device, time_start, time_end,
-                                                         INSIGHT_QUERY_QD,
-                                                         "get_qd_distribution",
-                                                         json_buffer);
+    return run_query_and_fill_wrapped_json(device, 0ULL, time_start, time_end,
+                                           INSIGHT_QUERY_QD,
+                                           "get_qd_distribution",
+                                           json_buffer);
 }
 
 int get_read_size_distribution(const char *device,
@@ -770,10 +759,10 @@ int get_read_throughput_distribution(const char *device,
                                      const char *time_start,
                                      const char *time_end,
                                      char *json_buffer) {
-    return run_query_and_fill_wrapped_json_default_block(device, time_start, time_end,
-                                                         INSIGHT_QUERY_READ_THROUGHPUT,
-                                                         "get_read_throughput_distribution",
-                                                         json_buffer);
+    return run_query_and_fill_wrapped_json(device, 0ULL, time_start, time_end,
+                                           INSIGHT_QUERY_READ_THROUGHPUT,
+                                           "get_read_throughput_distribution",
+                                           json_buffer);
 }
 
 int get_write_throughput_distribution(const char *device,
