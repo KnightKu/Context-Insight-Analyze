@@ -87,11 +87,9 @@ Thread safety:
 
 Output envelope note:
 
-- `get_lifecycle_distribution`, `get_nand_write_volume`, and
-  `get_gc_data_movement` return an extended envelope:
+- All APIs return an extended envelope:
   - `query`: function name and input parameters
   - `result`: API result payload
-- Other APIs keep their original top-level result objects.
 
 ---
 
@@ -111,17 +109,50 @@ Function:
 
 - Query read/write/trim latency summary and percentile statistics.
 
-Top-level JSON object:
+Top-level JSON objects:
 
-- `latency_percentiles`
+- `query`
+- `result`
+
+Example JSON shape:
+
+```json
+{
+  "query": {
+    "api": "get_read_latency_percentiles",
+    "device": "/dev/nvme0n1",
+    "block_size": 4096,
+    "time_start": "2026-04-26 10:05:05",
+    "time_end": "2026-04-26 12:10:05"
+  },
+  "result": {
+    "latency_percentiles": {
+      "read": {
+        "count": 0,
+        "min_us": 0,
+        "max_us": 0,
+        "avg_us": 0.00,
+        "percentiles_us": {
+          "p10": 0
+        }
+      }
+    }
+  }
+}
+```
 
 JSON field meanings:
 
-- `latency_percentiles.read|write|trim.count`: sample count
-- `latency_percentiles.read|write|trim.min_us`: minimum latency in microseconds
-- `latency_percentiles.read|write|trim.max_us`: maximum latency in microseconds
-- `latency_percentiles.read|write|trim.avg_us`: average latency in microseconds
-- `latency_percentiles.read|write|trim.percentiles_us.pXX`: percentile latency in microseconds
+- `query.api`: API function name (`get_read_latency_percentiles`)
+- `query.device`: input `device` value
+- `query.block_size`: input `block_size` value (bytes)
+- `query.time_start`: input `time_start` value
+- `query.time_end`: input `time_end` value
+- `result.latency_percentiles.read|write|trim.count`: sample count
+- `result.latency_percentiles.read|write|trim.min_us`: minimum latency in microseconds
+- `result.latency_percentiles.read|write|trim.max_us`: maximum latency in microseconds
+- `result.latency_percentiles.read|write|trim.avg_us`: average latency in microseconds
+- `result.latency_percentiles.read|write|trim.percentiles_us.pXX`: percentile latency in microseconds
 
 Demo:
 
@@ -153,13 +184,19 @@ Function:
 - Calculation:
   `(sum(hot_write_4k) + sum(folding_write_4k)) / sum(hot_write_4k)`.
 
-Top-level JSON object:
+Top-level JSON objects:
 
-- `write_amplification`
+- `query`
+- `result`
 
 JSON field meanings:
 
-- `write_amplification`: computed WA value over all stat records in the window
+- `query.api`: API function name (`get_write_amplification`)
+- `query.device`: input `device` value
+- `query.block_size`: input `block_size` value (bytes)
+- `query.time_start`: input `time_start` value
+- `query.time_end`: input `time_end` value
+- `result.write_amplification`: computed WA value over all stat records in the window
   (`hot_write` and `folding_write` are both 4KiB-unit counters in stat records)
 
 Demo:
@@ -190,16 +227,22 @@ Function:
 
 - Query queue-depth (QD) distribution from stat records.
 
-Top-level JSON object:
+Top-level JSON objects:
 
-- `qd_dist`
+- `query`
+- `result`
 
 JSON field meanings:
 
-- `qd_dist.total`: total QD samples counted
-- `qd_dist.buckets[].label`: QD range label
-- `qd_dist.buckets[].count`: sample count in this QD range
-- `qd_dist.buckets[].ratio`: percentage of this range in `total`
+- `query.api`: API function name (`get_qd_distribution`)
+- `query.device`: input `device` value
+- `query.block_size`: input `block_size` value (bytes)
+- `query.time_start`: input `time_start` value
+- `query.time_end`: input `time_end` value
+- `result.qd_dist.total`: total QD samples counted
+- `result.qd_dist.buckets[].label`: QD range label
+- `result.qd_dist.buckets[].count`: sample count in this QD range
+- `result.qd_dist.buckets[].ratio`: percentage of this range in `total`
 
 Demo:
 
@@ -229,16 +272,22 @@ Function:
 
 - Query read I/O size distribution (range buckets).
 
-Top-level JSON object:
+Top-level JSON objects:
 
-- `read_size_dist`
+- `query`
+- `result`
 
 JSON field meanings:
 
-- `read_size_dist.total`: total read-size samples counted
-- `read_size_dist.buckets[].label`: range label (for example `(0,4K]`)
-- `read_size_dist.buckets[].count`: sample count in this range
-- `read_size_dist.buckets[].ratio`: percentage of this range in `total`
+- `query.api`: API function name (`get_read_size_distribution`)
+- `query.device`: input `device` value
+- `query.block_size`: input `block_size` value (bytes)
+- `query.time_start`: input `time_start` value
+- `query.time_end`: input `time_end` value
+- `result.read_size_dist.total`: total read-size samples counted
+- `result.read_size_dist.buckets[].label`: range label (for example `(0,4K]`)
+- `result.read_size_dist.buckets[].count`: sample count in this range
+- `result.read_size_dist.buckets[].ratio`: percentage of this range in `total`
 
 Demo:
 
@@ -268,16 +317,22 @@ Function:
 
 - Query write I/O size distribution (range buckets).
 
-Top-level JSON object:
+Top-level JSON objects:
 
-- `write_size_dist`
+- `query`
+- `result`
 
 JSON field meanings:
 
-- `write_size_dist.total`: total write-size samples counted
-- `write_size_dist.buckets[].label`: range label
-- `write_size_dist.buckets[].count`: sample count in this range
-- `write_size_dist.buckets[].ratio`: percentage of this range in `total`
+- `query.api`: API function name (`get_write_size_distribution`)
+- `query.device`: input `device` value
+- `query.block_size`: input `block_size` value (bytes)
+- `query.time_start`: input `time_start` value
+- `query.time_end`: input `time_end` value
+- `result.write_size_dist.total`: total write-size samples counted
+- `result.write_size_dist.buckets[].label`: range label
+- `result.write_size_dist.buckets[].count`: sample count in this range
+- `result.write_size_dist.buckets[].ratio`: percentage of this range in `total`
 
 Demo:
 
@@ -307,16 +362,22 @@ Function:
 
 - Query read throughput distribution.
 
-Top-level JSON object:
+Top-level JSON objects:
 
-- `read_throughput_dist`
+- `query`
+- `result`
 
 JSON field meanings:
 
-- `read_throughput_dist.total`: total read-throughput samples counted
-- `read_throughput_dist.buckets[].label`: throughput range label (GiB/s)
-- `read_throughput_dist.buckets[].count`: sample count in this range
-- `read_throughput_dist.buckets[].ratio`: percentage of this range in `total`
+- `query.api`: API function name (`get_read_throughput_distribution`)
+- `query.device`: input `device` value
+- `query.block_size`: input `block_size` value (bytes)
+- `query.time_start`: input `time_start` value
+- `query.time_end`: input `time_end` value
+- `result.read_throughput_dist.total`: total read-throughput samples counted
+- `result.read_throughput_dist.buckets[].label`: throughput range label (GiB/s)
+- `result.read_throughput_dist.buckets[].count`: sample count in this range
+- `result.read_throughput_dist.buckets[].ratio`: percentage of this range in `total`
 
 Demo:
 
@@ -346,16 +407,22 @@ Function:
 
 - Query write throughput distribution.
 
-Top-level JSON object:
+Top-level JSON objects:
 
-- `write_throughput_dist`
+- `query`
+- `result`
 
 JSON field meanings:
 
-- `write_throughput_dist.total`: total write-throughput samples counted
-- `write_throughput_dist.buckets[].label`: throughput range label (GiB/s)
-- `write_throughput_dist.buckets[].count`: sample count in this range
-- `write_throughput_dist.buckets[].ratio`: percentage of this range in `total`
+- `query.api`: API function name (`get_write_throughput_distribution`)
+- `query.device`: input `device` value
+- `query.block_size`: input `block_size` value (bytes)
+- `query.time_start`: input `time_start` value
+- `query.time_end`: input `time_end` value
+- `result.write_throughput_dist.total`: total write-throughput samples counted
+- `result.write_throughput_dist.buckets[].label`: throughput range label (GiB/s)
+- `result.write_throughput_dist.buckets[].count`: sample count in this range
+- `result.write_throughput_dist.buckets[].ratio`: percentage of this range in `total`
 
 Demo:
 
@@ -385,17 +452,23 @@ Function:
 
 - Query request-based read-count distribution.
 
-Top-level JSON object:
+Top-level JSON objects:
 
-- `read_count_distribution`
+- `query`
+- `result`
 
 JSON field meanings:
 
-- `read_count_distribution.total`: total read-count samples counted
-- `read_count_distribution.buckets[].label`: read-count range label
-- `read_count_distribution.buckets[].count`: sample count in this range
-- `read_count_distribution.buckets[].ratio`: percentage of this range in `total`
-- `read_count_distribution.buckets[].bytes_mib`: aggregated data size in MiB for this range
+- `query.api`: API function name (`get_read_count_distribution`)
+- `query.device`: input `device` value
+- `query.block_size`: input `block_size` value (bytes)
+- `query.time_start`: input `time_start` value
+- `query.time_end`: input `time_end` value
+- `result.read_count_distribution.total`: total read-count samples counted
+- `result.read_count_distribution.buckets[].label`: read-count range label
+- `result.read_count_distribution.buckets[].count`: sample count in this range
+- `result.read_count_distribution.buckets[].ratio`: percentage of this range in `total`
+- `result.read_count_distribution.buckets[].bytes_mib`: aggregated data size in MiB for this range
 
 Demo:
 
@@ -425,16 +498,22 @@ Function:
 
 - Query write-to-first-read latency distribution.
 
-Top-level JSON object:
+Top-level JSON objects:
 
-- `write_to_first_read_distribution`
+- `query`
+- `result`
 
 JSON field meanings:
 
-- `write_to_first_read_distribution.total`: total W2FR samples counted
-- `write_to_first_read_distribution.buckets[].label`: latency range label
-- `write_to_first_read_distribution.buckets[].count`: sample count in this range
-- `write_to_first_read_distribution.buckets[].ratio`: percentage of this range in `total`
+- `query.api`: API function name (`get_write_to_first_read_distribution`)
+- `query.device`: input `device` value
+- `query.block_size`: input `block_size` value (bytes)
+- `query.time_start`: input `time_start` value
+- `query.time_end`: input `time_end` value
+- `result.write_to_first_read_distribution.total`: total W2FR samples counted
+- `result.write_to_first_read_distribution.buckets[].label`: latency range label
+- `result.write_to_first_read_distribution.buckets[].count`: sample count in this range
+- `result.write_to_first_read_distribution.buckets[].ratio`: percentage of this range in `total`
 
 Demo:
 
@@ -544,7 +623,7 @@ JSON field meanings:
 - `query.device`: input `device` value
 - `query.time_start`: input `time_start` value
 - `query.time_end`: input `time_end` value
-- `result.nand_write_volume.total`: formatted string value in `MiB` (for example
+- `result.total`: formatted string value in `MiB` (for example
   `"67.89 MiB"`), converted from stat-record `hot_write` 4KiB units
 
 Demo:
@@ -587,7 +666,7 @@ JSON field meanings:
 - `query.device`: input `device` value
 - `query.time_start`: input `time_start` value
 - `query.time_end`: input `time_end` value
-- `result.gc_data_movement.total`: formatted string value in `MiB` (for example
+- `result.total`: formatted string value in `MiB` (for example
   `"67.89 MiB"`), converted from stat-record `folding_write` 4KiB units
 
 Demo:

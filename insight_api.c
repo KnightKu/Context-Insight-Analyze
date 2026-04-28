@@ -207,13 +207,15 @@ static int append_json_escaped_string(char *dst, size_t dst_size, size_t *cursor
     return 0;
 }
 
-static int compose_lifecycle_query_json(const char *device,
-                                        uint64_t block_size,
-                                        const char *time_start,
-                                        const char *time_end,
-                                        const char *result_json,
-                                        char *json_buffer) {
-    if (device == NULL || time_start == NULL || time_end == NULL ||
+static int compose_query_result_json(const char *api_name,
+                                     const char *device,
+                                     int include_block_size,
+                                     uint64_t block_size,
+                                     const char *time_start,
+                                     const char *time_end,
+                                     const char *result_json,
+                                     char *json_buffer) {
+    if (api_name == NULL || device == NULL || time_start == NULL || time_end == NULL ||
         result_json == NULL || json_buffer == NULL) {
         errno = EINVAL;
         return -1;
@@ -222,7 +224,17 @@ static int compose_lifecycle_query_json(const char *device,
     int n = snprintf(json_buffer + pos, INSIGHT_JSON_BUFFER_BYTES - pos,
                      "{\n"
                      "  \"query\": {\n"
-                     "    \"api\": \"get_lifecycle_distribution\",\n"
+                     "    \"api\": \"");
+    if (n < 0 || (size_t)n >= (INSIGHT_JSON_BUFFER_BYTES - pos)) {
+        errno = ENOSPC;
+        return -1;
+    }
+    pos += (size_t)n;
+    if (append_json_escaped_string(json_buffer, INSIGHT_JSON_BUFFER_BYTES, &pos, api_name) != 0) {
+        return -1;
+    }
+    n = snprintf(json_buffer + pos, INSIGHT_JSON_BUFFER_BYTES - pos,
+                 "\",\n"
                      "    \"device\": \"");
     if (n < 0 || (size_t)n >= (INSIGHT_JSON_BUFFER_BYTES - pos)) {
         errno = ENOSPC;
@@ -233,9 +245,12 @@ static int compose_lifecycle_query_json(const char *device,
         return -1;
     }
     n = snprintf(json_buffer + pos, INSIGHT_JSON_BUFFER_BYTES - pos,
-                 "\",\n"
-                 "    \"block_size\": %llu,\n"
-                 "    \"time_start\": \"",
+                 include_block_size != 0 ?
+                     "\",\n"
+                     "    \"block_size\": %llu,\n"
+                     "    \"time_start\": \"" :
+                     "\",\n"
+                     "    \"time_start\": \"",
                  (unsigned long long)block_size);
     if (n < 0 || (size_t)n >= (INSIGHT_JSON_BUFFER_BYTES - pos)) {
         errno = ENOSPC;
@@ -278,18 +293,19 @@ static int compose_lifecycle_query_json(const char *device,
     return 0;
 }
 
-static int compose_write_amplification_json(double wa_value,
-                                            char *json_buffer) {
-    if (json_buffer == NULL) {
+static int compose_write_amplification_result_json(double wa_value,
+                                                   char *result_json,
+                                                   size_t result_json_size) {
+    if (result_json == NULL || result_json_size == 0U) {
         errno = EINVAL;
         return -1;
     }
-    int n = snprintf(json_buffer, INSIGHT_JSON_BUFFER_BYTES,
+    int n = snprintf(result_json, result_json_size,
                      "{\n"
                      "  \"write_amplification\": %.6f\n"
                      "}",
                      wa_value);
-    if (n < 0 || (size_t)n >= INSIGHT_JSON_BUFFER_BYTES) {
+    if (n < 0 || (size_t)n >= result_json_size) {
         errno = ENOSPC;
         return -1;
     }
@@ -339,78 +355,33 @@ static int extract_write_amplification_from_samples(const char *device,
     if (sum_hot_4k != 0ULL) {
         wa_value = ((double)sum_hot_4k + (double)sum_folding_4k) / (double)sum_hot_4k;
     }
-    return compose_write_amplification_json(wa_value, json_buffer);
+    char result_json[INSIGHT_JSON_BUFFER_BYTES];
+    if (compose_write_amplification_result_json(wa_value, result_json, sizeof(result_json)) != 0) {
+        return -1;
+    }
+    return compose_query_result_json("get_write_amplification",
+                                     device,
+                                     1,
+                                     block_size,
+                                     time_start,
+                                     time_end,
+                                     result_json,
+                                     json_buffer);
 }
 
-static int compose_stat_volume_json(const char *api_name,
-                                    const char *result_key,
-                                    const char *device,
-                                    const char *time_start,
-                                    const char *time_end,
-                                    double volume_mib,
-                                    char *json_buffer) {
-    if (api_name == NULL || result_key == NULL || device == NULL || time_start == NULL ||
-        time_end == NULL || json_buffer == NULL) {
+static int compose_stat_volume_result_json(double volume_mib,
+                                           char *result_json,
+                                           size_t result_json_size) {
+    if (result_json == NULL || result_json_size == 0U) {
         errno = EINVAL;
         return -1;
     }
-    size_t pos = 0U;
-    int n = snprintf(json_buffer + pos, INSIGHT_JSON_BUFFER_BYTES - pos,
+    int n = snprintf(result_json, result_json_size,
                      "{\n"
-                     "  \"query\": {\n"
-                     "    \"api\": \"");
-    if (n < 0 || (size_t)n >= (INSIGHT_JSON_BUFFER_BYTES - pos)) {
-        errno = ENOSPC;
-        return -1;
-    }
-    pos += (size_t)n;
-    if (append_json_escaped_string(json_buffer, INSIGHT_JSON_BUFFER_BYTES, &pos, api_name) != 0) {
-        return -1;
-    }
-    n = snprintf(json_buffer + pos, INSIGHT_JSON_BUFFER_BYTES - pos,
-                 "\",\n"
-                 "    \"device\": \"");
-    if (n < 0 || (size_t)n >= (INSIGHT_JSON_BUFFER_BYTES - pos)) {
-        errno = ENOSPC;
-        return -1;
-    }
-    pos += (size_t)n;
-    if (append_json_escaped_string(json_buffer, INSIGHT_JSON_BUFFER_BYTES, &pos, device) != 0) {
-        return -1;
-    }
-    n = snprintf(json_buffer + pos, INSIGHT_JSON_BUFFER_BYTES - pos,
-                 "\",\n"
-                 "    \"time_start\": \"");
-    if (n < 0 || (size_t)n >= (INSIGHT_JSON_BUFFER_BYTES - pos)) {
-        errno = ENOSPC;
-        return -1;
-    }
-    pos += (size_t)n;
-    if (append_json_escaped_string(json_buffer, INSIGHT_JSON_BUFFER_BYTES, &pos, time_start) != 0) {
-        return -1;
-    }
-    n = snprintf(json_buffer + pos, INSIGHT_JSON_BUFFER_BYTES - pos,
-                 "\",\n"
-                 "    \"time_end\": \"");
-    if (n < 0 || (size_t)n >= (INSIGHT_JSON_BUFFER_BYTES - pos)) {
-        errno = ENOSPC;
-        return -1;
-    }
-    pos += (size_t)n;
-    if (append_json_escaped_string(json_buffer, INSIGHT_JSON_BUFFER_BYTES, &pos, time_end) != 0) {
-        return -1;
-    }
-    n = snprintf(json_buffer + pos, INSIGHT_JSON_BUFFER_BYTES - pos,
-                 "\"\n"
-                 "  },\n"
-                 "  \"result\": {\n"
-                 "    \"%s\": {\n"
-                 "      \"total\": \"%.2f MiB\"\n"
-                 "    }\n"
-                 "  }\n"
-                 "}",
-                 result_key, volume_mib);
-    if (n < 0 || (size_t)n >= (INSIGHT_JSON_BUFFER_BYTES - pos)) {
+                     "  \"total\": \"%.2f MiB\"\n"
+                     "}",
+                     volume_mib);
+    if (n < 0 || (size_t)n >= result_json_size) {
         errno = ENOSPC;
         return -1;
     }
@@ -452,22 +423,46 @@ static int extract_stat_volume_from_samples(const char *device,
         }
     }
     double volume_mib = (double)sum_4k * 4.0 / 1024.0;
-    if (query_type == INSIGHT_QUERY_NAND_WRITE_VOLUME) {
-        return compose_stat_volume_json("get_nand_write_volume",
-                                        "nand_write_volume",
-                                        device,
-                                        time_start,
-                                        time_end,
-                                        volume_mib,
-                                        json_buffer);
+    const char *api_name = (query_type == INSIGHT_QUERY_NAND_WRITE_VOLUME) ?
+        "get_nand_write_volume" : "get_gc_data_movement";
+    char result_json[INSIGHT_JSON_BUFFER_BYTES];
+    if (compose_stat_volume_result_json(volume_mib, result_json, sizeof(result_json)) != 0) {
+        return -1;
     }
-    return compose_stat_volume_json("get_gc_data_movement",
-                                    "gc_data_movement",
-                                    device,
-                                    time_start,
-                                    time_end,
-                                    volume_mib,
-                                    json_buffer);
+    return compose_query_result_json(api_name,
+                                     device,
+                                     0,
+                                     0ULL,
+                                     time_start,
+                                     time_end,
+                                     result_json,
+                                     json_buffer);
+}
+
+static int run_query_and_fill_wrapped_json(const char *device,
+                                           uint64_t block_size,
+                                           const char *time_start,
+                                           const char *time_end,
+                                           insight_query_type_t query_type,
+                                           const char *api_name,
+                                           char *json_buffer) {
+    if (api_name == NULL || json_buffer == NULL) {
+        errno = EINVAL;
+        return -1;
+    }
+    char result_json[INSIGHT_JSON_BUFFER_BYTES];
+    if (run_query_and_fill_json(device, block_size, time_start, time_end,
+                                query_type, result_json) != 0) {
+        return -1;
+    }
+    return compose_query_result_json(api_name,
+                                     device,
+                                     1,
+                                     block_size,
+                                     time_start,
+                                     time_end,
+                                     result_json,
+                                     json_buffer);
 }
 
 static int run_query_and_fill_json(const char *device,
@@ -597,8 +592,10 @@ int get_read_latency_percentiles(const char *device,
                                  const char *time_start,
                                  const char *time_end,
                                  char *json_buffer) {
-    return run_query_and_fill_json(device, block_size, time_start, time_end,
-                                   INSIGHT_QUERY_LATENCY, json_buffer);
+    return run_query_and_fill_wrapped_json(device, block_size, time_start, time_end,
+                                           INSIGHT_QUERY_LATENCY,
+                                           "get_read_latency_percentiles",
+                                           json_buffer);
 }
 
 int get_write_amplification(const char *device,
@@ -616,8 +613,10 @@ int get_qd_distribution(const char *device,
                         const char *time_start,
                         const char *time_end,
                         char *json_buffer) {
-    return run_query_and_fill_json(device, block_size, time_start, time_end,
-                                   INSIGHT_QUERY_QD, json_buffer);
+    return run_query_and_fill_wrapped_json(device, block_size, time_start, time_end,
+                                           INSIGHT_QUERY_QD,
+                                           "get_qd_distribution",
+                                           json_buffer);
 }
 
 int get_read_size_distribution(const char *device,
@@ -625,8 +624,10 @@ int get_read_size_distribution(const char *device,
                                const char *time_start,
                                const char *time_end,
                                char *json_buffer) {
-    return run_query_and_fill_json(device, block_size, time_start, time_end,
-                                   INSIGHT_QUERY_READ_SIZE, json_buffer);
+    return run_query_and_fill_wrapped_json(device, block_size, time_start, time_end,
+                                           INSIGHT_QUERY_READ_SIZE,
+                                           "get_read_size_distribution",
+                                           json_buffer);
 }
 
 int get_write_size_distribution(const char *device,
@@ -634,8 +635,10 @@ int get_write_size_distribution(const char *device,
                                 const char *time_start,
                                 const char *time_end,
                                 char *json_buffer) {
-    return run_query_and_fill_json(device, block_size, time_start, time_end,
-                                   INSIGHT_QUERY_WRITE_SIZE, json_buffer);
+    return run_query_and_fill_wrapped_json(device, block_size, time_start, time_end,
+                                           INSIGHT_QUERY_WRITE_SIZE,
+                                           "get_write_size_distribution",
+                                           json_buffer);
 }
 
 int get_read_throughput_distribution(const char *device,
@@ -643,8 +646,10 @@ int get_read_throughput_distribution(const char *device,
                                      const char *time_start,
                                      const char *time_end,
                                      char *json_buffer) {
-    return run_query_and_fill_json(device, block_size, time_start, time_end,
-                                   INSIGHT_QUERY_READ_THROUGHPUT, json_buffer);
+    return run_query_and_fill_wrapped_json(device, block_size, time_start, time_end,
+                                           INSIGHT_QUERY_READ_THROUGHPUT,
+                                           "get_read_throughput_distribution",
+                                           json_buffer);
 }
 
 int get_write_throughput_distribution(const char *device,
@@ -652,8 +657,10 @@ int get_write_throughput_distribution(const char *device,
                                       const char *time_start,
                                       const char *time_end,
                                       char *json_buffer) {
-    return run_query_and_fill_json(device, block_size, time_start, time_end,
-                                   INSIGHT_QUERY_WRITE_THROUGHPUT, json_buffer);
+    return run_query_and_fill_wrapped_json(device, block_size, time_start, time_end,
+                                           INSIGHT_QUERY_WRITE_THROUGHPUT,
+                                           "get_write_throughput_distribution",
+                                           json_buffer);
 }
 
 int get_read_count_distribution(const char *device,
@@ -661,8 +668,10 @@ int get_read_count_distribution(const char *device,
                                 const char *time_start,
                                 const char *time_end,
                                 char *json_buffer) {
-    return run_query_and_fill_json(device, block_size, time_start, time_end,
-                                   INSIGHT_QUERY_READ_COUNT, json_buffer);
+    return run_query_and_fill_wrapped_json(device, block_size, time_start, time_end,
+                                           INSIGHT_QUERY_READ_COUNT,
+                                           "get_read_count_distribution",
+                                           json_buffer);
 }
 
 int get_write_to_first_read_distribution(const char *device,
@@ -670,8 +679,10 @@ int get_write_to_first_read_distribution(const char *device,
                                          const char *time_start,
                                          const char *time_end,
                                          char *json_buffer) {
-    return run_query_and_fill_json(device, block_size, time_start, time_end,
-                                   INSIGHT_QUERY_W2FR, json_buffer);
+    return run_query_and_fill_wrapped_json(device, block_size, time_start, time_end,
+                                           INSIGHT_QUERY_W2FR,
+                                           "get_write_to_first_read_distribution",
+                                           json_buffer);
 }
 
 int get_lifecycle_distribution(const char *device,
@@ -679,13 +690,10 @@ int get_lifecycle_distribution(const char *device,
                                const char *time_start,
                                const char *time_end,
                                char *json_buffer) {
-    char result_json[INSIGHT_JSON_BUFFER_BYTES];
-    if (run_query_and_fill_json(device, block_size, time_start, time_end,
-                                INSIGHT_QUERY_LIFECYCLE, result_json) != 0) {
-        return -1;
-    }
-    return compose_lifecycle_query_json(device, block_size, time_start, time_end,
-                                        result_json, json_buffer);
+    return run_query_and_fill_wrapped_json(device, block_size, time_start, time_end,
+                                           INSIGHT_QUERY_LIFECYCLE,
+                                           "get_lifecycle_distribution",
+                                           json_buffer);
 }
 
 int get_nand_write_volume(const char *device,
