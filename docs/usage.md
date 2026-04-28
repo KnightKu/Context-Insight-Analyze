@@ -176,6 +176,7 @@ The project now provides a C library and header for programmatic JSON queries:
 
 - Header: `insight_api.h`
 - Static library: `libinsight_api.a`
+- Detailed API reference: `docs/insight_api.md`
 
 APIs:
 
