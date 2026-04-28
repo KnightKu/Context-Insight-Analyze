@@ -127,6 +127,142 @@ static int capture_stderr_content(FILE *src, char *out, size_t out_size) {
     return 0;
 }
 
+static int append_json_escaped_string(char *dst, size_t dst_size, size_t *cursor, const char *src) {
+    if (dst == NULL || cursor == NULL || src == NULL || dst_size == 0U) {
+        errno = EINVAL;
+        return -1;
+    }
+    for (const unsigned char *p = (const unsigned char *)src; *p != '\0'; ++p) {
+        const char *esc = NULL;
+        switch (*p) {
+            case '\"':
+                esc = "\\\"";
+                break;
+            case '\\':
+                esc = "\\\\";
+                break;
+            case '\b':
+                esc = "\\b";
+                break;
+            case '\f':
+                esc = "\\f";
+                break;
+            case '\n':
+                esc = "\\n";
+                break;
+            case '\r':
+                esc = "\\r";
+                break;
+            case '\t':
+                esc = "\\t";
+                break;
+            default:
+                break;
+        }
+        if (esc != NULL) {
+            size_t n = strlen(esc);
+            if ((*cursor + n) >= dst_size) {
+                errno = ENOSPC;
+                return -1;
+            }
+            memcpy(dst + *cursor, esc, n);
+            *cursor += n;
+            continue;
+        }
+        if (*p < 0x20U) {
+            if ((*cursor + 6U) >= dst_size) {
+                errno = ENOSPC;
+                return -1;
+            }
+            int n = snprintf(dst + *cursor, dst_size - *cursor, "\\u%04x", (unsigned int)*p);
+            if (n < 0 || (size_t)n >= (dst_size - *cursor)) {
+                errno = ENOSPC;
+                return -1;
+            }
+            *cursor += (size_t)n;
+            continue;
+        }
+        if ((*cursor + 1U) >= dst_size) {
+            errno = ENOSPC;
+            return -1;
+        }
+        dst[*cursor] = (char)*p;
+        *cursor += 1U;
+    }
+    return 0;
+}
+
+static int compose_lifecycle_query_json(const char *device,
+                                        uint64_t block_size,
+                                        const char *time_start,
+                                        const char *time_end,
+                                        const char *result_json,
+                                        char *json_buffer) {
+    if (device == NULL || time_start == NULL || time_end == NULL ||
+        result_json == NULL || json_buffer == NULL) {
+        errno = EINVAL;
+        return -1;
+    }
+    size_t pos = 0U;
+    int n = snprintf(json_buffer + pos, INSIGHT_JSON_BUFFER_BYTES - pos,
+                     "{\n"
+                     "  \"query\": {\n"
+                     "    \"api\": \"get_lifecycle_distribution\",\n"
+                     "    \"device\": \"");
+    if (n < 0 || (size_t)n >= (INSIGHT_JSON_BUFFER_BYTES - pos)) {
+        errno = ENOSPC;
+        return -1;
+    }
+    pos += (size_t)n;
+    if (append_json_escaped_string(json_buffer, INSIGHT_JSON_BUFFER_BYTES, &pos, device) != 0) {
+        return -1;
+    }
+    n = snprintf(json_buffer + pos, INSIGHT_JSON_BUFFER_BYTES - pos,
+                 "\",\n"
+                 "    \"block_size\": %llu,\n"
+                 "    \"time_start\": \"",
+                 (unsigned long long)block_size);
+    if (n < 0 || (size_t)n >= (INSIGHT_JSON_BUFFER_BYTES - pos)) {
+        errno = ENOSPC;
+        return -1;
+    }
+    pos += (size_t)n;
+    if (append_json_escaped_string(json_buffer, INSIGHT_JSON_BUFFER_BYTES, &pos, time_start) != 0) {
+        return -1;
+    }
+    n = snprintf(json_buffer + pos, INSIGHT_JSON_BUFFER_BYTES - pos,
+                 "\",\n"
+                 "    \"time_end\": \"");
+    if (n < 0 || (size_t)n >= (INSIGHT_JSON_BUFFER_BYTES - pos)) {
+        errno = ENOSPC;
+        return -1;
+    }
+    pos += (size_t)n;
+    if (append_json_escaped_string(json_buffer, INSIGHT_JSON_BUFFER_BYTES, &pos, time_end) != 0) {
+        return -1;
+    }
+    n = snprintf(json_buffer + pos, INSIGHT_JSON_BUFFER_BYTES - pos,
+                 "\"\n"
+                 "  },\n"
+                 "  \"result\": ");
+    if (n < 0 || (size_t)n >= (INSIGHT_JSON_BUFFER_BYTES - pos)) {
+        errno = ENOSPC;
+        return -1;
+    }
+    pos += (size_t)n;
+    size_t result_len = strlen(result_json);
+    if ((pos + result_len + 3U) >= INSIGHT_JSON_BUFFER_BYTES) {
+        errno = ENOSPC;
+        return -1;
+    }
+    memcpy(json_buffer + pos, result_json, result_len);
+    pos += result_len;
+    json_buffer[pos++] = '\n';
+    json_buffer[pos++] = '}';
+    json_buffer[pos] = '\0';
+    return 0;
+}
+
 static int run_query_and_fill_json(const char *device,
                                    uint64_t block_size,
                                    const char *time_start,
@@ -333,6 +469,11 @@ int get_lifecycle_distribution(const char *device,
                                const char *time_start,
                                const char *time_end,
                                char *json_buffer) {
-    return run_query_and_fill_json(device, block_size, time_start, time_end,
-                                   INSIGHT_QUERY_LIFECYCLE, json_buffer);
+    char result_json[INSIGHT_JSON_BUFFER_BYTES];
+    if (run_query_and_fill_json(device, block_size, time_start, time_end,
+                                INSIGHT_QUERY_LIFECYCLE, result_json) != 0) {
+        return -1;
+    }
+    return compose_lifecycle_query_json(device, block_size, time_start, time_end,
+                                        result_json, json_buffer);
 }
