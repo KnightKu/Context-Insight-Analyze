@@ -588,9 +588,28 @@ static int run_query_and_fill_wrapped_json(const char *device,
         return -1;
     }
     if (insight_query_total_key_should_rename(query_type) != 0) {
-        char *p = strstr(flattened_result_json, "\"total\":");
+        static const char old_key[] = "\"total\":";
+        static const char new_key[] = "\"sampling\":";
+        char *p = strstr(flattened_result_json, old_key);
         if (p != NULL) {
-            memcpy(p + 1, "sampling", 8U);
+            size_t old_len = sizeof(old_key) - 1U;
+            size_t new_len = sizeof(new_key) - 1U;
+            size_t cur_len = strlen(flattened_result_json);
+            if (new_len > old_len) {
+                size_t growth = new_len - old_len;
+                if (cur_len + growth >= sizeof(flattened_result_json)) {
+                    errno = ENOSPC;
+                    return -1;
+                }
+                memmove(p + new_len,
+                        p + old_len,
+                        (cur_len - (size_t)(p - flattened_result_json) - old_len) + 1U);
+            } else if (new_len < old_len) {
+                memmove(p + new_len,
+                        p + old_len,
+                        (cur_len - (size_t)(p - flattened_result_json) - old_len) + 1U);
+            }
+            memcpy(p, new_key, new_len);
         }
     }
     return compose_query_result_json(api_name,
