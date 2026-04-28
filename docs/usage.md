@@ -253,8 +253,10 @@ Execution equivalence:
 
 - `get_read_latency_percentiles(...)` ~=  
   `./sfx_ctx_insight_analyze --format-json --latency --block-size=<block_size> -S <time_start> -E <time_end> <device> 0 11T`
-- `get_write_amplification(...)` ~=  
-  `./sfx_ctx_insight_analyze --format-json --wa-dist --block-size=<block_size> -S <time_start> -E <time_end> <device> 0 11T`
+- `get_write_amplification(...)`:
+  - scans stat records in the given time window and returns a single WA value
+  - formula: `(sum(hot_write) + sum(folding_write)) / sum(hot_write)`
+  - `hot_write` and `folding_write` are stat-record 4KiB units
 - `get_qd_distribution(...)` ~=  
   `./sfx_ctx_insight_analyze --format-json --qd-dist --block-size=<block_size> -S <time_start> -E <time_end> <device> 0 11T`
 - `get_read_size_distribution(...)` ~=  

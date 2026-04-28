@@ -278,6 +278,70 @@ static int compose_lifecycle_query_json(const char *device,
     return 0;
 }
 
+static int compose_write_amplification_json(double wa_value,
+                                            char *json_buffer) {
+    if (json_buffer == NULL) {
+        errno = EINVAL;
+        return -1;
+    }
+    int n = snprintf(json_buffer, INSIGHT_JSON_BUFFER_BYTES,
+                     "{\n"
+                     "  \"write_amplification\": %.6f\n"
+                     "}",
+                     wa_value);
+    if (n < 0 || (size_t)n >= INSIGHT_JSON_BUFFER_BYTES) {
+        errno = ENOSPC;
+        return -1;
+    }
+    return 0;
+}
+
+static int extract_write_amplification_from_samples(const char *device,
+                                                    uint64_t block_size,
+                                                    const char *time_start,
+                                                    const char *time_end,
+                                                    char *json_buffer) {
+    if (device == NULL || time_start == NULL || time_end == NULL ||
+        json_buffer == NULL || block_size == 0ULL) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    char scratch_json[INSIGHT_JSON_BUFFER_BYTES];
+    if (run_query_and_fill_json(device, block_size, time_start, time_end,
+                                INSIGHT_QUERY_WA, scratch_json) != 0) {
+        return -1;
+    }
+    (void)scratch_json;
+
+    uint64_t sample_count = 0ULL;
+    if (nvme_post_action_stats_get_stat_sample_count(&sample_count) != 0) {
+        return -1;
+    }
+
+    uint64_t sum_hot_4k = 0ULL;
+    uint64_t sum_folding_4k = 0ULL;
+    for (uint64_t i = 0ULL; i < sample_count; ++i) {
+        nvme_post_action_stat_sample_t sample;
+        if (nvme_post_action_stats_get_stat_sample(i, &sample) != 0) {
+            return -1;
+        }
+        if (UINT64_MAX - sum_hot_4k < (uint64_t)sample.hot_write_4k ||
+            UINT64_MAX - sum_folding_4k < (uint64_t)sample.folding_write_4k) {
+            errno = ERANGE;
+            return -1;
+        }
+        sum_hot_4k += (uint64_t)sample.hot_write_4k;
+        sum_folding_4k += (uint64_t)sample.folding_write_4k;
+    }
+
+    double wa_value = 0.0;
+    if (sum_hot_4k != 0ULL) {
+        wa_value = ((double)sum_hot_4k + (double)sum_folding_4k) / (double)sum_hot_4k;
+    }
+    return compose_write_amplification_json(wa_value, json_buffer);
+}
+
 static int compose_stat_volume_json(const char *api_name,
                                     const char *result_key,
                                     const char *device,
@@ -542,8 +606,9 @@ int get_write_amplification(const char *device,
                             const char *time_start,
                             const char *time_end,
                             char *json_buffer) {
-    return run_query_and_fill_json(device, block_size, time_start, time_end,
-                                   INSIGHT_QUERY_WA, json_buffer);
+    return extract_write_amplification_from_samples(device, block_size,
+                                                    time_start, time_end,
+                                                    json_buffer);
 }
 
 int get_qd_distribution(const char *device,

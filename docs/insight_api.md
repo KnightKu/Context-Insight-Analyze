@@ -149,18 +149,18 @@ int get_write_amplification(const char *device,
 
 Function:
 
-- Query write-amplification distribution from stat records.
+- Query a single write-amplification value from stat records within the time window.
+- Calculation:
+  `(sum(hot_write_4k) + sum(folding_write_4k)) / sum(hot_write_4k)`.
 
 Top-level JSON object:
 
-- `wa_dist`
+- `write_amplification`
 
 JSON field meanings:
 
-- `wa_dist.total`: total WA samples counted
-- `wa_dist.buckets[].label`: WA range label
-- `wa_dist.buckets[].count`: sample count in this WA range
-- `wa_dist.buckets[].ratio`: percentage of this range in `total`
+- `write_amplification`: computed WA value over all stat records in the window
+  (`hot_write` and `folding_write` are both 4KiB-unit counters in stat records)
 
 Demo:
 
