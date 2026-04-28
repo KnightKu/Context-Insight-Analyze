@@ -59,13 +59,13 @@ Note:
 
 ## 2. Common Contract
 
-All APIs use the same parameter pattern:
+Most APIs use the following common parameter pattern:
 
 - `device`: NVMe device path (for example `/dev/nvme0n1`), must not be `NULL`
-- `block_size`: bytes, must be positive, semantics equivalent to CLI `--block-size`
 - `time_start` / `time_end`: format `YYYY-MM-DD HH:MM:SS`, and `time_start <= time_end`
 - `json_buffer`: caller-provided output buffer, must not be `NULL`
   - recommended size: `INSIGHT_JSON_BUFFER_BYTES` (65536)
+- For APIs that include `block_size`, it is in bytes and must be positive.
 
 Return value:
 
@@ -87,9 +87,10 @@ Thread safety:
 
 Output envelope note:
 
-- `get_lifecycle_distribution` returns an extended envelope:
+- `get_lifecycle_distribution`, `get_nand_write_volume`, and
+  `get_gc_data_movement` return an extended envelope:
   - `query`: function name and input parameters
-  - `result`: original lifecycle distribution payload
+  - `result`: API result payload
 - Other APIs keep their original top-level result objects.
 
 ---

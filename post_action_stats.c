@@ -1197,7 +1197,7 @@ int nvme_post_action_stats_record_stat(uint64_t abs_time_us,
         errno = ENODEV;
         return -1;
     }
-    if (qd == 0U && hot_write_4k == 0U) {
+    if (qd == 0U && hot_write_4k == 0U && folding_write_4k == 0U) {
         pthread_mutex_unlock(&g_stats_mutex);
         return 0;
     }
