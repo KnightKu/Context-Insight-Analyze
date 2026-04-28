@@ -15,7 +15,47 @@ Include and link:
 
 - Header: `insight_api.h`
 - Static library: `libinsight_api.a`
+- Shared library: `libinsight_api.so`
 - Linker flag: `-lpthread`
+
+### 1.1 Build shared library
+
+```bash
+make libinsight_api.so
+```
+
+### 1.2 Minimal dynamic-link demo (full flow: compile -> run)
+
+Minimal demo source:
+
+- `examples/insight_api_minimal_demo.c`
+
+Build demo against shared library:
+
+```bash
+make insight_api_minimal_demo
+```
+
+Run demo (dynamic linker needs current directory):
+
+```bash
+export LD_LIBRARY_PATH="$(pwd):${LD_LIBRARY_PATH}"
+sudo ./insight_api_minimal_demo /dev/nvme0n1 "2026-04-26 10:05:05" "2026-04-26 12:10:05" 4096
+```
+
+One-line compile command (without Makefile target):
+
+```bash
+gcc -Wall -Wextra -pedantic -std=c11 -I. \
+  -o insight_api_minimal_demo examples/insight_api_minimal_demo.c \
+  -L. -linsight_api -lpthread
+```
+
+Note:
+
+- If runtime reports `libinsight_api.so: cannot open shared object file`,
+  set `LD_LIBRARY_PATH` as shown above or install the shared library to a
+  standard library path.
 
 ## 2. Common Contract
 
