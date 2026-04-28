@@ -44,6 +44,15 @@ static int insight_query_is_stat_volume(insight_query_type_t query_type) {
             query_type == INSIGHT_QUERY_GC_DATA_MOVEMENT) ? 1 : 0;
 }
 
+static int insight_query_allow_zero_block_size(insight_query_type_t query_type) {
+    return (query_type == INSIGHT_QUERY_LATENCY ||
+            query_type == INSIGHT_QUERY_WA ||
+            query_type == INSIGHT_QUERY_QD ||
+            query_type == INSIGHT_QUERY_READ_SIZE ||
+            query_type == INSIGHT_QUERY_WRITE_SIZE ||
+            query_type == INSIGHT_QUERY_READ_THROUGHPUT) ? 1 : 0;
+}
+
 static pthread_mutex_t g_insight_api_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 static int run_query_and_fill_json(const char *device,
@@ -583,10 +592,7 @@ static int run_query_and_fill_json(const char *device,
                                    const char *time_end,
                                    insight_query_type_t query_type,
                                    char *json_buffer) {
-    int allow_zero_block = (query_type == INSIGHT_QUERY_LATENCY ||
-                            query_type == INSIGHT_QUERY_WA ||
-                            query_type == INSIGHT_QUERY_QD ||
-                            query_type == INSIGHT_QUERY_READ_THROUGHPUT) ? 1 : 0;
+    int allow_zero_block = insight_query_allow_zero_block_size(query_type);
     if (device == NULL || json_buffer == NULL ||
         (block_size == 0ULL && allow_zero_block == 0) ||
         time_start == NULL || time_end == NULL) {
@@ -734,22 +740,20 @@ int get_qd_distribution(const char *device,
 }
 
 int get_read_size_distribution(const char *device,
-                               uint64_t block_size,
                                const char *time_start,
                                const char *time_end,
                                char *json_buffer) {
-    return run_query_and_fill_wrapped_json(device, block_size, time_start, time_end,
+    return run_query_and_fill_wrapped_json(device, 0ULL, time_start, time_end,
                                            INSIGHT_QUERY_READ_SIZE,
                                            "get_read_size_distribution",
                                            json_buffer);
 }
 
 int get_write_size_distribution(const char *device,
-                                uint64_t block_size,
                                 const char *time_start,
                                 const char *time_end,
                                 char *json_buffer) {
-    return run_query_and_fill_wrapped_json(device, block_size, time_start, time_end,
+    return run_query_and_fill_wrapped_json(device, 0ULL, time_start, time_end,
                                            INSIGHT_QUERY_WRITE_SIZE,
                                            "get_write_size_distribution",
                                            json_buffer);

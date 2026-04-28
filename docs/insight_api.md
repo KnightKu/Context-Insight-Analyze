@@ -255,7 +255,6 @@ if (get_qd_distribution("/dev/nvme0n1",
 
 ```c
 int get_read_size_distribution(const char *device,
-                               uint64_t block_size,
                                const char *time_start,
                                const char *time_end,
                                char *json_buffer);
@@ -274,7 +273,6 @@ JSON field meanings:
 
 - `query.api`: API function name (`get_read_size_distribution`)
 - `query.device`: input `device` value
-- `query.block_size`: input `block_size` value (bytes)
 - `query.time_start`: input `time_start` value
 - `query.time_end`: input `time_end` value
 - `result.total`: total read-size samples counted
@@ -286,7 +284,7 @@ Demo:
 
 ```c
 char json[INSIGHT_JSON_BUFFER_BYTES];
-if (get_read_size_distribution("/dev/nvme0n1", 4096,
+if (get_read_size_distribution("/dev/nvme0n1",
                                "2026-04-26 10:05:05",
                                "2026-04-26 12:10:05",
                                json) == 0) {
@@ -300,7 +298,6 @@ if (get_read_size_distribution("/dev/nvme0n1", 4096,
 
 ```c
 int get_write_size_distribution(const char *device,
-                                uint64_t block_size,
                                 const char *time_start,
                                 const char *time_end,
                                 char *json_buffer);
@@ -319,7 +316,6 @@ JSON field meanings:
 
 - `query.api`: API function name (`get_write_size_distribution`)
 - `query.device`: input `device` value
-- `query.block_size`: input `block_size` value (bytes)
 - `query.time_start`: input `time_start` value
 - `query.time_end`: input `time_end` value
 - `result.total`: total write-size samples counted
@@ -331,7 +327,7 @@ Demo:
 
 ```c
 char json[INSIGHT_JSON_BUFFER_BYTES];
-if (get_write_size_distribution("/dev/nvme0n1", 4096,
+if (get_write_size_distribution("/dev/nvme0n1",
                                 "2026-04-26 10:05:05",
                                 "2026-04-26 12:10:05",
                                 json) == 0) {
@@ -740,13 +736,13 @@ int main(int argc, char *argv[]) {
     }
     printf("=== qd_distribution ===\n%s\n\n", json_buffer);
 
-    if (get_read_size_distribution(device, block_size, time_start, time_end, json_buffer) != 0) {
+    if (get_read_size_distribution(device, time_start, time_end, json_buffer) != 0) {
         fprintf(stderr, "get_read_size_distribution failed: %s\n", strerror(errno));
         return 5;
     }
     printf("=== read_size_distribution ===\n%s\n\n", json_buffer);
 
-    if (get_write_size_distribution(device, block_size, time_start, time_end, json_buffer) != 0) {
+    if (get_write_size_distribution(device, time_start, time_end, json_buffer) != 0) {
         fprintf(stderr, "get_write_size_distribution failed: %s\n", strerror(errno));
         return 6;
     }
