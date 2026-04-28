@@ -182,19 +182,16 @@ APIs:
 
 ```c
 int get_read_latency_percentiles(const char *device,
-                                 uint64_t block_size,
                                  const char *time_start,
                                  const char *time_end,
                                  char *json_buffer);
 
 int get_write_amplification(const char *device,
-                            uint64_t block_size,
                             const char *time_start,
                             const char *time_end,
                             char *json_buffer);
 
 int get_qd_distribution(const char *device,
-                        uint64_t block_size,
                         const char *time_start,
                         const char *time_end,
                         char *json_buffer);
@@ -212,7 +209,6 @@ int get_write_size_distribution(const char *device,
                                 char *json_buffer);
 
 int get_read_throughput_distribution(const char *device,
-                                     uint64_t block_size,
                                      const char *time_start,
                                      const char *time_end,
                                      char *json_buffer);
@@ -245,26 +241,27 @@ int get_lifecycle_distribution(const char *device,
 Common input contract:
 
 - `device`: NVMe device path, same as CLI `<device_name>`
-- `block_size`: bytes, same meaning as `--block-size`; must be positive
+- `block_size`: bytes, required only for APIs that include this parameter
 - `time_start` / `time_end`: format `YYYY-MM-DD HH:MM:SS`
 - `json_buffer`: output buffer for JSON string
 
 Execution equivalence:
 
 - `get_read_latency_percentiles(...)` ~=  
-  `./sfx_ctx_insight_analyze --format-json --latency --block-size=<block_size> -S <time_start> -E <time_end> <device> 0 11T`
+  `./sfx_ctx_insight_analyze --format-json --latency --block-size=4096 -S <time_start> -E <time_end> <device> 0 11T`
 - `get_write_amplification(...)`:
   - scans stat records in the given time window and returns a single WA value
   - formula: `(sum(hot_write) + sum(folding_write)) / sum(hot_write)`
   - `hot_write` and `folding_write` are stat-record 4KiB units
+- `get_write_amplification(...)` uses fixed `block_size=4096` internally
 - `get_qd_distribution(...)` ~=  
-  `./sfx_ctx_insight_analyze --format-json --qd-dist --block-size=<block_size> -S <time_start> -E <time_end> <device> 0 11T`
+  `./sfx_ctx_insight_analyze --format-json --qd-dist --block-size=4096 -S <time_start> -E <time_end> <device> 0 11T`
 - `get_read_size_distribution(...)` ~=  
   `./sfx_ctx_insight_analyze --format-json --read-size-dist --block-size=<block_size> -S <time_start> -E <time_end> <device> 0 11T`
 - `get_write_size_distribution(...)` ~=  
   `./sfx_ctx_insight_analyze --format-json --write-size-dist --block-size=<block_size> -S <time_start> -E <time_end> <device> 0 11T`
 - `get_read_throughput_distribution(...)` ~=  
-  `./sfx_ctx_insight_analyze --format-json --read-throughput-dist --block-size=<block_size> -S <time_start> -E <time_end> <device> 0 11T`
+  `./sfx_ctx_insight_analyze --format-json --read-throughput-dist --block-size=4096 -S <time_start> -E <time_end> <device> 0 11T`
 - `get_write_throughput_distribution(...)` ~=  
   `./sfx_ctx_insight_analyze --format-json --write-throughput-dist --block-size=<block_size> -S <time_start> -E <time_end> <device> 0 11T`
   - throughput buckets use strict `1GiB/s` granularity through `16GiB/s`:

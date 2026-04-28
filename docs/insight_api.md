@@ -99,7 +99,6 @@ Output envelope note:
 
 ```c
 int get_read_latency_percentiles(const char *device,
-                                 uint64_t block_size,
                                  const char *time_start,
                                  const char *time_end,
                                  char *json_buffer);
@@ -121,7 +120,6 @@ Example JSON shape:
   "query": {
     "api": "get_read_latency_percentiles",
     "device": "/dev/nvme0n1",
-    "block_size": 4096,
     "time_start": "2026-04-26 10:05:05",
     "time_end": "2026-04-26 12:10:05"
   },
@@ -145,7 +143,6 @@ JSON field meanings:
 
 - `query.api`: API function name (`get_read_latency_percentiles`)
 - `query.device`: input `device` value
-- `query.block_size`: input `block_size` value (bytes)
 - `query.time_start`: input `time_start` value
 - `query.time_end`: input `time_end` value
 - `result.read|write|trim.count`: sample count
@@ -158,7 +155,7 @@ Demo:
 
 ```c
 char json[INSIGHT_JSON_BUFFER_BYTES];
-if (get_read_latency_percentiles("/dev/nvme0n1", 4096,
+if (get_read_latency_percentiles("/dev/nvme0n1",
                                  "2026-04-26 10:05:05",
                                  "2026-04-26 12:10:05",
                                  json) == 0) {
@@ -172,7 +169,6 @@ if (get_read_latency_percentiles("/dev/nvme0n1", 4096,
 
 ```c
 int get_write_amplification(const char *device,
-                            uint64_t block_size,
                             const char *time_start,
                             const char *time_end,
                             char *json_buffer);
@@ -193,7 +189,6 @@ JSON field meanings:
 
 - `query.api`: API function name (`get_write_amplification`)
 - `query.device`: input `device` value
-- `query.block_size`: input `block_size` value (bytes)
 - `query.time_start`: input `time_start` value
 - `query.time_end`: input `time_end` value
 - `result`: computed WA value over all stat records in the window
@@ -203,7 +198,7 @@ Demo:
 
 ```c
 char json[INSIGHT_JSON_BUFFER_BYTES];
-if (get_write_amplification("/dev/nvme0n1", 4096,
+if (get_write_amplification("/dev/nvme0n1",
                             "2026-04-26 10:05:05",
                             "2026-04-26 12:10:05",
                             json) == 0) {
@@ -217,7 +212,6 @@ if (get_write_amplification("/dev/nvme0n1", 4096,
 
 ```c
 int get_qd_distribution(const char *device,
-                        uint64_t block_size,
                         const char *time_start,
                         const char *time_end,
                         char *json_buffer);
@@ -236,7 +230,6 @@ JSON field meanings:
 
 - `query.api`: API function name (`get_qd_distribution`)
 - `query.device`: input `device` value
-- `query.block_size`: input `block_size` value (bytes)
 - `query.time_start`: input `time_start` value
 - `query.time_end`: input `time_end` value
 - `result.total`: total QD samples counted
@@ -248,7 +241,7 @@ Demo:
 
 ```c
 char json[INSIGHT_JSON_BUFFER_BYTES];
-if (get_qd_distribution("/dev/nvme0n1", 4096,
+if (get_qd_distribution("/dev/nvme0n1",
                         "2026-04-26 10:05:05",
                         "2026-04-26 12:10:05",
                         json) == 0) {
@@ -352,7 +345,6 @@ if (get_write_size_distribution("/dev/nvme0n1", 4096,
 
 ```c
 int get_read_throughput_distribution(const char *device,
-                                     uint64_t block_size,
                                      const char *time_start,
                                      const char *time_end,
                                      char *json_buffer);
@@ -371,7 +363,6 @@ JSON field meanings:
 
 - `query.api`: API function name (`get_read_throughput_distribution`)
 - `query.device`: input `device` value
-- `query.block_size`: input `block_size` value (bytes)
 - `query.time_start`: input `time_start` value
 - `query.time_end`: input `time_end` value
 - `result.total`: total read-throughput samples counted
@@ -383,7 +374,7 @@ Demo:
 
 ```c
 char json[INSIGHT_JSON_BUFFER_BYTES];
-if (get_read_throughput_distribution("/dev/nvme0n1", 4096,
+if (get_read_throughput_distribution("/dev/nvme0n1",
                                      "2026-04-26 10:05:05",
                                      "2026-04-26 12:10:05",
                                      json) == 0) {
@@ -731,19 +722,19 @@ int main(int argc, char *argv[]) {
 
     char json_buffer[INSIGHT_JSON_BUFFER_BYTES];
 
-    if (get_read_latency_percentiles(device, block_size, time_start, time_end, json_buffer) != 0) {
+    if (get_read_latency_percentiles(device, time_start, time_end, json_buffer) != 0) {
         fprintf(stderr, "get_read_latency_percentiles failed: %s\n", strerror(errno));
         return 2;
     }
     printf("=== read_latency_percentiles ===\n%s\n\n", json_buffer);
 
-    if (get_write_amplification(device, block_size, time_start, time_end, json_buffer) != 0) {
+    if (get_write_amplification(device, time_start, time_end, json_buffer) != 0) {
         fprintf(stderr, "get_write_amplification failed: %s\n", strerror(errno));
         return 3;
     }
     printf("=== write_amplification ===\n%s\n\n", json_buffer);
 
-    if (get_qd_distribution(device, block_size, time_start, time_end, json_buffer) != 0) {
+    if (get_qd_distribution(device, time_start, time_end, json_buffer) != 0) {
         fprintf(stderr, "get_qd_distribution failed: %s\n", strerror(errno));
         return 4;
     }
@@ -761,7 +752,7 @@ int main(int argc, char *argv[]) {
     }
     printf("=== write_size_distribution ===\n%s\n\n", json_buffer);
 
-    if (get_read_throughput_distribution(device, block_size, time_start, time_end, json_buffer) != 0) {
+    if (get_read_throughput_distribution(device, time_start, time_end, json_buffer) != 0) {
         fprintf(stderr, "get_read_throughput_distribution failed: %s\n", strerror(errno));
         return 7;
     }

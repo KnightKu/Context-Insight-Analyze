@@ -7,7 +7,6 @@
 int main(void) {
     char json[INSIGHT_JSON_BUFFER_BYTES];
     int rc = get_qd_distribution("/dev/nvme0n1",
-                                 4096ULL,
                                  "2026-04-26 10:05:05",
                                  "2026-04-26 12:10:05",
                                  json);

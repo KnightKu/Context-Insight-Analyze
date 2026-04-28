@@ -42,19 +42,19 @@ int main(int argc, char *argv[]) {
 
     char json_buffer[INSIGHT_JSON_BUFFER_BYTES];
 
-    if (get_read_latency_percentiles(device, block_size, time_start, time_end, json_buffer) != 0) {
+    if (get_read_latency_percentiles(device, time_start, time_end, json_buffer) != 0) {
         fprintf(stderr, "get_read_latency_percentiles failed: %s\n", strerror(errno));
         return 2;
     }
     printf("=== read_latency_percentiles ===\n%s\n\n", json_buffer);
 
-    if (get_write_amplification(device, block_size, time_start, time_end, json_buffer) != 0) {
+    if (get_write_amplification(device, time_start, time_end, json_buffer) != 0) {
         fprintf(stderr, "get_write_amplification failed: %s\n", strerror(errno));
         return 3;
     }
     printf("=== write_amplification ===\n%s\n\n", json_buffer);
 
-    if (get_qd_distribution(device, block_size, time_start, time_end, json_buffer) != 0) {
+    if (get_qd_distribution(device, time_start, time_end, json_buffer) != 0) {
         fprintf(stderr, "get_qd_distribution failed: %s\n", strerror(errno));
         return 4;
     }
@@ -72,7 +72,7 @@ int main(int argc, char *argv[]) {
     }
     printf("=== write_size_distribution ===\n%s\n\n", json_buffer);
 
-    if (get_read_throughput_distribution(device, block_size, time_start, time_end, json_buffer) != 0) {
+    if (get_read_throughput_distribution(device, time_start, time_end, json_buffer) != 0) {
         fprintf(stderr, "get_read_throughput_distribution failed: %s\n", strerror(errno));
         return 7;
     }

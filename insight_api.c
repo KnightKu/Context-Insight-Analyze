@@ -45,6 +45,7 @@ static int insight_query_is_stat_volume(insight_query_type_t query_type) {
 }
 
 static pthread_mutex_t g_insight_api_mutex = PTHREAD_MUTEX_INITIALIZER;
+static const uint64_t INSIGHT_DEFAULT_API_BLOCK_SIZE_BYTES = NVME_LBA_SIZE_BYTES;
 
 static int run_query_and_fill_json(const char *device,
                                    uint64_t block_size,
@@ -577,6 +578,21 @@ static int run_query_and_fill_wrapped_json(const char *device,
                                      json_buffer);
 }
 
+static int run_query_and_fill_wrapped_json_default_block(const char *device,
+                                                         const char *time_start,
+                                                         const char *time_end,
+                                                         insight_query_type_t query_type,
+                                                         const char *api_name,
+                                                         char *json_buffer) {
+    return run_query_and_fill_wrapped_json(device,
+                                           INSIGHT_DEFAULT_API_BLOCK_SIZE_BYTES,
+                                           time_start,
+                                           time_end,
+                                           query_type,
+                                           api_name,
+                                           json_buffer);
+}
+
 static int run_query_and_fill_json(const char *device,
                                    uint64_t block_size,
                                    const char *time_start,
@@ -700,35 +716,32 @@ out_capture:
 }
 
 int get_read_latency_percentiles(const char *device,
-                                 uint64_t block_size,
                                  const char *time_start,
                                  const char *time_end,
                                  char *json_buffer) {
-    return run_query_and_fill_wrapped_json(device, block_size, time_start, time_end,
-                                           INSIGHT_QUERY_LATENCY,
-                                           "get_read_latency_percentiles",
-                                           json_buffer);
+    return run_query_and_fill_wrapped_json_default_block(device, time_start, time_end,
+                                                         INSIGHT_QUERY_LATENCY,
+                                                         "get_read_latency_percentiles",
+                                                         json_buffer);
 }
 
 int get_write_amplification(const char *device,
-                            uint64_t block_size,
                             const char *time_start,
                             const char *time_end,
                             char *json_buffer) {
-    return extract_write_amplification_from_samples(device, block_size,
+    return extract_write_amplification_from_samples(device, INSIGHT_DEFAULT_API_BLOCK_SIZE_BYTES,
                                                     time_start, time_end,
                                                     json_buffer);
 }
 
 int get_qd_distribution(const char *device,
-                        uint64_t block_size,
                         const char *time_start,
                         const char *time_end,
                         char *json_buffer) {
-    return run_query_and_fill_wrapped_json(device, block_size, time_start, time_end,
-                                           INSIGHT_QUERY_QD,
-                                           "get_qd_distribution",
-                                           json_buffer);
+    return run_query_and_fill_wrapped_json_default_block(device, time_start, time_end,
+                                                         INSIGHT_QUERY_QD,
+                                                         "get_qd_distribution",
+                                                         json_buffer);
 }
 
 int get_read_size_distribution(const char *device,
@@ -754,14 +767,13 @@ int get_write_size_distribution(const char *device,
 }
 
 int get_read_throughput_distribution(const char *device,
-                                     uint64_t block_size,
                                      const char *time_start,
                                      const char *time_end,
                                      char *json_buffer) {
-    return run_query_and_fill_wrapped_json(device, block_size, time_start, time_end,
-                                           INSIGHT_QUERY_READ_THROUGHPUT,
-                                           "get_read_throughput_distribution",
-                                           json_buffer);
+    return run_query_and_fill_wrapped_json_default_block(device, time_start, time_end,
+                                                         INSIGHT_QUERY_READ_THROUGHPUT,
+                                                         "get_read_throughput_distribution",
+                                                         json_buffer);
 }
 
 int get_write_throughput_distribution(const char *device,
