@@ -403,7 +403,6 @@ JSON field meanings:
 
 - `query.api`: API function name (`get_write_throughput_distribution`)
 - `query.device`: input `device` value
-- `query.block_size`: input `block_size` value (bytes)
 - `query.time_start`: input `time_start` value
 - `query.time_end`: input `time_end` value
 - `result.sampling`: total write-throughput samples counted
@@ -448,7 +447,6 @@ JSON field meanings:
 
 - `query.api`: API function name (`get_read_count_distribution`)
 - `query.device`: input `device` value
-- `query.block_size`: input `block_size` value (bytes)
 - `query.time_start`: input `time_start` value
 - `query.time_end`: input `time_end` value
 - `result.sampling`: total read-count samples counted
@@ -494,7 +492,6 @@ JSON field meanings:
 
 - `query.api`: API function name (`get_write_to_first_read_distribution`)
 - `query.device`: input `device` value
-- `query.block_size`: input `block_size` value (bytes)
 - `query.time_start`: input `time_start` value
 - `query.time_end`: input `time_end` value
 - `result.sampling`: total W2FR samples counted
@@ -539,7 +536,6 @@ JSON field meanings:
 
 - `query.api`: API function name (`get_lifecycle_distribution`)
 - `query.device`: input `device` value
-- `query.block_size`: input `block_size` value (bytes)
 - `query.time_start`: input `time_start` value
 - `query.time_end`: input `time_end` value
 - `result.sampling`: total lifecycle samples counted
@@ -555,7 +551,6 @@ Example JSON shape:
   "query": {
     "api": "get_lifecycle_distribution",
     "device": "/dev/nvme0n1",
-    "block_size": 4096,
     "time_start": "2026-04-26 10:05:05",
     "time_end": "2026-04-26 12:10:05"
   },
