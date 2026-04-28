@@ -544,9 +544,8 @@ JSON field meanings:
 - `query.device`: input `device` value
 - `query.time_start`: input `time_start` value
 - `query.time_end`: input `time_end` value
-- `result.nand_write_volume.unit`: always `MiB`
-- `result.nand_write_volume.total_mib`: sum of all stat-record `hot_write` values
-  within the time window, converted from 4KiB units to MiB
+- `result.nand_write_volume.total`: formatted string value in `MiB` (for example
+  `"67.89 MiB"`), converted from stat-record `hot_write` 4KiB units
 
 Demo:
 
@@ -588,9 +587,8 @@ JSON field meanings:
 - `query.device`: input `device` value
 - `query.time_start`: input `time_start` value
 - `query.time_end`: input `time_end` value
-- `result.gc_data_movement.unit`: always `MiB`
-- `result.gc_data_movement.total_mib`: sum of all stat-record `folding_write`
-  values within the time window, converted from 4KiB units to MiB
+- `result.gc_data_movement.total`: formatted string value in `MiB` (for example
+  `"67.89 MiB"`), converted from stat-record `folding_write` 4KiB units
 
 Demo:
 

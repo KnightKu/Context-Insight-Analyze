@@ -341,8 +341,7 @@ static int compose_stat_volume_json(const char *api_name,
                  "  },\n"
                  "  \"result\": {\n"
                  "    \"%s\": {\n"
-                 "      \"unit\": \"MiB\",\n"
-                 "      \"total_mib\": %.2f\n"
+                 "      \"total\": \"%.2f MiB\"\n"
                  "    }\n"
                  "  }\n"
                  "}",
