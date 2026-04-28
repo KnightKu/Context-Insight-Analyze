@@ -53,6 +53,17 @@ static int insight_query_allow_zero_block_size(insight_query_type_t query_type) 
             query_type == INSIGHT_QUERY_READ_THROUGHPUT) ? 1 : 0;
 }
 
+static int insight_query_total_key_should_rename(insight_query_type_t query_type) {
+    return (query_type == INSIGHT_QUERY_QD ||
+            query_type == INSIGHT_QUERY_READ_SIZE ||
+            query_type == INSIGHT_QUERY_WRITE_SIZE ||
+            query_type == INSIGHT_QUERY_READ_THROUGHPUT ||
+            query_type == INSIGHT_QUERY_WRITE_THROUGHPUT ||
+            query_type == INSIGHT_QUERY_READ_COUNT ||
+            query_type == INSIGHT_QUERY_W2FR ||
+            query_type == INSIGHT_QUERY_LIFECYCLE) ? 1 : 0;
+}
+
 static pthread_mutex_t g_insight_api_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 static int run_query_and_fill_json(const char *device,
@@ -575,6 +586,12 @@ static int run_query_and_fill_wrapped_json(const char *device,
     if (flatten_single_root_object(raw_result_json, flattened_result_json,
                                    sizeof(flattened_result_json)) != 0) {
         return -1;
+    }
+    if (insight_query_total_key_should_rename(query_type) != 0) {
+        char *p = strstr(flattened_result_json, "\"total\":");
+        if (p != NULL) {
+            memcpy(p + 1, "simpling", 8U);
+        }
     }
     return compose_query_result_json(api_name,
                                      device,
