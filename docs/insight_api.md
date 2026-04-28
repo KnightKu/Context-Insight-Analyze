@@ -85,6 +85,13 @@ Thread safety:
 
 - APIs are protected by an internal global mutex, so concurrent callers are serialized.
 
+Output envelope note:
+
+- `get_lifecycle_distribution` returns an extended envelope:
+  - `query`: function name and input parameters
+  - `result`: original lifecycle distribution payload
+- Other APIs keep their original top-level result objects.
+
 ---
 
 ## 3. API Details
@@ -456,17 +463,45 @@ Function:
 
 - Query lifecycle latency distribution.
 
-Top-level JSON object:
+Top-level JSON objects:
 
-- `lifecycle_distribution`
+- `query`
+- `result`
 
 JSON field meanings:
 
-- `lifecycle_distribution.total`: total lifecycle samples counted
-- `lifecycle_distribution.buckets[].label`: latency range label
-- `lifecycle_distribution.buckets[].count`: sample count in this range
-- `lifecycle_distribution.buckets[].ratio`: percentage of this range in `total`
-- `lifecycle_distribution.buckets[].bytes_mib`: aggregated data size in MiB for this range
+- `query.api`: API function name (`get_lifecycle_distribution`)
+- `query.device`: input `device` value
+- `query.block_size`: input `block_size` value (bytes)
+- `query.time_start`: input `time_start` value
+- `query.time_end`: input `time_end` value
+- `result.lifecycle_distribution.total`: total lifecycle samples counted
+- `result.lifecycle_distribution.buckets[].label`: latency range label
+- `result.lifecycle_distribution.buckets[].count`: sample count in this range
+- `result.lifecycle_distribution.buckets[].ratio`: percentage of this range in `total`
+- `result.lifecycle_distribution.buckets[].bytes_mib`: aggregated data size in MiB for this range
+
+Example JSON shape:
+
+```json
+{
+  "query": {
+    "api": "get_lifecycle_distribution",
+    "device": "/dev/nvme0n1",
+    "block_size": 4096,
+    "time_start": "2026-04-26 10:05:05",
+    "time_end": "2026-04-26 12:10:05"
+  },
+  "result": {
+    "lifecycle_distribution": {
+      "total": 0,
+      "buckets": [
+        {"label":"[1s,5s)","count":0,"ratio":0.0,"bytes_mib":0.0}
+      ]
+    }
+  }
+}
+```
 
 Demo:
 
