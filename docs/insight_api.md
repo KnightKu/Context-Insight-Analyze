@@ -106,7 +106,7 @@ int get_read_latency_percentiles(const char *device,
 
 Function:
 
-- Query read/write/trim latency summary and percentile statistics.
+- Query read latency percentile statistics only.
 
 Top-level JSON objects:
 
@@ -124,15 +124,13 @@ Example JSON shape:
     "time_end": "2026-04-26 12:10:05"
   },
   "result": {
-    "latency_percentiles": {
-      "read": {
-        "count": 0,
-        "min_us": 0,
-        "max_us": 0,
-        "avg_us": 0.00,
-        "percentiles_us": {
-          "p10": 0
-        }
+    "read": {
+      "count": 0,
+      "min_us": 0,
+      "max_us": 0,
+      "avg_us": 0.00,
+      "percentiles_us": {
+        "p10": 0
       }
     }
   }
@@ -145,11 +143,11 @@ JSON field meanings:
 - `query.device`: input `device` value
 - `query.time_start`: input `time_start` value
 - `query.time_end`: input `time_end` value
-- `result.read|write|trim.count`: sample count
-- `result.read|write|trim.min_us`: minimum latency in microseconds
-- `result.read|write|trim.max_us`: maximum latency in microseconds
-- `result.read|write|trim.avg_us`: average latency in microseconds
-- `result.read|write|trim.percentiles_us.pXX`: percentile latency in microseconds
+- `result.read.count`: sample count
+- `result.read.min_us`: minimum latency in microseconds
+- `result.read.max_us`: maximum latency in microseconds
+- `result.read.avg_us`: average latency in microseconds
+- `result.read.percentiles_us.pXX`: percentile latency in microseconds
 
 Demo:
 
@@ -165,7 +163,75 @@ if (get_read_latency_percentiles("/dev/nvme0n1",
 
 ---
 
-### 3.2 `get_write_amplification`
+### 3.2 `get_write_latency_percentiles`
+
+```c
+int get_write_latency_percentiles(const char *device,
+                                  const char *time_start,
+                                  const char *time_end,
+                                  char *json_buffer);
+```
+
+Function:
+
+- Query write latency percentile statistics only.
+
+Top-level JSON objects:
+
+- `query`
+- `result`
+
+Example JSON shape:
+
+```json
+{
+  "query": {
+    "api": "get_write_latency_percentiles",
+    "device": "/dev/nvme0n1",
+    "time_start": "2026-04-26 10:05:05",
+    "time_end": "2026-04-26 12:10:05"
+  },
+  "result": {
+    "write": {
+      "count": 0,
+      "min_us": 0,
+      "max_us": 0,
+      "avg_us": 0.00,
+      "percentiles_us": {
+        "p10": 0
+      }
+    }
+  }
+}
+```
+
+JSON field meanings:
+
+- `query.api`: API function name (`get_write_latency_percentiles`)
+- `query.device`: input `device` value
+- `query.time_start`: input `time_start` value
+- `query.time_end`: input `time_end` value
+- `result.write.count`: sample count
+- `result.write.min_us`: minimum latency in microseconds
+- `result.write.max_us`: maximum latency in microseconds
+- `result.write.avg_us`: average latency in microseconds
+- `result.write.percentiles_us.pXX`: percentile latency in microseconds
+
+Demo:
+
+```c
+char json[INSIGHT_JSON_BUFFER_BYTES];
+if (get_write_latency_percentiles("/dev/nvme0n1",
+                                  "2026-04-26 10:05:05",
+                                  "2026-04-26 12:10:05",
+                                  json) == 0) {
+    puts(json);
+}
+```
+
+---
+
+### 3.3 `get_write_amplification`
 
 ```c
 int get_write_amplification(const char *device,
@@ -208,7 +274,7 @@ if (get_write_amplification("/dev/nvme0n1",
 
 ---
 
-### 3.3 `get_qd_distribution`
+### 3.4 `get_qd_distribution`
 
 ```c
 int get_qd_distribution(const char *device,
@@ -251,7 +317,7 @@ if (get_qd_distribution("/dev/nvme0n1",
 
 ---
 
-### 3.4 `get_read_size_distribution`
+### 3.5 `get_read_size_distribution`
 
 ```c
 int get_read_size_distribution(const char *device,
@@ -294,7 +360,7 @@ if (get_read_size_distribution("/dev/nvme0n1",
 
 ---
 
-### 3.5 `get_write_size_distribution`
+### 3.6 `get_write_size_distribution`
 
 ```c
 int get_write_size_distribution(const char *device,
@@ -337,7 +403,7 @@ if (get_write_size_distribution("/dev/nvme0n1",
 
 ---
 
-### 3.6 `get_read_throughput_distribution`
+### 3.7 `get_read_throughput_distribution`
 
 ```c
 int get_read_throughput_distribution(const char *device,
@@ -380,7 +446,7 @@ if (get_read_throughput_distribution("/dev/nvme0n1",
 
 ---
 
-### 3.7 `get_write_throughput_distribution`
+### 3.8 `get_write_throughput_distribution`
 
 ```c
 int get_write_throughput_distribution(const char *device,
@@ -423,7 +489,7 @@ if (get_write_throughput_distribution("/dev/nvme0n1",
 
 ---
 
-### 3.8 `get_read_count_distribution`
+### 3.9 `get_read_count_distribution`
 
 ```c
 int get_read_count_distribution(const char *device,
@@ -468,7 +534,7 @@ if (get_read_count_distribution("/dev/nvme0n1", 4096,
 
 ---
 
-### 3.9 `get_write_to_first_read_distribution`
+### 3.10 `get_write_to_first_read_distribution`
 
 ```c
 int get_write_to_first_read_distribution(const char *device,
@@ -512,7 +578,7 @@ if (get_write_to_first_read_distribution("/dev/nvme0n1", 4096,
 
 ---
 
-### 3.10 `get_lifecycle_distribution`
+### 3.11 `get_lifecycle_distribution`
 
 ```c
 int get_lifecycle_distribution(const char *device,
@@ -576,7 +642,7 @@ if (get_lifecycle_distribution("/dev/nvme0n1", 4096,
 
 ---
 
-### 3.11 `get_nand_write_volume`
+### 3.12 `get_nand_write_volume`
 
 ```c
 int get_nand_write_volume(const char *device,
@@ -619,7 +685,7 @@ if (get_nand_write_volume("/dev/nvme0n1",
 
 ---
 
-### 3.12 `get_gc_data_movement`
+### 3.13 `get_gc_data_movement`
 
 ```c
 int get_gc_data_movement(const char *device,
@@ -718,69 +784,75 @@ int main(int argc, char *argv[]) {
     }
     printf("=== read_latency_percentiles ===\n%s\n\n", json_buffer);
 
+    if (get_write_latency_percentiles(device, time_start, time_end, json_buffer) != 0) {
+        fprintf(stderr, "get_write_latency_percentiles failed: %s\n", strerror(errno));
+        return 3;
+    }
+    printf("=== write_latency_percentiles ===\n%s\n\n", json_buffer);
+
     if (get_write_amplification(device, time_start, time_end, json_buffer) != 0) {
         fprintf(stderr, "get_write_amplification failed: %s\n", strerror(errno));
-        return 3;
+        return 4;
     }
     printf("=== write_amplification ===\n%s\n\n", json_buffer);
 
     if (get_qd_distribution(device, time_start, time_end, json_buffer) != 0) {
         fprintf(stderr, "get_qd_distribution failed: %s\n", strerror(errno));
-        return 4;
+        return 5;
     }
     printf("=== qd_distribution ===\n%s\n\n", json_buffer);
 
     if (get_read_size_distribution(device, time_start, time_end, json_buffer) != 0) {
         fprintf(stderr, "get_read_size_distribution failed: %s\n", strerror(errno));
-        return 5;
+        return 6;
     }
     printf("=== read_size_distribution ===\n%s\n\n", json_buffer);
 
     if (get_write_size_distribution(device, time_start, time_end, json_buffer) != 0) {
         fprintf(stderr, "get_write_size_distribution failed: %s\n", strerror(errno));
-        return 6;
+        return 7;
     }
     printf("=== write_size_distribution ===\n%s\n\n", json_buffer);
 
     if (get_read_throughput_distribution(device, time_start, time_end, json_buffer) != 0) {
         fprintf(stderr, "get_read_throughput_distribution failed: %s\n", strerror(errno));
-        return 7;
+        return 8;
     }
     printf("=== read_throughput_distribution ===\n%s\n\n", json_buffer);
 
     if (get_write_throughput_distribution(device, time_start, time_end, json_buffer) != 0) {
         fprintf(stderr, "get_write_throughput_distribution failed: %s\n", strerror(errno));
-        return 8;
+        return 9;
     }
     printf("=== write_throughput_distribution ===\n%s\n", json_buffer);
 
     if (get_read_count_distribution(device, block_size, time_start, time_end, json_buffer) != 0) {
         fprintf(stderr, "get_read_count_distribution failed: %s\n", strerror(errno));
-        return 9;
+        return 10;
     }
     printf("=== read_count_distribution ===\n%s\n\n", json_buffer);
 
     if (get_write_to_first_read_distribution(device, block_size, time_start, time_end, json_buffer) != 0) {
         fprintf(stderr, "get_write_to_first_read_distribution failed: %s\n", strerror(errno));
-        return 10;
+        return 11;
     }
     printf("=== write_to_first_read_distribution ===\n%s\n\n", json_buffer);
 
     if (get_lifecycle_distribution(device, block_size, time_start, time_end, json_buffer) != 0) {
         fprintf(stderr, "get_lifecycle_distribution failed: %s\n", strerror(errno));
-        return 11;
+        return 12;
     }
     printf("=== lifecycle_distribution ===\n%s\n\n", json_buffer);
 
     if (get_nand_write_volume(device, time_start, time_end, json_buffer) != 0) {
         fprintf(stderr, "get_nand_write_volume failed: %s\n", strerror(errno));
-        return 12;
+        return 13;
     }
     printf("=== nand_write_volume ===\n%s\n\n", json_buffer);
 
     if (get_gc_data_movement(device, time_start, time_end, json_buffer) != 0) {
         fprintf(stderr, "get_gc_data_movement failed: %s\n", strerror(errno));
-        return 13;
+        return 14;
     }
     printf("=== gc_data_movement ===\n%s\n", json_buffer);
 

@@ -623,6 +623,94 @@ static int run_query_and_fill_wrapped_json(const char *device,
                                      json_buffer);
 }
 
+static int extract_latency_bucket_result(const char *device,
+                                         const char *time_start,
+                                         const char *time_end,
+                                         const char *api_name,
+                                         const char *bucket_key,
+                                         char *json_buffer) {
+    if (device == NULL || time_start == NULL || time_end == NULL ||
+        api_name == NULL || bucket_key == NULL || json_buffer == NULL) {
+        errno = EINVAL;
+        return -1;
+    }
+    char raw_result_json[INSIGHT_JSON_BUFFER_BYTES];
+    if (run_query_and_fill_json(device, 0ULL, time_start, time_end,
+                                INSIGHT_QUERY_LATENCY, raw_result_json) != 0) {
+        return -1;
+    }
+    char flattened_result_json[INSIGHT_JSON_BUFFER_BYTES];
+    if (flatten_single_root_object(raw_result_json, flattened_result_json,
+                                   sizeof(flattened_result_json)) != 0) {
+        return -1;
+    }
+    char needle[32];
+    int n = snprintf(needle, sizeof(needle), "\"%s\":", bucket_key);
+    if (n <= 0 || (size_t)n >= sizeof(needle)) {
+        errno = EINVAL;
+        return -1;
+    }
+    char *start = strstr(flattened_result_json, needle);
+    if (start == NULL) {
+        errno = ENODATA;
+        return -1;
+    }
+    char *obj_start = strchr(start, '{');
+    if (obj_start == NULL) {
+        errno = ENODATA;
+        return -1;
+    }
+    int depth = 0;
+    char *p = obj_start;
+    while (*p != '\0') {
+        if (*p == '\"') {
+            ++p;
+            while (*p != '\0') {
+                if (*p == '\\' && p[1] != '\0') {
+                    p += 2;
+                    continue;
+                }
+                if (*p == '\"') {
+                    ++p;
+                    break;
+                }
+                ++p;
+            }
+            continue;
+        }
+        if (*p == '{') {
+            ++depth;
+        } else if (*p == '}') {
+            --depth;
+            if (depth == 0) {
+                ++p;
+                break;
+            }
+        }
+        ++p;
+    }
+    if (depth != 0) {
+        errno = ENODATA;
+        return -1;
+    }
+    size_t bucket_len = (size_t)(p - obj_start);
+    char result_json[INSIGHT_JSON_BUFFER_BYTES];
+    if (bucket_len + 1U >= sizeof(result_json)) {
+        errno = ENOSPC;
+        return -1;
+    }
+    memcpy(result_json, obj_start, bucket_len);
+    result_json[bucket_len] = '\0';
+    return compose_query_result_json(api_name,
+                                     device,
+                                     0,
+                                     0ULL,
+                                     time_start,
+                                     time_end,
+                                     result_json,
+                                     json_buffer);
+}
+
 static int run_query_and_fill_json(const char *device,
                                    uint64_t block_size,
                                    const char *time_start,
@@ -751,10 +839,20 @@ int get_read_latency_percentiles(const char *device,
                                  const char *time_start,
                                  const char *time_end,
                                  char *json_buffer) {
-    return run_query_and_fill_wrapped_json(device, 0ULL, time_start, time_end,
-                                           INSIGHT_QUERY_LATENCY,
-                                           "get_read_latency_percentiles",
-                                           json_buffer);
+    return extract_latency_bucket_result(device, time_start, time_end,
+                                         "get_read_latency_percentiles",
+                                         "read",
+                                         json_buffer);
+}
+
+int get_write_latency_percentiles(const char *device,
+                                  const char *time_start,
+                                  const char *time_end,
+                                  char *json_buffer) {
+    return extract_latency_bucket_result(device, time_start, time_end,
+                                         "get_write_latency_percentiles",
+                                         "write",
+                                         json_buffer);
 }
 
 int get_write_amplification(const char *device,

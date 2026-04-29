@@ -48,6 +48,12 @@ int main(int argc, char *argv[]) {
     }
     printf("=== read_latency_percentiles ===\n%s\n\n", json_buffer);
 
+    if (get_write_latency_percentiles(device, time_start, time_end, json_buffer) != 0) {
+        fprintf(stderr, "get_write_latency_percentiles failed: %s\n", strerror(errno));
+        return 14;
+    }
+    printf("=== write_latency_percentiles ===\n%s\n\n", json_buffer);
+
     if (get_write_amplification(device, time_start, time_end, json_buffer) != 0) {
         fprintf(stderr, "get_write_amplification failed: %s\n", strerror(errno));
         return 3;

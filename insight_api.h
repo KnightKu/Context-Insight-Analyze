@@ -14,6 +14,11 @@ int get_read_latency_percentiles(const char *device,
                                  const char *time_end,
                                  char *json_buffer);
 
+int get_write_latency_percentiles(const char *device,
+                                  const char *time_start,
+                                  const char *time_end,
+                                  char *json_buffer);
+
 int get_write_amplification(const char *device,
                             const char *time_start,
                             const char *time_end,

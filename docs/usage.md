@@ -186,6 +186,11 @@ int get_read_latency_percentiles(const char *device,
                                  const char *time_end,
                                  char *json_buffer);
 
+int get_write_latency_percentiles(const char *device,
+                                  const char *time_start,
+                                  const char *time_end,
+                                  char *json_buffer);
+
 int get_write_amplification(const char *device,
                             const char *time_start,
                             const char *time_end,
@@ -246,6 +251,8 @@ Common input contract:
 Execution equivalence:
 
 - `get_read_latency_percentiles(...)` ~=  
+  `./sfx_ctx_insight_analyze --format-json --latency -S <time_start> -E <time_end> <device> 0 11T`
+- `get_write_latency_percentiles(...)` ~=  
   `./sfx_ctx_insight_analyze --format-json --latency -S <time_start> -E <time_end> <device> 0 11T`
 - `get_write_amplification(...)`:
   - scans stat records in the given time window and returns a single WA value
