@@ -50,6 +50,7 @@ static int insight_query_allow_zero_block_size(insight_query_type_t query_type) 
             query_type == INSIGHT_QUERY_QD ||
             query_type == INSIGHT_QUERY_READ_SIZE ||
             query_type == INSIGHT_QUERY_WRITE_SIZE ||
+            query_type == INSIGHT_QUERY_WRITE_THROUGHPUT ||
             query_type == INSIGHT_QUERY_READ_THROUGHPUT) ? 1 : 0;
 }
 
@@ -488,7 +489,7 @@ static int extract_write_amplification_from_samples(const char *device,
     }
     return compose_query_result_json("get_write_amplification",
                                      device,
-                                     (block_size != 0ULL) ? 1 : 0,
+                                     0,
                                      block_size,
                                      time_start,
                                      time_end,
@@ -806,11 +807,10 @@ int get_read_throughput_distribution(const char *device,
 }
 
 int get_write_throughput_distribution(const char *device,
-                                      uint64_t block_size,
                                       const char *time_start,
                                       const char *time_end,
                                       char *json_buffer) {
-    return run_query_and_fill_wrapped_json(device, block_size, time_start, time_end,
+    return run_query_and_fill_wrapped_json(device, 0, time_start, time_end,
                                            INSIGHT_QUERY_WRITE_THROUGHPUT,
                                            "get_write_throughput_distribution",
                                            json_buffer);

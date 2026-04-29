@@ -384,7 +384,6 @@ if (get_read_throughput_distribution("/dev/nvme0n1",
 
 ```c
 int get_write_throughput_distribution(const char *device,
-                                      uint64_t block_size,
                                       const char *time_start,
                                       const char *time_end,
                                       char *json_buffer);
@@ -414,7 +413,7 @@ Demo:
 
 ```c
 char json[INSIGHT_JSON_BUFFER_BYTES];
-if (get_write_throughput_distribution("/dev/nvme0n1", 4096,
+if (get_write_throughput_distribution("/dev/nvme0n1",
                                       "2026-04-26 10:05:05",
                                       "2026-04-26 12:10:05",
                                       json) == 0) {
@@ -749,7 +748,7 @@ int main(int argc, char *argv[]) {
     }
     printf("=== read_throughput_distribution ===\n%s\n\n", json_buffer);
 
-    if (get_write_throughput_distribution(device, block_size, time_start, time_end, json_buffer) != 0) {
+    if (get_write_throughput_distribution(device, time_start, time_end, json_buffer) != 0) {
         fprintf(stderr, "get_write_throughput_distribution failed: %s\n", strerror(errno));
         return 8;
     }
