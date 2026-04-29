@@ -518,7 +518,7 @@ JSON field meanings:
 - `result.buckets[].label`: read-count range label
 - `result.buckets[].count`: sample count in this range
 - `result.buckets[].ratio`: percentage of this range in `total`
-- `result.buckets[].bytes_mib`: aggregated data size in MiB for this range
+- `result.buckets[].MiB`: aggregated data size in MiB for this range
 
 Demo:
 
@@ -607,7 +607,7 @@ JSON field meanings:
 - `result.buckets[].label`: latency range label
 - `result.buckets[].count`: sample count in this range
 - `result.buckets[].ratio`: percentage of this range in `total`
-- `result.buckets[].bytes_mib`: aggregated data size in MiB for this range
+- `result.buckets[].MiB`: aggregated data size in MiB for this range
 
 Example JSON shape:
 
@@ -622,7 +622,7 @@ Example JSON shape:
   "result": {
     "sampling": 0,
     "buckets": [
-      {"label":"[1s,5s)","count":0,"ratio":0.0,"bytes_mib":0.0}
+      {"label":"[1s,5s)","count":0,"ratio":0.0,"MiB":0.0}
     ]
   }
 }

@@ -12,7 +12,7 @@
 #include <sys/mman.h>
 #include <unistd.h>
 
-#define NVME_POST_ACTION_READ_RATIO_BUCKETS 10U
+#define NVME_POST_ACTION_READ_RATIO_BUCKETS 16U
 #define NVME_POST_ACTION_LATENCY_RATIO_BUCKETS 11U
 #define BYTES_PER_MIB 1048576ULL
 
@@ -126,14 +126,10 @@ static uint32_t decode_duration_ms_non_linear(uint16_t code) {
 }
 
 static uint32_t ratio_bucket_index_u8(uint8_t value) {
-    if (value == 0U) {
-        return 0U;
+    if ((uint32_t)value >= (NVME_POST_ACTION_READ_RATIO_BUCKETS - 1U)) {
+        return NVME_POST_ACTION_READ_RATIO_BUCKETS - 1U;
     }
-    uint32_t bucket = ((uint32_t)value + 24U) / 25U;
-    if (bucket >= NVME_POST_ACTION_READ_RATIO_BUCKETS) {
-        bucket = NVME_POST_ACTION_READ_RATIO_BUCKETS - 1U;
-    }
-    return bucket;
+    return (uint32_t)value;
 }
 
 static uint32_t ratio_bucket_index_ms(uint32_t ms) {
@@ -174,38 +170,11 @@ static void ratio_label_read_count(uint32_t idx, char *buf, size_t buf_len) {
     if (buf == NULL || buf_len == 0U) {
         return;
     }
-    switch (idx) {
-        case 0U:
-            (void)snprintf(buf, buf_len, "0");
-            break;
-        case 1U:
-            (void)snprintf(buf, buf_len, "1-25");
-            break;
-        case 2U:
-            (void)snprintf(buf, buf_len, "26-50");
-            break;
-        case 3U:
-            (void)snprintf(buf, buf_len, "51-75");
-            break;
-        case 4U:
-            (void)snprintf(buf, buf_len, "76-100");
-            break;
-        case 5U:
-            (void)snprintf(buf, buf_len, "101-125");
-            break;
-        case 6U:
-            (void)snprintf(buf, buf_len, "126-150");
-            break;
-        case 7U:
-            (void)snprintf(buf, buf_len, "151-175");
-            break;
-        case 8U:
-            (void)snprintf(buf, buf_len, "176-200");
-            break;
-        default:
-            (void)snprintf(buf, buf_len, "201-255");
-            break;
+    if (idx + 1U < NVME_POST_ACTION_READ_RATIO_BUCKETS) {
+        (void)snprintf(buf, buf_len, "%" PRIu32, idx);
+        return;
     }
+    (void)snprintf(buf, buf_len, ">=15");
 }
 
 static void ratio_label_latency_ms(uint32_t idx, char *buf, size_t buf_len) {
@@ -336,7 +305,7 @@ static void print_ratio_hist_line_with_bytes_json(const char *label,
     }
     double mib = (double)bytes / (double)BYTES_PER_MIB;
     fprintf(stderr,
-            "      {\"label\":\"%s\",\"count\":%" PRIu64 ",\"ratio\":%.2f,\"bytes_mib\":%.2f}%s\n",
+            "      {\"label\":\"%s\",\"count\":%" PRIu64 ",\"ratio\":%.2f,\"MiB\":%.2f}%s\n",
             label,
             hit,
             pct,

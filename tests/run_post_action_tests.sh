@@ -82,8 +82,8 @@ if ! rg -i "\"read_count_distribution\"\\s*:\\s*\\{|\"write_to_first_read_distri
   echo "missing json sections for lba read-count/w2fr/life-cycle output" >&2
   exit 1
 fi
-if ! rg -i "\"bytes_mib\"\\s*:" "/tmp/post_action_lba_json.log" >/dev/null; then
-  echo "missing bytes_mib field in lba read-count/lifecycle json output" >&2
+if ! rg -i "\"MiB\"\\s*:" "/tmp/post_action_lba_json.log" >/dev/null; then
+  echo "missing MiB field in lba read-count/lifecycle json output" >&2
   exit 1
 fi
 if ! rg -i "\\[1h,4h\\)|>=4h" "/tmp/post_action_lba_json.log" >/dev/null; then
@@ -114,7 +114,7 @@ if ! ./post_action_file_tester --read-count "tests/fixtures/valid_request_count_
   echo "unexpected failure for request-count fixture case" >&2
   exit 1
 fi
-if ! rg -i "Read Count.*1-25.*count=1" "/tmp/post_action_lba_req_count.log" >/dev/null; then
+if ! rg -i "Read Count.*\\s1\\s+count=1" "/tmp/post_action_lba_req_count.log" >/dev/null; then
   echo "read-count distribution does not reflect request-based counting" >&2
   exit 1
 fi

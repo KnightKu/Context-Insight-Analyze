@@ -147,7 +147,7 @@ The default post action:
   - `-c` / `--life-cycle`: `LBA Life Cycle` decoded real-time distribution (milliseconds)
   - for `w2fr/life-cycle`, tail latency buckets are:
     `...`, `[30m,1h)`, `[1h,4h)`, `>=4h`
-  - for `read-count/life-cycle` APIs, bucket payload `bytes` is emitted as `bytes_mib` (MiB)
+  - for `read-count/life-cycle` APIs, bucket payload `bytes` is emitted as `MiB` (MiB)
   - Output format is segmented ratio buckets, similar to `-l/--latency` style
 - Optional workload distribution summary (independent switches):
   - `-q` / `--qd-dist`: `QD` distribution from Stat records
