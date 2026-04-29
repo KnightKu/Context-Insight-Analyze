@@ -769,6 +769,7 @@ static int run_query_and_fill_json(const char *device,
     nvme_post_action_reset_invalid_count();
     nvme_post_action_reset_latency_stats();
     nvme_post_action_reset_workload_stats();
+    nvme_post_action_stats_reset_stat_samples();
 
     int saved_stderr = dup(STDERR_FILENO);
     if (saved_stderr < 0) {

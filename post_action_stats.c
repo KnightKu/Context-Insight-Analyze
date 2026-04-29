@@ -1216,6 +1216,12 @@ int nvme_post_action_stats_record_stat(uint64_t abs_time_us,
     return 0;
 }
 
+void nvme_post_action_stats_reset_stat_samples(void) {
+    pthread_mutex_lock(&g_stats_mutex);
+    g_stat_samples_count = 0ULL;
+    pthread_mutex_unlock(&g_stats_mutex);
+}
+
 int nvme_post_action_stats_get_stat_sample_count(uint64_t *count_out) {
     if (count_out == NULL) {
         errno = EINVAL;
