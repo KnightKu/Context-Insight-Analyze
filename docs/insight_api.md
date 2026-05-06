@@ -85,6 +85,14 @@ Thread safety:
 
 - APIs are protected by an internal global mutex, so concurrent callers are serialized.
 
+Scan-range hint (performance acceleration for latency queries):
+
+- `insight_api_set_scan_range_hint(start_bytes, length_bytes)` narrows scan range for
+  latency APIs (`get_read_latency_percentiles` / `get_write_latency_percentiles`).
+- Both values must be 4KiB-aligned and within library scan span.
+- `insight_api_clear_scan_range_hint()` restores default full scan.
+- The hint is optional and process-global for the library instance.
+
 Output envelope note:
 
 - All APIs return an extended envelope:
@@ -94,6 +102,45 @@ Output envelope note:
 ---
 
 ## 3. API Details
+
+### 3.0 Scan-range hint helpers
+
+```c
+int insight_api_set_scan_range_hint(uint64_t start_bytes,
+                                    uint64_t length_bytes);
+
+int insight_api_clear_scan_range_hint(void);
+```
+
+Function:
+
+- Provide an optional fast-path to reduce scan time for latency APIs by restricting
+  `nvme_read` range.
+- Keep existing API compatibility: if not set, behavior remains full-range scan.
+
+JSON field meanings:
+
+- No JSON output. These helpers only set/clear in-process library state.
+
+Demo:
+
+```c
+if (insight_api_set_scan_range_hint(512ULL * 1024ULL * 1024ULL,
+                                    2ULL * 1024ULL * 1024ULL * 1024ULL) != 0) {
+    perror("insight_api_set_scan_range_hint");
+    return 1;
+}
+
+char json[INSIGHT_JSON_BUFFER_BYTES];
+if (get_read_latency_percentiles("/dev/nvme0n1",
+                                 "2026-04-26 10:05:05",
+                                 "2026-04-26 12:10:05",
+                                 json) == 0) {
+    puts(json);
+}
+
+(void)insight_api_clear_scan_range_hint();
+```
 
 ### 3.1 `get_read_latency_percentiles`
 

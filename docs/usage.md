@@ -181,6 +181,11 @@ The project now provides a C library and header for programmatic JSON queries:
 APIs:
 
 ```c
+int insight_api_set_scan_range_hint(uint64_t start_bytes,
+                                    uint64_t length_bytes);
+
+int insight_api_clear_scan_range_hint(void);
+
 int get_read_latency_percentiles(const char *device,
                                  const char *time_start,
                                  const char *time_end,
@@ -247,6 +252,12 @@ Common input contract:
 - `block_size`: bytes, required only for APIs that include this parameter
 - `time_start` / `time_end`: format `YYYY-MM-DD HH:MM:SS`
 - `json_buffer`: output buffer for JSON string
+- Optional performance hint:
+  - call `insight_api_set_scan_range_hint(start_bytes, length_bytes)` to limit
+    latency API scan range (`get_read_latency_percentiles`,
+    `get_write_latency_percentiles`)
+  - `start_bytes` and `length_bytes` must be 4KiB-aligned
+  - call `insight_api_clear_scan_range_hint()` to restore full-range scan
 
 Execution equivalence:
 

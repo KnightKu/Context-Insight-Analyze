@@ -9,6 +9,11 @@ extern "C" {
 
 #define INSIGHT_JSON_BUFFER_BYTES 65536U
 
+int insight_api_set_scan_range_hint(uint64_t start_bytes,
+                                    uint64_t length_bytes);
+
+int insight_api_clear_scan_range_hint(void);
+
 int get_read_latency_percentiles(const char *device,
                                  const char *time_start,
                                  const char *time_end,

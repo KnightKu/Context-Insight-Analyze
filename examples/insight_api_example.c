@@ -21,11 +21,13 @@ static int parse_u64_str(const char *s, uint64_t *out) {
 }
 
 int main(int argc, char *argv[]) {
-    if (argc != 4 && argc != 5) {
+    if (argc != 4 && argc != 5 && argc != 6 && argc != 7) {
         fprintf(stderr,
                 "usage: %s <device> <time_start \"YYYY-MM-DD HH:MM:SS\"> "
-                "<time_end \"YYYY-MM-DD HH:MM:SS\"> [block_size_bytes]\n",
-                argv[0]);
+                "<time_end \"YYYY-MM-DD HH:MM:SS\"> [block_size_bytes] "
+                "[scan_start_bytes scan_length_bytes]\n"
+                "       %s <device> <time_start> <time_end> <scan_start_bytes> <scan_length_bytes>\n",
+                argv[0], argv[0]);
         return 1;
     }
 
@@ -33,11 +35,49 @@ int main(int argc, char *argv[]) {
     const char *time_start = argv[2];
     const char *time_end = argv[3];
     uint64_t block_size = 4096ULL;
+    int scan_hint_enabled = 0;
+    uint64_t scan_start_bytes = 0ULL;
+    uint64_t scan_length_bytes = 0ULL;
     if (argc == 5) {
         if (parse_u64_str(argv[4], &block_size) != 0 || block_size == 0ULL) {
             fprintf(stderr, "invalid block_size_bytes: %s\n", argv[4]);
             return 1;
         }
+    }
+    if (argc == 6) {
+        if (parse_u64_str(argv[4], &scan_start_bytes) != 0 ||
+            parse_u64_str(argv[5], &scan_length_bytes) != 0) {
+            fprintf(stderr,
+                    "invalid optional scan hint: scan_start_bytes=%s scan_length_bytes=%s\n",
+                    argv[4], argv[5]);
+            return 1;
+        }
+    } else if (argc == 7) {
+        if (parse_u64_str(argv[4], &block_size) != 0 ||
+            block_size == 0ULL ||
+            parse_u64_str(argv[5], &scan_start_bytes) != 0 ||
+            parse_u64_str(argv[6], &scan_length_bytes) != 0) {
+            fprintf(stderr,
+                    "invalid optional args: block_size_bytes=%s scan_start_bytes=%s scan_length_bytes=%s\n",
+                    argv[4], argv[5], argv[6]);
+            return 1;
+        }
+    }
+    if (argc == 6 || argc == 7) {
+        if (insight_api_set_scan_range_hint(scan_start_bytes, scan_length_bytes) != 0) {
+            fprintf(stderr,
+                    "insight_api_set_scan_range_hint failed: start=%llu length=%llu errno=%d (%s)\n",
+                    (unsigned long long)scan_start_bytes,
+                    (unsigned long long)scan_length_bytes,
+                    errno,
+                    strerror(errno));
+            return 1;
+        }
+        scan_hint_enabled = 1;
+        fprintf(stderr,
+                "scan-range hint enabled: start=%llu length=%llu\n",
+                (unsigned long long)scan_start_bytes,
+                (unsigned long long)scan_length_bytes);
     }
 
     char json_buffer[INSIGHT_JSON_BUFFER_BYTES];
@@ -120,5 +160,8 @@ int main(int argc, char *argv[]) {
     }
     printf("=== gc_data_movement ===\n%s\n", json_buffer);
 
+    if (scan_hint_enabled != 0) {
+        (void)insight_api_clear_scan_range_hint();
+    }
     return 0;
 }

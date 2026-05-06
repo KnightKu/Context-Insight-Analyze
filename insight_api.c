@@ -66,6 +66,9 @@ static int insight_query_total_key_should_rename(insight_query_type_t query_type
 }
 
 static pthread_mutex_t g_insight_api_mutex = PTHREAD_MUTEX_INITIALIZER;
+static int g_scan_range_hint_enabled = 0;
+static uint64_t g_scan_range_hint_start_bytes = 0ULL;
+static uint64_t g_scan_range_hint_length_bytes = 0ULL;
 
 static int run_query_and_fill_json(const char *device,
                                    uint64_t block_size,
@@ -118,6 +121,71 @@ static uint64_t insight_effective_scan_bytes(void) {
     }
     return (INSIGHT_SCAN_DATA_LEN_11T_BYTES < log_span_bytes) ?
         INSIGHT_SCAN_DATA_LEN_11T_BYTES : log_span_bytes;
+}
+
+static int insight_resolve_scan_region_locked(insight_query_type_t query_type,
+                                              uint64_t *scan_start_bytes,
+                                              uint64_t *scan_length_bytes) {
+    if (scan_start_bytes == NULL || scan_length_bytes == NULL) {
+        errno = EINVAL;
+        return -1;
+    }
+    uint64_t full_scan_bytes = insight_effective_scan_bytes();
+    if (full_scan_bytes == 0ULL) {
+        errno = ERANGE;
+        return -1;
+    }
+
+    *scan_start_bytes = INSIGHT_SCAN_SLBA_BYTES;
+    *scan_length_bytes = full_scan_bytes;
+    if (g_scan_range_hint_enabled == 0 || query_type != INSIGHT_QUERY_LATENCY) {
+        return 0;
+    }
+    if (g_scan_range_hint_start_bytes >= full_scan_bytes ||
+        g_scan_range_hint_length_bytes == 0ULL ||
+        g_scan_range_hint_length_bytes > (full_scan_bytes - g_scan_range_hint_start_bytes)) {
+        errno = ERANGE;
+        return -1;
+    }
+
+    *scan_start_bytes = g_scan_range_hint_start_bytes;
+    *scan_length_bytes = g_scan_range_hint_length_bytes;
+    return 0;
+}
+
+int insight_api_set_scan_range_hint(uint64_t start_bytes,
+                                    uint64_t length_bytes) {
+    if (length_bytes == 0ULL ||
+        (start_bytes % NVME_LBA_SIZE_BYTES) != 0ULL ||
+        (length_bytes % NVME_LBA_SIZE_BYTES) != 0ULL) {
+        errno = EINVAL;
+        return -1;
+    }
+    uint64_t full_scan_bytes = insight_effective_scan_bytes();
+    if (full_scan_bytes == 0ULL) {
+        errno = ERANGE;
+        return -1;
+    }
+    if (start_bytes >= full_scan_bytes || length_bytes > (full_scan_bytes - start_bytes)) {
+        errno = ERANGE;
+        return -1;
+    }
+
+    pthread_mutex_lock(&g_insight_api_mutex);
+    g_scan_range_hint_enabled = 1;
+    g_scan_range_hint_start_bytes = start_bytes;
+    g_scan_range_hint_length_bytes = length_bytes;
+    pthread_mutex_unlock(&g_insight_api_mutex);
+    return 0;
+}
+
+int insight_api_clear_scan_range_hint(void) {
+    pthread_mutex_lock(&g_insight_api_mutex);
+    g_scan_range_hint_enabled = 0;
+    g_scan_range_hint_start_bytes = 0ULL;
+    g_scan_range_hint_length_bytes = 0ULL;
+    pthread_mutex_unlock(&g_insight_api_mutex);
+    return 0;
 }
 
 static int capture_stderr_content(FILE *src, char *out, size_t out_size) {
@@ -796,13 +864,14 @@ static int run_query_and_fill_json(const char *device,
         goto out_capture;
     }
 
-    uint64_t scan_bytes = insight_effective_scan_bytes();
-    if (scan_bytes == 0ULL) {
-        saved_errno = ERANGE;
+    uint64_t scan_start_bytes = 0ULL;
+    uint64_t scan_bytes = 0ULL;
+    if (insight_resolve_scan_region_locked(query_type, &scan_start_bytes, &scan_bytes) != 0) {
+        saved_errno = errno;
         ret = -1;
         goto out_capture;
     }
-    if (nvme_read(device, INSIGHT_SCAN_SLBA_BYTES, scan_bytes, NULL) != 0) {
+    if (nvme_read(device, scan_start_bytes, scan_bytes, NULL) != 0) {
         saved_errno = errno;
         ret = -1;
         goto out_capture;

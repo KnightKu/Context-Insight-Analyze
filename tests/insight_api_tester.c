@@ -18,6 +18,29 @@ int main(void) {
     int rc = 0;
 
     errno = 0;
+    rc = insight_api_set_scan_range_hint(1ULL, 4096ULL);
+    if (expect_invalid("insight_api_set_scan_range_hint(misaligned start)", rc) != 0) {
+        return 1;
+    }
+
+    errno = 0;
+    rc = insight_api_set_scan_range_hint(0ULL, 0ULL);
+    if (expect_invalid("insight_api_set_scan_range_hint(zero length)", rc) != 0) {
+        return 1;
+    }
+
+    if (insight_api_set_scan_range_hint(0ULL, 4096ULL) != 0) {
+        fprintf(stderr, "insight_api_set_scan_range_hint(valid range) failed errno=%d (%s)\n",
+                errno, strerror(errno));
+        return 1;
+    }
+    if (insight_api_clear_scan_range_hint() != 0) {
+        fprintf(stderr, "insight_api_clear_scan_range_hint failed errno=%d (%s)\n",
+                errno, strerror(errno));
+        return 1;
+    }
+
+    errno = 0;
     rc = get_read_latency_percentiles(NULL,
                                       "2024-03-09 16:00:05", "2024-03-09 16:00:15",
                                       json_buf);
