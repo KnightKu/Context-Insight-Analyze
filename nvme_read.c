@@ -519,6 +519,10 @@ int nvme_read_set_block_size_bytes(uint64_t block_size_bytes) {
     return nvme_post_action_set_block_size_bytes(block_size_bytes);
 }
 
+int nvme_read_set_stat_sample_collection(int enabled) {
+    return nvme_post_action_set_stat_sample_collection(enabled);
+}
+
 int nvme_read_set_lba_stats_read_count(int enabled) {
     nvme_post_action_set_lba_read_count_enabled(enabled);
     return 0;

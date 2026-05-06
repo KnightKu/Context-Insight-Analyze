@@ -797,8 +797,12 @@ static int run_query_and_fill_json(const char *device,
 
     int enable_lba = insight_query_is_lba_ratio(query_type);
     int enable_stat_volume = insight_query_is_stat_volume(query_type);
+    int collect_stat_samples = (query_type == INSIGHT_QUERY_WA ||
+                              query_type == INSIGHT_QUERY_NAND_WRITE_VOLUME ||
+                              query_type == INSIGHT_QUERY_GC_DATA_MOVEMENT) ? 1 : 0;
     if (nvme_read_set_debug(0) != 0 ||
         nvme_read_set_format_json(1) != 0 ||
+        nvme_read_set_stat_sample_collection(collect_stat_samples) != 0 ||
         nvme_read_set_latency(query_type == INSIGHT_QUERY_LATENCY) != 0 ||
         nvme_read_set_lba_stats_read_count(enable_lba &&
                                            query_type == INSIGHT_QUERY_READ_COUNT) != 0 ||
