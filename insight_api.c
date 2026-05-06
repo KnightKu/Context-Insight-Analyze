@@ -7,6 +7,7 @@
 #include "post_action_stats.h"
 
 #include <errno.h>
+#include <inttypes.h>
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -17,6 +18,10 @@
 #define INSIGHT_SCAN_SLBA_BYTES 0ULL
 #define INSIGHT_SCAN_DATA_LEN_11T_BYTES (11ULL * 1024ULL * 1024ULL * 1024ULL * 1024ULL)
 #define INSIGHT_CAPTURE_MAX_BYTES (INSIGHT_JSON_BUFFER_BYTES * 4U)
+
+#ifndef INSIGHT_API_PERF_DEBUG
+#define INSIGHT_API_PERF_DEBUG 0
+#endif
 
 typedef enum {
     INSIGHT_QUERY_LATENCY = 0,
@@ -66,6 +71,47 @@ static int insight_query_total_key_should_rename(insight_query_type_t query_type
 }
 
 static pthread_mutex_t g_insight_api_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+#if INSIGHT_API_PERF_DEBUG
+static uint64_t insight_monotonic_now_ns(void) {
+    struct timespec ts;
+    if (clock_gettime(CLOCK_MONOTONIC, &ts) != 0) {
+        return 0ULL;
+    }
+    return ((uint64_t)ts.tv_sec * 1000000000ULL) + (uint64_t)ts.tv_nsec;
+}
+
+static const char *insight_query_type_name(insight_query_type_t query_type) {
+    switch (query_type) {
+        case INSIGHT_QUERY_LATENCY:
+            return "latency";
+        case INSIGHT_QUERY_WA:
+            return "write_amplification";
+        case INSIGHT_QUERY_QD:
+            return "qd_distribution";
+        case INSIGHT_QUERY_READ_SIZE:
+            return "read_size_distribution";
+        case INSIGHT_QUERY_WRITE_SIZE:
+            return "write_size_distribution";
+        case INSIGHT_QUERY_READ_THROUGHPUT:
+            return "read_throughput_distribution";
+        case INSIGHT_QUERY_WRITE_THROUGHPUT:
+            return "write_throughput_distribution";
+        case INSIGHT_QUERY_READ_COUNT:
+            return "read_count_distribution";
+        case INSIGHT_QUERY_W2FR:
+            return "write_to_first_read_distribution";
+        case INSIGHT_QUERY_LIFECYCLE:
+            return "lifecycle_distribution";
+        case INSIGHT_QUERY_NAND_WRITE_VOLUME:
+            return "nand_write_volume";
+        case INSIGHT_QUERY_GC_DATA_MOVEMENT:
+            return "gc_data_movement";
+        default:
+            return "unknown";
+    }
+}
+#endif
 
 static int run_query_and_fill_json(const char *device,
                                    uint64_t block_size,
@@ -734,6 +780,18 @@ static int run_query_and_fill_json(const char *device,
         return -1;
     }
 
+#if INSIGHT_API_PERF_DEBUG
+    uint64_t t_query_begin = insight_monotonic_now_ns();
+    uint64_t t_after_config = 0ULL;
+    uint64_t t_after_reset = 0ULL;
+    uint64_t t_after_redirect = 0ULL;
+    uint64_t t_after_read = 0ULL;
+    uint64_t t_after_capture = 0ULL;
+    uint64_t t_after_restore = 0ULL;
+    nvme_read_perf_stats_t nvme_perf;
+    memset(&nvme_perf, 0, sizeof(nvme_perf));
+#endif
+
     pthread_mutex_lock(&g_insight_api_mutex);
     json_buffer[0] = '\0';
 
@@ -765,11 +823,17 @@ static int run_query_and_fill_json(const char *device,
         errno = saved_errno;
         return -1;
     }
+#if INSIGHT_API_PERF_DEBUG
+    t_after_config = insight_monotonic_now_ns();
+#endif
 
     nvme_post_action_reset_invalid_count();
     nvme_post_action_reset_latency_stats();
     nvme_post_action_reset_workload_stats();
     nvme_post_action_stats_reset_stat_samples();
+#if INSIGHT_API_PERF_DEBUG
+    t_after_reset = insight_monotonic_now_ns();
+#endif
 
     int saved_stderr = dup(STDERR_FILENO);
     if (saved_stderr < 0) {
@@ -795,6 +859,9 @@ static int run_query_and_fill_json(const char *device,
         ret = -1;
         goto out_capture;
     }
+#if INSIGHT_API_PERF_DEBUG
+    t_after_redirect = insight_monotonic_now_ns();
+#endif
 
     uint64_t scan_bytes = insight_effective_scan_bytes();
     if (scan_bytes == 0ULL) {
@@ -807,6 +874,10 @@ static int run_query_and_fill_json(const char *device,
         ret = -1;
         goto out_capture;
     }
+#if INSIGHT_API_PERF_DEBUG
+    t_after_read = insight_monotonic_now_ns();
+    nvme_read_perf_get(&nvme_perf);
+#endif
 
     fflush(stderr);
     if (fseek(capture_file, 0L, SEEK_SET) != 0) {
@@ -820,6 +891,9 @@ static int run_query_and_fill_json(const char *device,
         ret = -1;
         goto out_capture;
     }
+#if INSIGHT_API_PERF_DEBUG
+    t_after_capture = insight_monotonic_now_ns();
+#endif
 
 out_capture:
     (void)fflush(stderr);
@@ -830,9 +904,43 @@ out_capture:
     close(saved_stderr);
     fclose(capture_file);
     pthread_mutex_unlock(&g_insight_api_mutex);
+#if INSIGHT_API_PERF_DEBUG
+    t_after_restore = insight_monotonic_now_ns();
+#endif
     if (ret != 0) {
         errno = saved_errno == 0 ? EIO : saved_errno;
     }
+#if INSIGHT_API_PERF_DEBUG
+    if (query_type == INSIGHT_QUERY_LATENCY) {
+        uint64_t total_ns = (t_query_begin != 0ULL && t_after_restore >= t_query_begin) ?
+            (t_after_restore - t_query_begin) : 0ULL;
+        uint64_t config_ns = (t_after_config >= t_query_begin) ? (t_after_config - t_query_begin) : 0ULL;
+        uint64_t reset_ns = (t_after_reset >= t_after_config) ? (t_after_reset - t_after_config) : 0ULL;
+        uint64_t redirect_ns = (t_after_redirect >= t_after_reset) ? (t_after_redirect - t_after_reset) : 0ULL;
+        uint64_t read_ns = (t_after_read >= t_after_redirect) ? (t_after_read - t_after_redirect) : 0ULL;
+        uint64_t capture_ns = (t_after_capture >= t_after_read) ? (t_after_capture - t_after_read) : 0ULL;
+        uint64_t restore_ns = (t_after_restore >= t_after_capture) ? (t_after_restore - t_after_capture) : 0ULL;
+        fprintf(stderr,
+                "[insight-perf] api=%s ret=%d errno=%d total=%.3fms config=%.3fms reset=%.3fms redirect=%.3fms read=%.3fms capture=%.3fms restore=%.3fms\n",
+                insight_query_type_name(query_type),
+                ret,
+                (ret == 0) ? 0 : (saved_errno == 0 ? EIO : saved_errno),
+                (double)total_ns / 1000000.0,
+                (double)config_ns / 1000000.0,
+                (double)reset_ns / 1000000.0,
+                (double)redirect_ns / 1000000.0,
+                (double)read_ns / 1000000.0,
+                (double)capture_ns / 1000000.0,
+                (double)restore_ns / 1000000.0);
+        fprintf(stderr,
+                "[insight-perf] nvme-read pipeline=%.3fms io=%.3fms(post-calls=%" PRIu64 ") post-action=%.3fms(io-calls=%" PRIu64 ")\n",
+                (double)nvme_perf.pipeline_total_ns / 1000000.0,
+                (double)nvme_perf.io_ns / 1000000.0,
+                nvme_perf.post_action_calls,
+                (double)nvme_perf.post_action_ns / 1000000.0,
+                nvme_perf.io_calls);
+    }
+#endif
     return ret;
 }
 

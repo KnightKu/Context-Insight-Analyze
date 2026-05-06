@@ -48,6 +48,11 @@ typedef struct {
     int worker_soft_stop;
     int worker_soft_stop_errno;
     uint64_t processed_bytes;
+    uint64_t io_ns;
+    uint64_t post_action_ns;
+    uint64_t io_calls;
+    uint64_t post_action_calls;
+    uint64_t pipeline_total_ns;
 } nvme_pipeline_state_t;
 
 typedef struct {
@@ -74,6 +79,16 @@ static void pipeline_push_ready_locked(nvme_pipeline_state_t *state, uint32_t sl
     state->ready_tail = (state->ready_tail + 1U) % NVME_READ_PIPELINE_SLOTS;
     ++state->ready_count;
 }
+
+static uint64_t monotonic_now_ns(void) {
+    struct timespec ts;
+    if (clock_gettime(CLOCK_MONOTONIC, &ts) != 0) {
+        return 0ULL;
+    }
+    return ((uint64_t)ts.tv_sec * 1000000000ULL) + (uint64_t)ts.tv_nsec;
+}
+
+static void nvme_read_perf_set_internal(const nvme_read_perf_stats_t *stats);
 
 static int pipeline_pop_free_wait(nvme_pipeline_state_t *state, uint32_t *slot_idx) {
     pthread_mutex_lock(&state->mutex);
@@ -225,11 +240,17 @@ static void *pipeline_reader_thread(void *arg) {
         //cmd.cdw14 = (uint32_t)(backup_lba & 0xFFFFFFFFULL);
         //cmd.cdw15 = (uint32_t)((backup_lba >> 32) & 0xFFFFFFFFULL);
 
+        uint64_t io_begin_ns = monotonic_now_ns();
         if (ioctl(args->nvme_fd, NVME_IOCTL_IO_CMD, &cmd) < 0) {
             int saved_errno = errno == 0 ? EIO : errno;
+            uint64_t io_end_ns = monotonic_now_ns();
             fprintf(stderr, "ioctl failed at offset=%llu: %s\n",
                     (unsigned long long)offset, strerror(saved_errno));
             pthread_mutex_lock(&state->mutex);
+            if (io_begin_ns != 0ULL && io_end_ns >= io_begin_ns) {
+                state->io_ns += (io_end_ns - io_begin_ns);
+            }
+            ++state->io_calls;
             state->producer_failed = 1;
             state->producer_errno = saved_errno;
             state->producer_done = 1;
@@ -240,8 +261,13 @@ static void *pipeline_reader_thread(void *arg) {
             pthread_mutex_unlock(&state->mutex);
             return NULL;
         }
+        uint64_t io_end_ns = monotonic_now_ns();
 
         pthread_mutex_lock(&state->mutex);
+        if (io_begin_ns != 0ULL && io_end_ns >= io_begin_ns) {
+            state->io_ns += (io_end_ns - io_begin_ns);
+        }
+        ++state->io_calls;
         if (state->stop != 0) {
             pipeline_push_free_locked(state, slot_idx);
             pthread_cond_signal(&state->cv_free);
@@ -274,8 +300,10 @@ static void *pipeline_worker_thread(void *arg) {
             break;
         }
         nvme_pipeline_slot_t *slot = &state->slots[slot_idx];
+        uint64_t post_begin_ns = monotonic_now_ns();
         if (nvme_post_action_process(slot->buf, slot->len, slot->offset) != 0) {
             int saved_errno = errno == 0 ? EIO : errno;
+            uint64_t post_end_ns = monotonic_now_ns();
             if (saved_errno == ECANCELED || saved_errno == ENODATA || saved_errno == EPIPE) {
                 const char *reason = (saved_errno == ECANCELED) ?
                     "overwrite detected" :
@@ -288,6 +316,10 @@ static void *pipeline_worker_thread(void *arg) {
                         (unsigned long long)slot->offset,
                         reason);
                 pthread_mutex_lock(&state->mutex);
+                if (post_begin_ns != 0ULL && post_end_ns >= post_begin_ns) {
+                    state->post_action_ns += (post_end_ns - post_begin_ns);
+                }
+                ++state->post_action_calls;
                 state->worker_soft_stop = 1;
                 state->worker_soft_stop_errno = saved_errno;
                 state->stop = 1;
@@ -300,6 +332,10 @@ static void *pipeline_worker_thread(void *arg) {
             fprintf(stderr, "post action failed at offset=%llu: %s\n",
                     (unsigned long long)slot->offset, strerror(saved_errno));
             pthread_mutex_lock(&state->mutex);
+            if (post_begin_ns != 0ULL && post_end_ns >= post_begin_ns) {
+                state->post_action_ns += (post_end_ns - post_begin_ns);
+            }
+            ++state->post_action_calls;
             state->worker_failed = 1;
             state->worker_errno = saved_errno;
             state->stop = 1;
@@ -309,8 +345,13 @@ static void *pipeline_worker_thread(void *arg) {
             pthread_mutex_unlock(&state->mutex);
             return NULL;
         }
+        uint64_t post_end_ns = monotonic_now_ns();
 
         pthread_mutex_lock(&state->mutex);
+        if (post_begin_ns != 0ULL && post_end_ns >= post_begin_ns) {
+            state->post_action_ns += (post_end_ns - post_begin_ns);
+        }
+        ++state->post_action_calls;
         state->processed_bytes += (uint64_t)slot->len;
         pipeline_push_free_locked(state, slot_idx);
         pthread_cond_signal(&state->cv_free);
@@ -330,6 +371,7 @@ static int run_read_post_pipeline(int nvme_fd,
         return -1;
     }
 
+    uint64_t pipeline_begin_ns = monotonic_now_ns();
     nvme_pipeline_state_t state;
     if (pipeline_state_init(&state, read_chunk_bytes) != 0) {
         return -1;
@@ -387,9 +429,26 @@ static int run_read_post_pipeline(int nvme_fd,
         soft_stopped = 1;
     }
     *processed_bytes_out = state.processed_bytes;
+    uint64_t io_ns = state.io_ns;
+    uint64_t post_action_ns = state.post_action_ns;
+    uint64_t io_calls = state.io_calls;
+    uint64_t post_action_calls = state.post_action_calls;
     pthread_mutex_unlock(&state.mutex);
 
     pipeline_state_destroy(&state);
+    uint64_t pipeline_end_ns = monotonic_now_ns();
+    uint64_t pipeline_total_ns = 0ULL;
+    if (pipeline_begin_ns != 0ULL && pipeline_end_ns >= pipeline_begin_ns) {
+        pipeline_total_ns = pipeline_end_ns - pipeline_begin_ns;
+    }
+    nvme_read_perf_stats_t perf;
+    memset(&perf, 0, sizeof(perf));
+    perf.io_ns = io_ns;
+    perf.post_action_ns = post_action_ns;
+    perf.io_calls = io_calls;
+    perf.post_action_calls = post_action_calls;
+    perf.pipeline_total_ns = pipeline_total_ns;
+    nvme_read_perf_set_internal(&perf);
     if (failed != 0) {
         errno = (saved_errno == 0) ? EIO : saved_errno;
         return -1;
@@ -401,6 +460,32 @@ static int run_read_post_pipeline(int nvme_fd,
 }
 
 static int g_nvme_read_debug = 0;
+static pthread_mutex_t g_nvme_read_perf_mutex = PTHREAD_MUTEX_INITIALIZER;
+static nvme_read_perf_stats_t g_nvme_read_last_perf;
+
+static void nvme_read_perf_set_internal(const nvme_read_perf_stats_t *stats) {
+    if (stats == NULL) {
+        return;
+    }
+    pthread_mutex_lock(&g_nvme_read_perf_mutex);
+    g_nvme_read_last_perf = *stats;
+    pthread_mutex_unlock(&g_nvme_read_perf_mutex);
+}
+
+void nvme_read_perf_reset(void) {
+    pthread_mutex_lock(&g_nvme_read_perf_mutex);
+    memset(&g_nvme_read_last_perf, 0, sizeof(g_nvme_read_last_perf));
+    pthread_mutex_unlock(&g_nvme_read_perf_mutex);
+}
+
+void nvme_read_perf_get(nvme_read_perf_stats_t *out) {
+    if (out == NULL) {
+        return;
+    }
+    pthread_mutex_lock(&g_nvme_read_perf_mutex);
+    *out = g_nvme_read_last_perf;
+    pthread_mutex_unlock(&g_nvme_read_perf_mutex);
+}
 
 int nvme_read_set_post_action(nvme_read_post_action_t action, void *ctx) {
     return nvme_post_action_set_handler(action, ctx);

@@ -248,6 +248,17 @@ Common input contract:
 - `time_start` / `time_end`: format `YYYY-MM-DD HH:MM:SS`
 - `json_buffer`: output buffer for JSON string
 
+Profiling debug macro (compile-time):
+
+- `INSIGHT_API_PERF_DEBUG` (default `0`)
+  - when set to `1`, `get_read_latency_percentiles` path prints stage timing to `stderr`
+  - timing includes API wrapper stages and `nvme_read` pipeline split:
+    - IO read time (`io_ns`)
+    - post-action processing time (`post_action_ns`)
+    - pipeline total time (`pipeline_total_ns`)
+- build example:
+  - `make clean && make CFLAGS="-Wall -Wextra -pedantic -std=c11 -I. -DINSIGHT_API_PERF_DEBUG=1 -DINSIGHT_PERF_DEBUG=1"`
+
 Execution equivalence:
 
 - `get_read_latency_percentiles(...)` ~=  

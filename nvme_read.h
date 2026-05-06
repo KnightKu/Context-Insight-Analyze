@@ -10,10 +10,22 @@
 #define LOG_START_LBA (937684566ULL * NVME_LBA_SIZE_BYTES)
 #define LOG_END_LBA (3750730325ULL * NVME_LBA_SIZE_BYTES)
 
+#ifndef INSIGHT_PERF_DEBUG
+#define INSIGHT_PERF_DEBUG 0
+#endif
+
 typedef int (*nvme_read_post_action_t)(void *ctx,
                                        void *data,
                                        uint32_t data_len,
                                        uint64_t offset_bytes);
+
+typedef struct {
+    uint64_t io_ns;
+    uint64_t post_action_ns;
+    uint64_t io_calls;
+    uint64_t post_action_calls;
+    uint64_t pipeline_total_ns;
+} nvme_read_perf_stats_t;
 
 int nvme_read_set_post_action(nvme_read_post_action_t action, void *ctx);
 
@@ -58,5 +70,9 @@ int nvme_read(const char *device_name,
               uint64_t slba,
               uint64_t data_len,
               void *buffer);
+
+void nvme_read_perf_reset(void);
+
+void nvme_read_perf_get(nvme_read_perf_stats_t *out);
 
 #endif  // NVME_READ_H

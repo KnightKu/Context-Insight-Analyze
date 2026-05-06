@@ -85,6 +85,16 @@ Thread safety:
 
 - APIs are protected by an internal global mutex, so concurrent callers are serialized.
 
+Compile-time profiling switch (for latency performance analysis):
+
+- Define macro `INSIGHT_API_PERF_DEBUG=1` when building to enable detailed stage timing logs.
+- Example:
+  - `make clean && make CFLAGS="-Wall -Wextra -pedantic -std=c11 -I. -DINSIGHT_API_PERF_DEBUG=1 -DINSIGHT_PERF_DEBUG=1"`
+- With profiling enabled, `get_read_latency_percentiles` path prints:
+  - API stage time (`config/reset/stderr_redirect/nvme_read/capture/restore`)
+  - `nvme_read` internal time (`io`, `post_action`, `pipeline_total`) and call counts
+  - Latency bucket extraction time (`extract_total`)
+
 Output envelope note:
 
 - All APIs return an extended envelope:
