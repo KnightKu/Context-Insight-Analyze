@@ -60,6 +60,8 @@ int nvme_read_set_time_window(int has_start, uint64_t time_start_ms,
 
 int nvme_read_set_block_size_bytes(uint64_t block_size_bytes);
 
+int nvme_read_set_stat_sample_collection(int enabled);
+
 int nvme_post_action_process(void *data,
                              uint32_t data_len,
                              uint64_t offset_bytes);

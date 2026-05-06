@@ -119,6 +119,7 @@ static int g_post_action_trim_size_dist_enabled = 0;
 static int g_post_action_read_tp_dist_enabled = 0;
 static int g_post_action_write_tp_dist_enabled = 0;
 static int g_post_action_json_format_enabled = 0;
+static int g_post_action_stat_samples_enabled = 0;
 static int g_post_action_time_window_enabled = 0;
 static uint64_t g_post_action_time_start_ms = 0ULL;
 static uint64_t g_post_action_time_end_ms = UINT64_MAX;
@@ -524,10 +525,7 @@ static int post_action_is_window_active(void) {
     return g_post_action_window_active;
 }
 
-static int post_action_block_size_accept_len_lba(uint64_t len_lba) {
-    pthread_mutex_lock(&g_post_action_marker_mutex);
-    uint64_t block_size_lba = g_post_action_block_size_lba;
-    pthread_mutex_unlock(&g_post_action_marker_mutex);
+static int post_action_len_accept(uint64_t block_size_lba, uint64_t len_lba) {
     if (block_size_lba == 0ULL) {
         return 1;
     }
@@ -535,6 +533,17 @@ static int post_action_block_size_accept_len_lba(uint64_t len_lba) {
         return 0;
     }
     return (len_lba % block_size_lba) == 0ULL ? 1 : 0;
+}
+
+static int post_action_needs_stats_update_read(void) {
+    return (g_post_action_lba_read_count_enabled != 0 ||
+            g_post_action_lba_w2fr_enabled != 0) ? 1 : 0;
+}
+
+static int post_action_needs_stats_update_write(void) {
+    return (g_post_action_lba_read_count_enabled != 0 ||
+            g_post_action_lba_w2fr_enabled != 0 ||
+            g_post_action_lba_life_cycle_enabled != 0) ? 1 : 0;
 }
 
 static inline uint64_t load_le64_u(const unsigned char *p) {
@@ -581,7 +590,8 @@ static int parse_rw_record(uint64_t record_lo,
                            uint8_t op,
                            uint64_t offset_bytes,
                            uint32_t record_index,
-                           nvme_post_action_time_ref_t *time_ref) {
+                           nvme_post_action_time_ref_t *time_ref,
+                           uint64_t block_size_lba) {
     nvme_post_action_rw_t parsed;
     parsed.meta.op = op;
     parsed.meta.offset_bytes = offset_bytes;
@@ -618,16 +628,20 @@ static int parse_rw_record(uint64_t record_lo,
         }
         return -1;
     }
-    if (post_action_block_size_accept_len_lba((uint64_t)parsed.length) == 0) {
+    if (post_action_len_accept(block_size_lba, (uint64_t)parsed.length) == 0) {
         return 0;
     }
     if (op == NVME_POST_ACTION_OP_WRITE) {
-        nvme_post_action_stats_update_write(parsed.start_lba, (uint64_t)parsed.length, abs_time_us);
+        if (post_action_needs_stats_update_write() != 0) {
+            nvme_post_action_stats_update_write(parsed.start_lba, (uint64_t)parsed.length, abs_time_us);
+        }
         nvme_post_action_latency_record_write(parsed.latency);
         record_io_size(op, (uint64_t)parsed.length);
         record_throughput(op, parsed.length, parsed.latency);
     } else if (op == NVME_POST_ACTION_OP_READ) {
-        nvme_post_action_stats_update_read(parsed.start_lba, (uint64_t)parsed.length, abs_time_us);
+        if (post_action_needs_stats_update_read() != 0) {
+            nvme_post_action_stats_update_read(parsed.start_lba, (uint64_t)parsed.length, abs_time_us);
+        }
         nvme_post_action_latency_record_read(parsed.latency);
         record_io_size(op, (uint64_t)parsed.length);
         record_throughput(op, parsed.length, parsed.latency);
@@ -685,6 +699,7 @@ static int parse_trim_group(const unsigned char *bytes,
                             uint64_t base_offset_bytes,
                             uint32_t record_index,
                             nvme_post_action_time_ref_t *time_ref,
+                            uint64_t block_size_lba,
                             uint32_t *consumed_bytes,
                             uint32_t *consumed_records) {
     if (bytes == NULL || consumed_bytes == NULL || consumed_records == NULL) {
@@ -760,14 +775,16 @@ static int parse_trim_group(const unsigned char *bytes,
         parsed.ranges[i].length = fields.length;
         parsed.ranges[i].time_rel = fields.time_rel;
         if (window_active == 0 ||
-            post_action_block_size_accept_len_lba((uint64_t)fields.length) == 0) {
+            post_action_len_accept(block_size_lba, (uint64_t)fields.length) == 0) {
             continue;
         }
         uint64_t abs_time_us = 0ULL;
         if (resolve_abs_time_us(fields.time_rel, time_ref, &abs_time_us) != 0) {
             return -1;
         }
-        nvme_post_action_stats_update_write(fields.start_lba, (uint64_t)fields.length, abs_time_us);
+        if (post_action_needs_stats_update_write() != 0) {
+            nvme_post_action_stats_update_write(fields.start_lba, (uint64_t)fields.length, abs_time_us);
+        }
         nvme_post_action_latency_record_trim(fields.time_rel);
         record_io_size(NVME_POST_ACTION_OP_TRIM, (uint64_t)fields.length);
     }
@@ -806,11 +823,13 @@ static int parse_stat_record(uint64_t record_lo,
     if (resolve_abs_time_us(parsed.time_rel, time_ref, &abs_time_us) != 0) {
         return -1;
     }
-    if (nvme_post_action_stats_record_stat(abs_time_us,
-                                           parsed.qd,
-                                           parsed.hot_write,
-                                           parsed.folding_write) != 0) {
-        return -1;
+    if (g_post_action_stat_samples_enabled != 0) {
+        if (nvme_post_action_stats_record_stat(abs_time_us,
+                                               parsed.qd,
+                                               parsed.hot_write,
+                                               parsed.folding_write) != 0) {
+            return -1;
+        }
     }
     record_qd_and_wa(parsed.qd, parsed.hot_write, parsed.folding_write);
 #if NVME_POST_ACTION_DEBUG
@@ -950,10 +969,12 @@ static int default_post_action(void *ctx, void *data, uint32_t data_len, uint64_
     nvme_post_action_time_ref_t time_ref;
     memset(&time_ref, 0, sizeof(time_ref));
     // Keep time baseline continuous across callback invocations/chunks.
+    uint64_t chunk_block_size_lba = 0ULL;
     pthread_mutex_lock(&g_post_action_marker_mutex);
     time_ref.marker_abs_time_us = g_post_action_last_marker_abs_time_us;
     time_ref.marker_unix_time_ms = g_post_action_last_marker_unix_time_ms;
     time_ref.has_marker = g_post_action_has_last_marker;
+    chunk_block_size_lba = g_post_action_block_size_lba;
     pthread_mutex_unlock(&g_post_action_marker_mutex);
     uint32_t parse_len = data_len;
     uint32_t tail_bytes = data_len % NVME_POST_ACTION_RECORD_BYTES_SHORT;
@@ -1017,14 +1038,15 @@ static int default_post_action(void *ctx, void *data, uint32_t data_len, uint64_
                                    record_offset, record_index, op);
 #endif
             uint64_t record_hi = load_le64_u(record + 8U);
-            rc = parse_rw_record(record_lo, record_hi, op, record_offset, record_index, &time_ref);
+            rc = parse_rw_record(record_lo, record_hi, op, record_offset, record_index, &time_ref,
+                                 chunk_block_size_lba);
             cursor += NVME_POST_ACTION_RECORD_BYTES_LONG;
             ++record_index;
         } else if (op == NVME_POST_ACTION_OP_TRIM) {
             uint32_t consumed_bytes = 0U;
             uint32_t consumed_records = 0U;
             rc = parse_trim_group(bytes, parse_len, cursor, offset_bytes, record_index, &time_ref,
-                                  &consumed_bytes, &consumed_records);
+                                  chunk_block_size_lba, &consumed_bytes, &consumed_records);
             if (rc != 0) {
                 if (errno == ECANCELED) {
                     post_action_add_invalid_count(local_invalid_records);
@@ -1300,6 +1322,11 @@ int nvme_post_action_set_time_window_ms(int enabled, uint64_t start_ms, uint64_t
     g_post_action_window_started = (enabled != 0) ? 0 : 1;
     g_post_action_window_active = (enabled != 0) ? 0 : 1;
     pthread_mutex_unlock(&g_post_action_marker_mutex);
+    return 0;
+}
+
+int nvme_post_action_set_stat_sample_collection(int enabled) {
+    g_post_action_stat_samples_enabled = (enabled != 0) ? 1 : 0;
     return 0;
 }
 

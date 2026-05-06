@@ -2,6 +2,7 @@
 
 #include <inttypes.h>
 #include <pthread.h>
+#include <stdatomic.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
@@ -16,16 +17,121 @@ typedef struct {
     uint32_t sample_count;
 } latency_bucket_t;
 
+typedef struct {
+    atomic_uint_fast64_t count;
+    atomic_uint_fast64_t min_us;
+    atomic_uint_fast64_t max_us;
+    atomic_uint_fast64_t sum_us;
+    uint64_t samples[1024];
+    atomic_uint_fast32_t sample_count;
+    const char *name;
+} latency_live_bucket_t;
+
 static pthread_mutex_t g_latency_mutex = PTHREAD_MUTEX_INITIALIZER;
 static int g_latency_enabled = 0;
+static atomic_int g_latency_enabled_fast = ATOMIC_VAR_INIT(0);
 static int g_latency_json_enabled = 0;
-static latency_bucket_t g_latency_read = {.name = "read", .count = 0ULL, .min_us = UINT64_MAX, .max_us = 0ULL, .sum_us = 0ULL};
-static latency_bucket_t g_latency_write = {.name = "write", .count = 0ULL, .min_us = UINT64_MAX, .max_us = 0ULL, .sum_us = 0ULL};
-static latency_bucket_t g_latency_trim = {.name = "trim", .count = 0ULL, .min_us = UINT64_MAX, .max_us = 0ULL, .sum_us = 0ULL};
+
+static latency_live_bucket_t g_live_read = {
+    .count = ATOMIC_VAR_INIT(0),
+    .min_us = ATOMIC_VAR_INIT(UINT64_MAX),
+    .max_us = ATOMIC_VAR_INIT(0),
+    .sum_us = ATOMIC_VAR_INIT(0),
+    .sample_count = ATOMIC_VAR_INIT(0),
+    .name = "read",
+};
+
+static latency_live_bucket_t g_live_write = {
+    .count = ATOMIC_VAR_INIT(0),
+    .min_us = ATOMIC_VAR_INIT(UINT64_MAX),
+    .max_us = ATOMIC_VAR_INIT(0),
+    .sum_us = ATOMIC_VAR_INIT(0),
+    .sample_count = ATOMIC_VAR_INIT(0),
+    .name = "write",
+};
+
+static latency_live_bucket_t g_live_trim = {
+    .count = ATOMIC_VAR_INIT(0),
+    .min_us = ATOMIC_VAR_INIT(UINT64_MAX),
+    .max_us = ATOMIC_VAR_INIT(0),
+    .sum_us = ATOMIC_VAR_INIT(0),
+    .sample_count = ATOMIC_VAR_INIT(0),
+    .name = "trim",
+};
+
+static void latency_live_reset(latency_live_bucket_t *b) {
+    atomic_store_explicit(&b->count, 0ULL, memory_order_relaxed);
+    atomic_store_explicit(&b->min_us, UINT64_MAX, memory_order_relaxed);
+    atomic_store_explicit(&b->max_us, 0ULL, memory_order_relaxed);
+    atomic_store_explicit(&b->sum_us, 0ULL, memory_order_relaxed);
+    atomic_store_explicit(&b->sample_count, 0U, memory_order_relaxed);
+}
+
+static void latency_live_snapshot(const latency_live_bucket_t *live, latency_bucket_t *out) {
+    out->name = live->name;
+    out->count = atomic_load_explicit(&live->count, memory_order_relaxed);
+    out->min_us = atomic_load_explicit(&live->min_us, memory_order_relaxed);
+    out->max_us = atomic_load_explicit(&live->max_us, memory_order_relaxed);
+    out->sum_us = atomic_load_explicit(&live->sum_us, memory_order_relaxed);
+    uint32_t n = atomic_load_explicit(&live->sample_count, memory_order_relaxed);
+    if (n > 1024U) {
+        n = 1024U;
+    }
+    out->sample_count = n;
+    if (n > 0U) {
+        memcpy(out->samples, live->samples, (size_t)n * sizeof(uint64_t));
+    }
+}
+
+static void latency_live_add(latency_live_bucket_t *b, uint32_t latency_us) {
+    uint64_t v = (uint64_t)latency_us;
+    atomic_fetch_add_explicit(&b->count, 1ULL, memory_order_relaxed);
+    atomic_fetch_add_explicit(&b->sum_us, v, memory_order_relaxed);
+
+    uint64_t cur_min = atomic_load_explicit(&b->min_us, memory_order_relaxed);
+    while (v < cur_min) {
+        if (atomic_compare_exchange_weak_explicit(&b->min_us,
+                                                  &cur_min,
+                                                  v,
+                                                  memory_order_relaxed,
+                                                  memory_order_relaxed)) {
+            break;
+        }
+    }
+
+    uint64_t cur_max = atomic_load_explicit(&b->max_us, memory_order_relaxed);
+    while (v > cur_max) {
+        if (atomic_compare_exchange_weak_explicit(&b->max_us,
+                                                  &cur_max,
+                                                  v,
+                                                  memory_order_relaxed,
+                                                  memory_order_relaxed)) {
+            break;
+        }
+    }
+
+    while (1) {
+        uint_fast32_t idx = atomic_load_explicit(&b->sample_count, memory_order_relaxed);
+        if (idx >= 1024U) {
+            break;
+        }
+        uint_fast32_t next = idx + 1U;
+        if (atomic_compare_exchange_weak_explicit(&b->sample_count,
+                                                  &idx,
+                                                  next,
+                                                  memory_order_relaxed,
+                                                  memory_order_relaxed)) {
+            b->samples[idx] = v;
+            break;
+        }
+    }
+}
 
 void nvme_post_action_latency_set_enabled(int enabled) {
+    int v = (enabled != 0) ? 1 : 0;
     pthread_mutex_lock(&g_latency_mutex);
-    g_latency_enabled = (enabled != 0) ? 1 : 0;
+    g_latency_enabled = v;
+    atomic_store_explicit(&g_latency_enabled_fast, v, memory_order_release);
     pthread_mutex_unlock(&g_latency_mutex);
 }
 
@@ -51,39 +157,10 @@ int nvme_post_action_latency_get_json_format(void) {
 
 void nvme_post_action_latency_reset(void) {
     pthread_mutex_lock(&g_latency_mutex);
-    g_latency_read.count = 0ULL;
-    g_latency_read.min_us = UINT64_MAX;
-    g_latency_read.max_us = 0ULL;
-    g_latency_read.sum_us = 0ULL;
-    g_latency_read.sample_count = 0U;
-
-    g_latency_write.count = 0ULL;
-    g_latency_write.min_us = UINT64_MAX;
-    g_latency_write.max_us = 0ULL;
-    g_latency_write.sum_us = 0ULL;
-    g_latency_write.sample_count = 0U;
-
-    g_latency_trim.count = 0ULL;
-    g_latency_trim.min_us = UINT64_MAX;
-    g_latency_trim.max_us = 0ULL;
-    g_latency_trim.sum_us = 0ULL;
-    g_latency_trim.sample_count = 0U;
+    latency_live_reset(&g_live_read);
+    latency_live_reset(&g_live_write);
+    latency_live_reset(&g_live_trim);
     pthread_mutex_unlock(&g_latency_mutex);
-}
-
-static void latency_bucket_add(latency_bucket_t *bucket, uint32_t latency_us) {
-    uint64_t v = (uint64_t)latency_us;
-    ++bucket->count;
-    bucket->sum_us += v;
-    if (v < bucket->min_us) {
-        bucket->min_us = v;
-    }
-    if (v > bucket->max_us) {
-        bucket->max_us = v;
-    }
-    if (bucket->sample_count < 1024U) {
-        bucket->samples[bucket->sample_count++] = v;
-    }
 }
 
 static void sort_u64(uint64_t *arr, uint32_t n) {
@@ -129,27 +206,24 @@ static void print_percentiles_line(const char *name,
 }
 
 void nvme_post_action_latency_record_read(uint32_t latency_us) {
-    pthread_mutex_lock(&g_latency_mutex);
-    if (g_latency_enabled != 0) {
-        latency_bucket_add(&g_latency_read, latency_us);
+    if (atomic_load_explicit(&g_latency_enabled_fast, memory_order_acquire) == 0) {
+        return;
     }
-    pthread_mutex_unlock(&g_latency_mutex);
+    latency_live_add(&g_live_read, latency_us);
 }
 
 void nvme_post_action_latency_record_write(uint32_t latency_us) {
-    pthread_mutex_lock(&g_latency_mutex);
-    if (g_latency_enabled != 0) {
-        latency_bucket_add(&g_latency_write, latency_us);
+    if (atomic_load_explicit(&g_latency_enabled_fast, memory_order_acquire) == 0) {
+        return;
     }
-    pthread_mutex_unlock(&g_latency_mutex);
+    latency_live_add(&g_live_write, latency_us);
 }
 
 void nvme_post_action_latency_record_trim(uint32_t latency_us) {
-    pthread_mutex_lock(&g_latency_mutex);
-    if (g_latency_enabled != 0) {
-        latency_bucket_add(&g_latency_trim, latency_us);
+    if (atomic_load_explicit(&g_latency_enabled_fast, memory_order_acquire) == 0) {
+        return;
     }
-    pthread_mutex_unlock(&g_latency_mutex);
+    latency_live_add(&g_live_trim, latency_us);
 }
 
 static void print_bucket(const latency_bucket_t *bucket) {
@@ -233,9 +307,12 @@ void nvme_post_action_latency_print_summary(void) {
     pthread_mutex_lock(&g_latency_mutex);
     int enabled = g_latency_enabled;
     int json_enabled = g_latency_json_enabled;
-    latency_bucket_t read_copy = g_latency_read;
-    latency_bucket_t write_copy = g_latency_write;
-    latency_bucket_t trim_copy = g_latency_trim;
+    latency_bucket_t read_copy;
+    latency_bucket_t write_copy;
+    latency_bucket_t trim_copy;
+    latency_live_snapshot(&g_live_read, &read_copy);
+    latency_live_snapshot(&g_live_write, &write_copy);
+    latency_live_snapshot(&g_live_trim, &trim_copy);
     pthread_mutex_unlock(&g_latency_mutex);
 
     if (enabled == 0) {

@@ -246,6 +246,7 @@ int main(int argc, char *argv[]) {
 
     nvme_read_set_debug(debug_enabled);
     nvme_read_set_format_json(format_json_enabled);
+    nvme_read_set_stat_sample_collection(0);
     nvme_read_set_latency(latency_enabled);
     nvme_read_set_lba_stats_read_count(lba_stats_read_count_enabled);
     nvme_read_set_lba_stats_w2fr(lba_stats_w2fr_enabled);

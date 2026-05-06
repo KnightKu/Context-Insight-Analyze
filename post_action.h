@@ -39,6 +39,8 @@ int nvme_post_action_set_block_size_bytes(uint64_t block_size_bytes);
 
 uint64_t nvme_post_action_get_block_size_bytes(void);
 
+int nvme_post_action_set_stat_sample_collection(int enabled);
+
 void nvme_post_action_reset_latency_stats(void);
 
 void nvme_post_action_print_latency_report(void);
