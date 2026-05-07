@@ -21,6 +21,131 @@
 #define NVME_POST_ACTION_SKIP_STAT 0
 #endif
 
+#ifndef NVME_POST_ACTION_PERF_DEBUG
+#define NVME_POST_ACTION_PERF_DEBUG 0
+#endif
+
+#if NVME_POST_ACTION_PERF_DEBUG
+#include <stdatomic.h>
+#include <stdlib.h>
+
+typedef struct {
+    _Atomic uint64_t chunk_setup_ns;
+    _Atomic uint64_t pre_marker_skip_ns;
+    _Atomic uint64_t zero_rec_ns;
+    _Atomic uint64_t rw_ns;
+    _Atomic uint64_t trim_ns;
+    _Atomic uint64_t stat_ns;
+    _Atomic uint64_t marker_ns;
+    _Atomic uint64_t unknown_op_ns;
+    _Atomic uint64_t chunks;
+    _Atomic uint64_t loop_iters;
+} nvme_post_action_perf_t;
+
+static nvme_post_action_perf_t g_post_action_perf;
+static _Atomic int g_post_action_perf_active = ATOMIC_VAR_INIT(0);
+
+static uint64_t post_action_perf_now_ns(void) {
+    struct timespec ts;
+    if (clock_gettime(CLOCK_MONOTONIC, &ts) != 0) {
+        return 0ULL;
+    }
+    return (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
+}
+
+static int post_action_perf_is_active(void) {
+    return atomic_load_explicit(&g_post_action_perf_active, memory_order_relaxed) != 0;
+}
+
+static void post_action_perf_add_ns(_Atomic uint64_t *slot, uint64_t dt) {
+    if (dt != 0ULL) {
+        atomic_fetch_add_explicit(slot, dt, memory_order_relaxed);
+    }
+}
+
+static uint64_t post_action_perf_begin(void) {
+    return post_action_perf_is_active() ? post_action_perf_now_ns() : 0ULL;
+}
+
+static void post_action_perf_end(_Atomic uint64_t *slot, uint64_t t0) {
+    if (t0 == 0ULL || !post_action_perf_is_active()) {
+        return;
+    }
+    uint64_t t1 = post_action_perf_now_ns();
+    if (t1 > t0) {
+        post_action_perf_add_ns(slot, t1 - t0);
+    }
+}
+
+void nvme_post_action_perf_reset(void) {
+    const char *e = getenv("NVME_POST_ACTION_PERF");
+    int on = (e != NULL && strcmp(e, "1") == 0) ? 1 : 0;
+    atomic_store_explicit(&g_post_action_perf_active, on, memory_order_relaxed);
+    atomic_store_explicit(&g_post_action_perf.chunk_setup_ns, 0ULL, memory_order_relaxed);
+    atomic_store_explicit(&g_post_action_perf.pre_marker_skip_ns, 0ULL, memory_order_relaxed);
+    atomic_store_explicit(&g_post_action_perf.zero_rec_ns, 0ULL, memory_order_relaxed);
+    atomic_store_explicit(&g_post_action_perf.rw_ns, 0ULL, memory_order_relaxed);
+    atomic_store_explicit(&g_post_action_perf.trim_ns, 0ULL, memory_order_relaxed);
+    atomic_store_explicit(&g_post_action_perf.stat_ns, 0ULL, memory_order_relaxed);
+    atomic_store_explicit(&g_post_action_perf.marker_ns, 0ULL, memory_order_relaxed);
+    atomic_store_explicit(&g_post_action_perf.unknown_op_ns, 0ULL, memory_order_relaxed);
+    atomic_store_explicit(&g_post_action_perf.chunks, 0ULL, memory_order_relaxed);
+    atomic_store_explicit(&g_post_action_perf.loop_iters, 0ULL, memory_order_relaxed);
+}
+
+void nvme_post_action_perf_fprint_summary(FILE *fp) {
+    if (fp == NULL) {
+        return;
+    }
+    if (!post_action_perf_is_active()) {
+        fprintf(fp,
+                "[post-action-perf] NVME_POST_ACTION_PERF!=1 (no counters); "
+                "compile with -DNVME_POST_ACTION_PERF_DEBUG=1 to enable build.\n");
+        return;
+    }
+    uint64_t setup = atomic_load_explicit(&g_post_action_perf.chunk_setup_ns, memory_order_relaxed);
+    uint64_t pre = atomic_load_explicit(&g_post_action_perf.pre_marker_skip_ns, memory_order_relaxed);
+    uint64_t zr = atomic_load_explicit(&g_post_action_perf.zero_rec_ns, memory_order_relaxed);
+    uint64_t rw = atomic_load_explicit(&g_post_action_perf.rw_ns, memory_order_relaxed);
+    uint64_t tr = atomic_load_explicit(&g_post_action_perf.trim_ns, memory_order_relaxed);
+    uint64_t st = atomic_load_explicit(&g_post_action_perf.stat_ns, memory_order_relaxed);
+    uint64_t mk = atomic_load_explicit(&g_post_action_perf.marker_ns, memory_order_relaxed);
+    uint64_t un = atomic_load_explicit(&g_post_action_perf.unknown_op_ns, memory_order_relaxed);
+    uint64_t ch = atomic_load_explicit(&g_post_action_perf.chunks, memory_order_relaxed);
+    uint64_t it = atomic_load_explicit(&g_post_action_perf.loop_iters, memory_order_relaxed);
+    uint64_t sum_branch = pre + zr + rw + tr + st + mk + un;
+    uint64_t total = setup + sum_branch;
+    fprintf(fp,
+            "[post-action-perf] chunks=%" PRIu64 " loop_iters=%" PRIu64 " total=%.3fms "
+            "(chunk_setup=%.3fms branches=%.3fms)\n",
+            ch,
+            it,
+            (double)total / 1000000.0,
+            (double)setup / 1000000.0,
+            (double)sum_branch / 1000000.0);
+    if (sum_branch > 0ULL) {
+        fprintf(fp,
+                "  pre_marker_skip=%.3fms (%.1f%%) zero_op=%.3fms (%.1f%%) "
+                "rw=%.3fms (%.1f%%) trim=%.3fms (%.1f%%) stat=%.3fms (%.1f%%) "
+                "marker=%.3fms (%.1f%%) unknown=%.3fms (%.1f%%)\n",
+                (double)pre / 1000000.0,
+                (double)pre * 100.0 / (double)sum_branch,
+                (double)zr / 1000000.0,
+                (double)zr * 100.0 / (double)sum_branch,
+                (double)rw / 1000000.0,
+                (double)rw * 100.0 / (double)sum_branch,
+                (double)tr / 1000000.0,
+                (double)tr * 100.0 / (double)sum_branch,
+                (double)st / 1000000.0,
+                (double)st * 100.0 / (double)sum_branch,
+                (double)mk / 1000000.0,
+                (double)mk * 100.0 / (double)sum_branch,
+                (double)un / 1000000.0,
+                (double)un * 100.0 / (double)sum_branch);
+    }
+}
+#endif
+
 #define NVME_POST_ACTION_RECORD_BYTES_SHORT 16U
 #define NVME_POST_ACTION_RECORD_BYTES_LONG 16U
 
@@ -962,6 +1087,11 @@ static int default_post_action(void *ctx, void *data, uint32_t data_len, uint64_
         return -1;
     }
 
+#if NVME_POST_ACTION_PERF_DEBUG
+    atomic_fetch_add_explicit(&g_post_action_perf.chunks, 1ULL, memory_order_relaxed);
+    uint64_t pa_t_setup = post_action_perf_begin();
+#endif
+
     const unsigned char *bytes = (const unsigned char *)data;
     uint32_t cursor = 0U;
     uint32_t record_index = 0U;
@@ -983,6 +1113,10 @@ static int default_post_action(void *ctx, void *data, uint32_t data_len, uint64_
         ++local_invalid_records;
     }
 
+#if NVME_POST_ACTION_PERF_DEBUG
+    post_action_perf_end(&g_post_action_perf.chunk_setup_ns, pa_t_setup);
+#endif
+
     while (cursor < parse_len) {
         const unsigned char *record = bytes + cursor;
         uint64_t record_offset = offset_bytes + (uint64_t)cursor;
@@ -990,7 +1124,16 @@ static int default_post_action(void *ctx, void *data, uint32_t data_len, uint64_
         uint8_t op = (uint8_t)(record_lo & 0xFFU);
         int rc = 0;
 
+#if NVME_POST_ACTION_PERF_DEBUG
+        if (post_action_perf_is_active()) {
+            atomic_fetch_add_explicit(&g_post_action_perf.loop_iters, 1ULL, memory_order_relaxed);
+        }
+#endif
+
         if (time_ref.has_marker == 0 && op != NVME_POST_ACTION_OP_MARKER) {
+#if NVME_POST_ACTION_PERF_DEBUG
+            uint64_t pa_t = post_action_perf_begin();
+#endif
             uint32_t skip_bytes = NVME_POST_ACTION_RECORD_BYTES_SHORT;
             if (op == NVME_POST_ACTION_OP_READ ||
                 op == NVME_POST_ACTION_OP_WRITE ||
@@ -1000,16 +1143,25 @@ static int default_post_action(void *ctx, void *data, uint32_t data_len, uint64_
             }
             if ((parse_len - cursor) < skip_bytes) {
                 ++local_invalid_records;
+#if NVME_POST_ACTION_PERF_DEBUG
+                post_action_perf_end(&g_post_action_perf.pre_marker_skip_ns, pa_t);
+#endif
                 break;
             }
             // Before first marker, all non-marker records are discarded as invalid.
             ++local_invalid_records;
             cursor += skip_bytes;
             ++record_index;
+#if NVME_POST_ACTION_PERF_DEBUG
+            post_action_perf_end(&g_post_action_perf.pre_marker_skip_ns, pa_t);
+#endif
             continue;
         }
 
         if (op == 0x00U) {
+#if NVME_POST_ACTION_PERF_DEBUG
+            uint64_t pa_t = post_action_perf_begin();
+#endif
 #if NVME_POST_ACTION_DEBUG
             debug_print_record_hex(record, NVME_POST_ACTION_RECORD_BYTES_SHORT,
                                    record_offset, record_index, op);
@@ -1019,18 +1171,30 @@ static int default_post_action(void *ctx, void *data, uint32_t data_len, uint64_
             if (record_lo == 0ULL && record_hi == 0ULL) {
                 errno = ENODATA;
                 post_action_add_invalid_count(local_invalid_records);
+#if NVME_POST_ACTION_PERF_DEBUG
+                post_action_perf_end(&g_post_action_perf.zero_rec_ns, pa_t);
+#endif
                 return -1;
             }
             // Non-zero payload with op==0 is treated as invalid/noise and skipped.
             ++local_invalid_records;
             cursor += NVME_POST_ACTION_RECORD_BYTES_SHORT;
             ++record_index;
+#if NVME_POST_ACTION_PERF_DEBUG
+            post_action_perf_end(&g_post_action_perf.zero_rec_ns, pa_t);
+#endif
             continue;
         }
 
         if (op == NVME_POST_ACTION_OP_READ || op == NVME_POST_ACTION_OP_WRITE) {
+#if NVME_POST_ACTION_PERF_DEBUG
+            uint64_t pa_t = post_action_perf_begin();
+#endif
             if ((parse_len - cursor) < NVME_POST_ACTION_RECORD_BYTES_LONG) {
                 ++local_invalid_records;
+#if NVME_POST_ACTION_PERF_DEBUG
+                post_action_perf_end(&g_post_action_perf.rw_ns, pa_t);
+#endif
                 break;
             }
 #if NVME_POST_ACTION_DEBUG
@@ -1042,7 +1206,13 @@ static int default_post_action(void *ctx, void *data, uint32_t data_len, uint64_
                                  chunk_block_size_lba);
             cursor += NVME_POST_ACTION_RECORD_BYTES_LONG;
             ++record_index;
+#if NVME_POST_ACTION_PERF_DEBUG
+            post_action_perf_end(&g_post_action_perf.rw_ns, pa_t);
+#endif
         } else if (op == NVME_POST_ACTION_OP_TRIM) {
+#if NVME_POST_ACTION_PERF_DEBUG
+            uint64_t pa_t = post_action_perf_begin();
+#endif
             uint32_t consumed_bytes = 0U;
             uint32_t consumed_records = 0U;
             rc = parse_trim_group(bytes, parse_len, cursor, offset_bytes, record_index, &time_ref,
@@ -1050,11 +1220,17 @@ static int default_post_action(void *ctx, void *data, uint32_t data_len, uint64_
             if (rc != 0) {
                 if (errno == ECANCELED) {
                     post_action_add_invalid_count(local_invalid_records);
+#if NVME_POST_ACTION_PERF_DEBUG
+                    post_action_perf_end(&g_post_action_perf.trim_ns, pa_t);
+#endif
                     return -1;
                 }
                 ++local_invalid_records;
                 cursor += NVME_POST_ACTION_RECORD_BYTES_LONG;
                 ++record_index;
+#if NVME_POST_ACTION_PERF_DEBUG
+                post_action_perf_end(&g_post_action_perf.trim_ns, pa_t);
+#endif
                 continue;
             }
 #if NVME_POST_ACTION_DEBUG
@@ -1070,9 +1246,18 @@ static int default_post_action(void *ctx, void *data, uint32_t data_len, uint64_
 #endif
             cursor += consumed_bytes;
             record_index += consumed_records;
+#if NVME_POST_ACTION_PERF_DEBUG
+            post_action_perf_end(&g_post_action_perf.trim_ns, pa_t);
+#endif
         } else if (op == NVME_POST_ACTION_OP_STAT) {
+#if NVME_POST_ACTION_PERF_DEBUG
+            uint64_t pa_t = post_action_perf_begin();
+#endif
             if ((parse_len - cursor) < NVME_POST_ACTION_RECORD_BYTES_LONG) {
                 ++local_invalid_records;
+#if NVME_POST_ACTION_PERF_DEBUG
+                post_action_perf_end(&g_post_action_perf.stat_ns, pa_t);
+#endif
                 break;
             }
 #if NVME_POST_ACTION_DEBUG
@@ -1087,9 +1272,18 @@ static int default_post_action(void *ctx, void *data, uint32_t data_len, uint64_
 #endif
             cursor += NVME_POST_ACTION_RECORD_BYTES_LONG;
             ++record_index;
+#if NVME_POST_ACTION_PERF_DEBUG
+            post_action_perf_end(&g_post_action_perf.stat_ns, pa_t);
+#endif
         } else if (op == NVME_POST_ACTION_OP_MARKER) {
+#if NVME_POST_ACTION_PERF_DEBUG
+            uint64_t pa_t = post_action_perf_begin();
+#endif
             if ((parse_len - cursor) < NVME_POST_ACTION_RECORD_BYTES_LONG) {
                 ++local_invalid_records;
+#if NVME_POST_ACTION_PERF_DEBUG
+                post_action_perf_end(&g_post_action_perf.marker_ns, pa_t);
+#endif
                 break;
             }
 #if NVME_POST_ACTION_DEBUG
@@ -1100,10 +1294,19 @@ static int default_post_action(void *ctx, void *data, uint32_t data_len, uint64_
             rc = parse_marker_record(record_lo, record_hi, record_offset, record_index, &time_ref);
             cursor += NVME_POST_ACTION_RECORD_BYTES_LONG;
             ++record_index;
+#if NVME_POST_ACTION_PERF_DEBUG
+            post_action_perf_end(&g_post_action_perf.marker_ns, pa_t);
+#endif
         } else {
+#if NVME_POST_ACTION_PERF_DEBUG
+            uint64_t pa_t = post_action_perf_begin();
+#endif
             ++local_invalid_records;
             cursor += NVME_POST_ACTION_RECORD_BYTES_SHORT;
             ++record_index;
+#if NVME_POST_ACTION_PERF_DEBUG
+            post_action_perf_end(&g_post_action_perf.unknown_op_ns, pa_t);
+#endif
             continue;
         }
         if (rc != 0) {
