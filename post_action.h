@@ -5,6 +5,18 @@
 
 #include <stdint.h>
 
+#ifndef NVME_POST_ACTION_PERF_DEBUG
+#define NVME_POST_ACTION_PERF_DEBUG 0
+#endif
+
+#if NVME_POST_ACTION_PERF_DEBUG
+#include <stdio.h>
+
+void nvme_post_action_perf_reset(void);
+
+void nvme_post_action_perf_fprint_summary(FILE *fp);
+#endif
+
 void nvme_post_action_reset_invalid_count(void);
 
 uint64_t nvme_post_action_get_invalid_count(void);

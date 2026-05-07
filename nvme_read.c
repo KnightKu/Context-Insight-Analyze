@@ -759,8 +759,15 @@ int nvme_read(const char *device_name,
     }
 
     uint64_t total_read_bytes = 0ULL;
-    if (run_read_post_pipeline(nvme_fd, sector_size, slba, data_len, read_chunk_bytes,
-                               &total_read_bytes) != 0) {
+#if NVME_POST_ACTION_PERF_DEBUG
+    nvme_post_action_perf_reset();
+#endif
+    int pipeline_rc = run_read_post_pipeline(nvme_fd, sector_size, slba, data_len, read_chunk_bytes,
+                                             &total_read_bytes);
+#if NVME_POST_ACTION_PERF_DEBUG
+    nvme_post_action_perf_fprint_summary(stderr);
+#endif
+    if (pipeline_rc != 0) {
         close(nvme_fd);
         return -1;
     }
