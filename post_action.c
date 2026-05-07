@@ -125,7 +125,7 @@ void nvme_post_action_perf_fprint_summary(FILE *fp) {
             (double)sum_branch / 1000000.0);
     if (sum_branch > 0ULL) {
         fprintf(fp,
-                "  pre_marker_skip=%.3fms (%.1f%%) zero_op=%.3fms (%.1f%%) "
+                "[post-action-perf] pre_marker_skip=%.3fms (%.1f%%) zero_op=%.3fms (%.1f%%) "
                 "rw=%.3fms (%.1f%%) trim=%.3fms (%.1f%%) stat=%.3fms (%.1f%%) "
                 "marker=%.3fms (%.1f%%) unknown=%.3fms (%.1f%%)\n",
                 (double)pre / 1000000.0,
