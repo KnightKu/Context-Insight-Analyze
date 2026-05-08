@@ -35,6 +35,7 @@ static nvme_post_action_lba_stat_t *g_stats = NULL;
 static uint32_t g_latency_threshold_ms[NVME_POST_ACTION_LATENCY_CODE_MAX + 1U];
 static lba_active_write_entry_t *g_active_writes = NULL;
 static uint64_t g_active_writes_cap = 0ULL;
+static uint64_t g_active_writes_mask = 0ULL;
 static uint64_t g_active_writes_count = 0ULL;
 static uint32_t g_advanced_max_scale = 0U;
 static uint64_t *g_advanced_hist = NULL;
@@ -540,12 +541,9 @@ void nvme_post_action_stats_print_life_cycle_ratio_summary(void) {
 }
 
 static uint64_t hash_u64(uint64_t x) {
-    x ^= x >> 33U;
-    x *= 0xff51afd7ed558ccdULL;
-    x ^= x >> 33U;
-    x *= 0xc4ceb9fe1a85ec53ULL;
-    x ^= x >> 33U;
-    return x;
+    // Keys are mostly contiguous bucket indices; multiplicative hashing
+    // gives good spread with lower CPU cost on the hottest path.
+    return x * 11400714819323198485ULL;
 }
 
 static int active_writes_rehash(uint64_t new_cap) {
@@ -568,6 +566,7 @@ static int active_writes_rehash(uint64_t new_cap) {
     free(g_active_writes);
     g_active_writes = new_map;
     g_active_writes_cap = new_cap;
+    g_active_writes_mask = new_cap - 1ULL;
     return 0;
 }
 
@@ -578,6 +577,7 @@ static int active_writes_init(uint64_t initial_cap) {
         return -1;
     }
     g_active_writes_cap = initial_cap;
+    g_active_writes_mask = initial_cap - 1ULL;
     g_active_writes_count = 0ULL;
     return 0;
 }
@@ -586,7 +586,8 @@ static lba_active_write_entry_t *active_writes_lookup(uint64_t key) {
     if (g_active_writes == NULL || g_active_writes_cap == 0ULL) {
         return NULL;
     }
-    uint64_t pos = hash_u64(key) & (g_active_writes_cap - 1ULL);
+    uint64_t mask = g_active_writes_mask;
+    uint64_t pos = hash_u64(key) & mask;
     for (uint64_t probe = 0ULL; probe < g_active_writes_cap; ++probe) {
         lba_active_write_entry_t *entry = &g_active_writes[pos];
         if (entry->used == 0U) {
@@ -595,7 +596,7 @@ static lba_active_write_entry_t *active_writes_lookup(uint64_t key) {
         if (entry->key == key) {
             return entry;
         }
-        pos = (pos + 1ULL) & (g_active_writes_cap - 1ULL);
+        pos = (pos + 1ULL) & mask;
     }
     return NULL;
 }
@@ -612,7 +613,8 @@ static lba_active_write_entry_t *active_writes_get_or_insert(uint64_t key, int *
             return NULL;
         }
     }
-    uint64_t pos = hash_u64(key) & (g_active_writes_cap - 1ULL);
+    uint64_t mask = g_active_writes_mask;
+    uint64_t pos = hash_u64(key) & mask;
     for (uint64_t probe = 0ULL; probe < g_active_writes_cap; ++probe) {
         lba_active_write_entry_t *entry = &g_active_writes[pos];
         if (entry->used == 0U) {
@@ -629,7 +631,7 @@ static lba_active_write_entry_t *active_writes_get_or_insert(uint64_t key, int *
         if (entry->key == key) {
             return entry;
         }
-        pos = (pos + 1ULL) & (g_active_writes_cap - 1ULL);
+        pos = (pos + 1ULL) & mask;
     }
     return NULL;
 }
@@ -818,6 +820,7 @@ int nvme_post_action_stats_init(uint32_t sector_size) {
         free(g_active_writes);
         g_active_writes = NULL;
         g_active_writes_cap = 0ULL;
+        g_active_writes_mask = 0ULL;
         g_active_writes_count = 0ULL;
         g_stats_enabled = 0;
         g_stats_inited = 1;
