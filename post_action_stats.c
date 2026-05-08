@@ -911,15 +911,36 @@ int nvme_post_action_stats_get_advanced_count(uint32_t scale_idx,
 
 void nvme_post_action_stats_update_write(uint64_t start_lba,
                                          uint64_t len_lba,
-                                         uint64_t abs_time_us) {
+                                         uint64_t abs_time_us,
+                                         int track_read_count,
+                                         int track_w2fr,
+                                         int track_life_cycle) {
     pthread_mutex_lock(&g_stats_mutex);
     if (g_stats_enabled == 0 || len_lba == 0ULL) {
+        pthread_mutex_unlock(&g_stats_mutex);
+        return;
+    }
+    if (track_read_count == 0 && track_w2fr == 0 && track_life_cycle == 0) {
         pthread_mutex_unlock(&g_stats_mutex);
         return;
     }
     uint64_t begin = 0ULL;
     uint64_t end_exclusive = 0ULL;
     if (stats_index_for_lba_range_locked(start_lba, len_lba, &begin, &end_exclusive) != 0) {
+        pthread_mutex_unlock(&g_stats_mutex);
+        return;
+    }
+    if (track_w2fr == 0 && track_life_cycle == 0) {
+        for (uint64_t idx = begin; idx < end_exclusive; ++idx) {
+            int is_new = 0;
+            lba_active_write_entry_t *w = active_writes_get_or_insert(idx, &is_new);
+            if (w == NULL) {
+                continue;
+            }
+            (void)is_new;
+            w->last_write_abs_us = 1ULL;
+            w->first_read_seen = 0U;
+        }
         pthread_mutex_unlock(&g_stats_mutex);
         return;
     }
@@ -930,7 +951,8 @@ void nvme_post_action_stats_update_write(uint64_t start_lba,
         if (w == NULL) {
             continue;
         }
-        if (!is_new && w->last_write_abs_us > 0ULL && abs_time_us >= w->last_write_abs_us) {
+        if (track_life_cycle != 0 &&
+            !is_new && w->last_write_abs_us > 0ULL && abs_time_us >= w->last_write_abs_us) {
             uint32_t d_ms = duration_us_to_ms(abs_time_us - w->last_write_abs_us);
             uint16_t life_code = encode_duration_ms_non_linear(d_ms);
             s->life_cycle_latency = life_code;
@@ -953,9 +975,15 @@ void nvme_post_action_stats_update_write(uint64_t start_lba,
 
 void nvme_post_action_stats_update_read(uint64_t start_lba,
                                         uint64_t len_lba,
-                                        uint64_t abs_time_us) {
+                                        uint64_t abs_time_us,
+                                        int track_read_count,
+                                        int track_w2fr) {
     pthread_mutex_lock(&g_stats_mutex);
     if (g_stats_enabled == 0 || len_lba == 0ULL) {
+        pthread_mutex_unlock(&g_stats_mutex);
+        return;
+    }
+    if (track_read_count == 0 && track_w2fr == 0) {
         pthread_mutex_unlock(&g_stats_mutex);
         return;
     }
@@ -971,10 +999,11 @@ void nvme_post_action_stats_update_read(uint64_t start_lba,
         if (w == NULL || w->last_write_abs_us == 0ULL) {
             continue;
         }
-        if (s->read_count < 255U) {
+        if (track_read_count != 0 && s->read_count < 255U) {
             ++s->read_count;
         }
-        if (w->first_read_seen == 0U && abs_time_us >= w->last_write_abs_us) {
+        if (track_w2fr != 0 &&
+            w->first_read_seen == 0U && abs_time_us >= w->last_write_abs_us) {
             uint32_t d_ms = duration_us_to_ms(abs_time_us - w->last_write_abs_us);
             s->write_to_first_read_latency = encode_duration_ms_non_linear(d_ms);
             w->first_read_seen = 1U;
@@ -982,18 +1011,22 @@ void nvme_post_action_stats_update_read(uint64_t start_lba,
     }
     if (end_exclusive > begin) {
         uint64_t req_bytes = (end_exclusive - begin) * g_stats_block_bytes;
-        uint32_t rc_idx = ratio_bucket_index_u8(1U);
-        ++g_read_req_hist[rc_idx];
-        g_read_req_bytes_hist[rc_idx] += req_bytes;
-        ++g_read_req_total;
+        if (track_read_count != 0) {
+            uint32_t rc_idx = ratio_bucket_index_u8(1U);
+            ++g_read_req_hist[rc_idx];
+            g_read_req_bytes_hist[rc_idx] += req_bytes;
+            ++g_read_req_total;
+        }
 
-        lba_active_write_entry_t *w0 = active_writes_lookup(begin);
-        if (w0 != NULL && w0->first_read_seen != 0U) {
-            uint32_t w2fr_ms =
-                decode_duration_ms_non_linear(g_stats[begin].write_to_first_read_latency);
-            uint32_t w2fr_idx = ratio_bucket_index_ms(w2fr_ms);
-            ++g_w2fr_req_hist[w2fr_idx];
-            ++g_w2fr_req_total;
+        if (track_w2fr != 0) {
+            lba_active_write_entry_t *w0 = active_writes_lookup(begin);
+            if (w0 != NULL && w0->first_read_seen != 0U) {
+                uint32_t w2fr_ms =
+                    decode_duration_ms_non_linear(g_stats[begin].write_to_first_read_latency);
+                uint32_t w2fr_idx = ratio_bucket_index_ms(w2fr_ms);
+                ++g_w2fr_req_hist[w2fr_idx];
+                ++g_w2fr_req_total;
+            }
         }
     }
     pthread_mutex_unlock(&g_stats_mutex);
