@@ -1549,6 +1549,9 @@ int nvme_post_action_set_block_size_bytes(uint64_t block_size_bytes) {
     pthread_mutex_lock(&g_post_action_marker_mutex);
     g_post_action_block_size_lba = block_size_lba;
     pthread_mutex_unlock(&g_post_action_marker_mutex);
+    if (nvme_post_action_stats_set_block_size_bytes(block_size_bytes) != 0) {
+        return -1;
+    }
     return 0;
 }
 

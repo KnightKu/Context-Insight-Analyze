@@ -29,6 +29,8 @@ int nvme_post_action_stats_init(uint32_t sector_size);
 
 int nvme_post_action_stats_set_mdts_bytes(uint64_t mdts_bytes);
 
+int nvme_post_action_stats_set_block_size_bytes(uint64_t block_size_bytes);
+
 void nvme_post_action_stats_advanced_record_overwrite(uint64_t start_lba,
                                                       uint64_t len_lba,
                                                       uint64_t abs_time_us);

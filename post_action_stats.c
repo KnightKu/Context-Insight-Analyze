@@ -27,6 +27,8 @@ static pthread_mutex_t g_stats_mutex = PTHREAD_MUTEX_INITIALIZER;
 static int g_stats_inited = 0;
 static int g_stats_enabled = 0;
 static uint32_t g_sector_size = NVME_POST_ACTION_DEFAULT_SECTOR_SIZE;
+static uint64_t g_stats_block_bytes = NVME_POST_ACTION_STATS_BLOCK_BYTES;
+static uint64_t g_stats_alloc_bucket_count = 0ULL;
 static uint64_t g_bucket_count = 0ULL;
 static uint64_t g_total_bytes = 0ULL;
 static nvme_post_action_lba_stat_t *g_stats = NULL;
@@ -68,6 +70,18 @@ typedef struct {
 static inline uint64_t advanced_hist_index(uint32_t scale_idx, uint16_t life_code) {
     return ((uint64_t)scale_idx * ((uint64_t)NVME_POST_ACTION_LATENCY_CODE_MAX + 1ULL)) +
            (uint64_t)life_code;
+}
+
+static void stats_refresh_bucket_count_locked(void) {
+    uint64_t block_bytes = g_stats_block_bytes;
+    if (block_bytes == 0ULL) {
+        block_bytes = NVME_POST_ACTION_STATS_BLOCK_BYTES;
+    }
+    uint64_t bucket_count = NVME_POST_ACTION_DEFAULT_TOTAL_LBA_BYTES / block_bytes;
+    if (g_stats_alloc_bucket_count != 0ULL && bucket_count > g_stats_alloc_bucket_count) {
+        bucket_count = g_stats_alloc_bucket_count;
+    }
+    g_bucket_count = bucket_count;
 }
 
 static uint64_t floor_pow2_u64(uint64_t x) {
@@ -436,7 +450,7 @@ void nvme_post_action_stats_print_ratio_summary(int print_read_count,
     }
 
     fprintf(stderr, "lba ratio summary (bucket=%llu bytes):\n",
-            (unsigned long long)NVME_POST_ACTION_STATS_BLOCK_BYTES);
+            (unsigned long long)g_stats_block_bytes);
     if (print_read_count != 0) {
         uint64_t read_total = summary.read_count_total_samples;
         if (read_total == 0ULL) {
@@ -635,9 +649,9 @@ static int stats_index_for_lba_range_locked(uint64_t start_lba,
     uint64_t sector_bytes = (uint64_t)g_sector_size;
     uint64_t start_bytes = start_lba * sector_bytes;
     uint64_t end_bytes = start_bytes + (len_lba * sector_bytes);
-    uint64_t begin = start_bytes / NVME_POST_ACTION_STATS_BLOCK_BYTES;
+    uint64_t begin = start_bytes / g_stats_block_bytes;
     uint64_t end_exclusive =
-        (end_bytes + NVME_POST_ACTION_STATS_BLOCK_BYTES - 1ULL) / NVME_POST_ACTION_STATS_BLOCK_BYTES;
+        (end_bytes + g_stats_block_bytes - 1ULL) / g_stats_block_bytes;
     if (begin >= g_bucket_count) {
         *idx_begin = g_bucket_count;
         *idx_end_exclusive = g_bucket_count;
@@ -724,7 +738,7 @@ static uint64_t max_advanced_group_buckets_locked(void) {
     if (g_mdts_bytes == 0ULL) {
         return g_bucket_count;
     }
-    uint64_t b = g_mdts_bytes / NVME_POST_ACTION_STATS_BLOCK_BYTES;
+    uint64_t b = g_mdts_bytes / g_stats_block_bytes;
     if (b == 0ULL) {
         b = 1ULL;
     }
@@ -750,8 +764,9 @@ int nvme_post_action_stats_init(uint32_t sector_size) {
     }
     build_latency_threshold_table();
 
-    uint64_t bucket_count = NVME_POST_ACTION_DEFAULT_TOTAL_LBA_BYTES / NVME_POST_ACTION_STATS_BLOCK_BYTES;
-    uint64_t total_bytes = bucket_count * NVME_POST_ACTION_STATS_ENTRY_BYTES;
+    uint64_t alloc_bucket_count =
+        NVME_POST_ACTION_DEFAULT_TOTAL_LBA_BYTES / NVME_POST_ACTION_STATS_BLOCK_BYTES;
+    uint64_t total_bytes = alloc_bucket_count * NVME_POST_ACTION_STATS_ENTRY_BYTES;
     int flags = MAP_PRIVATE;
     int mmap_fd = -1;
 #if defined(MAP_ANONYMOUS)
@@ -790,7 +805,7 @@ int nvme_post_action_stats_init(uint32_t sector_size) {
     }
 
     uint32_t max_scale = 0U;
-    uint64_t tmp = bucket_count;
+    uint64_t tmp = alloc_bucket_count;
     while (tmp > 1ULL) {
         tmp >>= 1U;
         ++max_scale;
@@ -811,7 +826,8 @@ int nvme_post_action_stats_init(uint32_t sector_size) {
     }
 
     g_stats = (nvme_post_action_lba_stat_t *)mem;
-    g_bucket_count = bucket_count;
+    g_stats_alloc_bucket_count = alloc_bucket_count;
+    stats_refresh_bucket_count_locked();
     g_total_bytes = total_bytes;
     g_advanced_max_scale = max_scale;
     g_advanced_hist = advanced_hist;
@@ -828,6 +844,22 @@ int nvme_post_action_stats_init(uint32_t sector_size) {
 int nvme_post_action_stats_set_mdts_bytes(uint64_t mdts_bytes) {
     pthread_mutex_lock(&g_stats_mutex);
     g_mdts_bytes = mdts_bytes;
+    pthread_mutex_unlock(&g_stats_mutex);
+    return 0;
+}
+
+int nvme_post_action_stats_set_block_size_bytes(uint64_t block_size_bytes) {
+    uint64_t effective = NVME_POST_ACTION_STATS_BLOCK_BYTES;
+    if (block_size_bytes != 0ULL) {
+        if ((block_size_bytes % NVME_POST_ACTION_STATS_BLOCK_BYTES) != 0ULL) {
+            errno = EINVAL;
+            return -1;
+        }
+        effective = block_size_bytes;
+    }
+    pthread_mutex_lock(&g_stats_mutex);
+    g_stats_block_bytes = effective;
+    stats_refresh_bucket_count_locked();
     pthread_mutex_unlock(&g_stats_mutex);
     return 0;
 }
@@ -908,7 +940,7 @@ void nvme_post_action_stats_update_write(uint64_t start_lba,
         w->first_read_seen = 0U;
     }
     if (end_exclusive > begin) {
-        uint64_t req_bytes = (end_exclusive - begin) * NVME_POST_ACTION_STATS_BLOCK_BYTES;
+    uint64_t req_bytes = (end_exclusive - begin) * g_stats_block_bytes;
         uint64_t first_life_ms =
             decode_duration_ms_non_linear(g_stats[begin].life_cycle_latency);
         uint32_t life_idx = ratio_bucket_index_ms((uint32_t)first_life_ms);
@@ -949,7 +981,7 @@ void nvme_post_action_stats_update_read(uint64_t start_lba,
         }
     }
     if (end_exclusive > begin) {
-        uint64_t req_bytes = (end_exclusive - begin) * NVME_POST_ACTION_STATS_BLOCK_BYTES;
+        uint64_t req_bytes = (end_exclusive - begin) * g_stats_block_bytes;
         uint32_t rc_idx = ratio_bucket_index_u8(1U);
         ++g_read_req_hist[rc_idx];
         g_read_req_bytes_hist[rc_idx] += req_bytes;
