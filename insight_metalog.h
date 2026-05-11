@@ -65,8 +65,9 @@ struct insight_metalog_session_summary {
  * On success, *out_sessions points to a heap-allocated array of length
  * *out_count; free with insight_metalog_sessions_free().
  *
- * The underlying nvme_read() is run with end-of-run latency / LBA / workload
- * summary printing disabled for that call only.
+ * The underlying nvme_read() is run with end-of-run optional stderr output
+ * disabled for that call only (latency / LBA / workload summaries, debug
+ * bandwidth stats, and post-action perf summary when those features apply).
  *
  * Returns 0 on success, -1 on error (errno set). nvme_read() soft-stop is
  * treated as success; partial log is still summarized.

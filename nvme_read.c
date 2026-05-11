@@ -775,7 +775,9 @@ int nvme_read(const char *device_name,
     int pipeline_rc = run_read_post_pipeline(nvme_fd, sector_size, slba, data_len, read_chunk_bytes,
                                              &total_read_bytes);
 #if NVME_POST_ACTION_PERF_DEBUG
-    nvme_post_action_perf_fprint_summary(stderr);
+    if (g_nvme_read_print_end_reports != 0) {
+        nvme_post_action_perf_fprint_summary(stderr);
+    }
 #endif
     if (pipeline_rc != 0) {
         close(nvme_fd);
@@ -783,7 +785,8 @@ int nvme_read(const char *device_name,
     }
 
     struct timespec ts_end;
-    if (g_nvme_read_debug != 0 && clock_gettime(CLOCK_MONOTONIC, &ts_end) == 0) {
+    if (g_nvme_read_debug != 0 && g_nvme_read_print_end_reports != 0 &&
+        clock_gettime(CLOCK_MONOTONIC, &ts_end) == 0) {
         double elapsed_s = (double)(ts_end.tv_sec - ts_begin.tv_sec) +
                            (double)(ts_end.tv_nsec - ts_begin.tv_nsec) / 1000000000.0;
         if (elapsed_s <= 0.0) {

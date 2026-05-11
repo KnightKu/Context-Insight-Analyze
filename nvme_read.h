@@ -62,7 +62,11 @@ int nvme_read_set_block_size_bytes(uint64_t block_size_bytes);
 
 int nvme_read_set_stat_sample_collection(int enabled);
 
-/** When non-zero (default), nvme_read prints latency/LBA/workload summaries at end. */
+/**
+ * When non-zero (default), nvme_read prints optional end-of-run output:
+ * latency/LBA/workload summaries; with -D/--debug, read bandwidth stats; and
+ * when built with NVME_POST_ACTION_PERF_DEBUG, the post-action perf summary.
+ */
 int nvme_read_set_print_end_reports(int enabled);
 
 int nvme_read_get_print_end_reports(void);
