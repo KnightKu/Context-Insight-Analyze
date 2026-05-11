@@ -152,9 +152,13 @@ int insight_metalog_read(const char *device_name,
 		return -1;
 	}
 
+	const int prev_print_reports = nvme_read_get_print_end_reports();
+	(void)nvme_read_set_print_end_reports(0);
+
 	int rc = nvme_read(device_name, slba, data_len, NULL);
 
 	(void)nvme_read_set_post_action(prev_action, prev_ctx);
+	(void)nvme_read_set_print_end_reports(prev_print_reports);
 
 	if (rc != 0) {
 		free(agg.items);
