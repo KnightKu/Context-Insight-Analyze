@@ -66,8 +66,7 @@ int main(int argc, char *argv[]) {
 
     struct insight_metalog_session_summary *sessions = NULL;
     size_t session_count = 0U;
-    if (insight_metalog_read(device, SESSION_EXAMPLE_SCAN_SLBA_BYTES, scan_bytes, &sessions,
-                             &session_count) != 0) {
+    if (insight_metalog_read(device, &sessions, &session_count) != 0) {
         fprintf(stderr, "insight_metalog_read failed: %s\n", strerror(errno));
         return 2;
     }
