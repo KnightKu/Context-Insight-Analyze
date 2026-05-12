@@ -6,8 +6,10 @@
 #include "post_action.h"
 
 #include <errno.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #define INSIGHT_METALOG_SESSIONS_INITIAL_CAP 32U
 
@@ -173,4 +175,57 @@ int insight_metalog_read(const char *device_name,
 	*out_count = agg.count;
 	agg.items = NULL;
 	return 0;
+}
+
+static int format_ts_us_local(uint64_t ts_us, char *buf, size_t buf_len) {
+	if (buf == NULL || buf_len == 0U) {
+		errno = EINVAL;
+		return -1;
+	}
+	uint64_t sec_u64 = ts_us / 1000000ULL;
+	const uint64_t max_sec =
+	    (sizeof(time_t) > 4U) ? (uint64_t)INT64_MAX : (uint64_t)INT32_MAX;
+	if (sec_u64 > max_sec) {
+		errno = ERANGE;
+		return -1;
+	}
+	time_t sec = (time_t)sec_u64;
+	struct tm tm_buf;
+	if (localtime_r(&sec, &tm_buf) == NULL) {
+		errno = EOVERFLOW;
+		return -1;
+	}
+	if (strftime(buf, buf_len, "%Y-%m-%d %H:%M:%S", &tm_buf) == 0U) {
+		errno = ENOBUFS;
+		return -1;
+	}
+	return 0;
+}
+
+int insight_get_session_time_window(const struct insight_metalog_session_summary *sessions,
+				    size_t session_count,
+				    uint64_t session_id,
+				    char *ts_start_local,
+				    size_t ts_start_local_len,
+				    char *ts_end_local,
+				    size_t ts_end_local_len) {
+	if (sessions == NULL || ts_start_local == NULL || ts_end_local == NULL ||
+	    ts_start_local_len == 0U || ts_end_local_len == 0U) {
+		errno = EINVAL;
+		return -1;
+	}
+	for (size_t i = 0; i < session_count; ++i) {
+		if (sessions[i].session_id != session_id) {
+			continue;
+		}
+		if (format_ts_us_local(sessions[i].ts_us_start, ts_start_local, ts_start_local_len) != 0) {
+			return -1;
+		}
+		if (format_ts_us_local(sessions[i].ts_us_end, ts_end_local, ts_end_local_len) != 0) {
+			return -1;
+		}
+		return 0;
+	}
+	errno = ENOENT;
+	return -1;
 }

@@ -91,4 +91,27 @@ int insight_metalog_read(const char *device_name,
 /** Frees the array returned by insight_metalog_read(); sessions may be NULL. */
 void insight_metalog_sessions_free(struct insight_metalog_session_summary *sessions);
 
+/** Minimum recommended size for buffers passed to insight_get_session_time_window (includes NUL). */
+#define INSIGHT_METALOG_TIME_STR_BUFSIZ 32U
+
+/**
+ * Look up @p session_id in @p sessions[0 .. session_count-1] and format
+ * ts_us_start / ts_us_end as local calendar time strings
+ * "YYYY-MM-DD HH:MM:SS" (second precision; sub-microsecond part of ts_us is truncated).
+ *
+ * @p ts_start_local and @p ts_end_local must each hold at least
+ * INSIGHT_METALOG_TIME_STR_BUFSIZ bytes for a typical strftime result.
+ *
+ * Returns 0 on success, -1 on error. errno: EINVAL (bad args), ENOENT (no such
+ * session), ENOBUFS (strftime buffer too small), or ERANGE/EOVERFLOW from time
+ * conversion.
+ */
+int insight_get_session_time_window(const struct insight_metalog_session_summary *sessions,
+				    size_t session_count,
+				    uint64_t session_id,
+				    char *ts_start_local,
+				    size_t ts_start_local_len,
+				    char *ts_end_local,
+				    size_t ts_end_local_len);
+
 #endif /* INSIGHT_METALOG_H */
