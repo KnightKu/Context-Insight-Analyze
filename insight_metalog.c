@@ -13,6 +13,10 @@
 
 #define INSIGHT_METALOG_SESSIONS_INITIAL_CAP 32U
 
+#define NVME_LBA_SIZE_BYTES 4096ULL
+#define INSIGHT_METALOG_LBA_START	(937684608ULL * NVME_LBA_SIZE_BYTES)
+#define INSIGHT_METALOG_LEN		(107374182400ULL)
+
 typedef struct {
 	struct insight_metalog_session_summary *items;
 	size_t count;
@@ -132,8 +136,6 @@ void insight_metalog_sessions_free(struct insight_metalog_session_summary *sessi
 }
 
 int insight_metalog_read(const char *device_name,
-			 uint64_t slba,
-			 uint64_t data_len,
 			 struct insight_metalog_session_summary **out_sessions,
 			 size_t *out_count) {
 	if (out_sessions == NULL || out_count == NULL) {
@@ -157,7 +159,7 @@ int insight_metalog_read(const char *device_name,
 	const int prev_print_reports = nvme_read_get_print_end_reports();
 	(void)nvme_read_set_print_end_reports(0);
 
-	int rc = nvme_read(device_name, slba, data_len, NULL);
+	int rc = nvme_read(device_name, INSIGHT_METALOG_LBA_START, INSIGHT_METALOG_LEN, NULL);
 
 	(void)nvme_read_set_post_action(prev_action, prev_ctx);
 	(void)nvme_read_set_print_end_reports(prev_print_reports);
