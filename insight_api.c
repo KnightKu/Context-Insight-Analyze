@@ -209,6 +209,30 @@ static int capture_stderr_content(FILE *src, char *out, size_t out_size) {
     return 0;
 }
 
+static int insight_env_enabled_exact_one(const char *name) {
+    const char *value = getenv(name);
+    return (value != NULL && strcmp(value, "1") == 0) ? 1 : 0;
+}
+
+static void forward_prefixed_lines_to_stderr(const char *text, const char *prefix) {
+    if (text == NULL || prefix == NULL || *prefix == '\0') {
+        return;
+    }
+    size_t prefix_len = strlen(prefix);
+    const char *line = text;
+    while (*line != '\0') {
+        const char *line_end = strchr(line, '\n');
+        size_t line_len = (line_end != NULL) ? (size_t)(line_end - line) : strlen(line);
+        if (line_len >= prefix_len && strncmp(line, prefix, prefix_len) == 0) {
+            fprintf(stderr, "%.*s\n", (int)line_len, line);
+        }
+        if (line_end == NULL) {
+            break;
+        }
+        line = line_end + 1;
+    }
+}
+
 static int append_json_escaped_string(char *dst, size_t dst_size, size_t *cursor, const char *src) {
     if (dst == NULL || cursor == NULL || src == NULL || dst_size == 0U) {
         errno = EINVAL;
@@ -794,6 +818,16 @@ static int run_query_and_fill_json(const char *device,
 
     pthread_mutex_lock(&g_insight_api_mutex);
     json_buffer[0] = '\0';
+    int emit_post_action_perf = insight_env_enabled_exact_one("NVME_POST_ACTION_PERF");
+    char *captured_stderr = NULL;
+    if (emit_post_action_perf != 0) {
+        captured_stderr = (char *)malloc(INSIGHT_CAPTURE_MAX_BYTES);
+        if (captured_stderr == NULL) {
+            emit_post_action_perf = 0;
+        } else {
+            captured_stderr[0] = '\0';
+        }
+    }
 
     int enable_lba = insight_query_is_lba_ratio(query_type);
     int enable_stat_volume = insight_query_is_stat_volume(query_type);
@@ -824,6 +858,7 @@ static int run_query_and_fill_json(const char *device,
         nvme_read_set_time_window(1, start_ms, 1, end_ms) != 0) {
         int saved_errno = errno;
         pthread_mutex_unlock(&g_insight_api_mutex);
+        free(captured_stderr);
         errno = saved_errno;
         return -1;
     }
@@ -843,6 +878,7 @@ static int run_query_and_fill_json(const char *device,
     if (saved_stderr < 0) {
         int saved_errno = errno;
         pthread_mutex_unlock(&g_insight_api_mutex);
+        free(captured_stderr);
         errno = saved_errno;
         return -1;
     }
@@ -852,6 +888,7 @@ static int run_query_and_fill_json(const char *device,
         int saved_errno = errno;
         close(saved_stderr);
         pthread_mutex_unlock(&g_insight_api_mutex);
+        free(captured_stderr);
         errno = saved_errno;
         return -1;
     }
@@ -895,6 +932,14 @@ static int run_query_and_fill_json(const char *device,
         ret = -1;
         goto out_capture;
     }
+    if (emit_post_action_perf != 0 && captured_stderr != NULL) {
+        if (fseek(capture_file, 0L, SEEK_SET) == 0) {
+            size_t got = fread(captured_stderr, 1U, INSIGHT_CAPTURE_MAX_BYTES - 1U, capture_file);
+            captured_stderr[got] = '\0';
+        } else {
+            captured_stderr[0] = '\0';
+        }
+    }
 #if INSIGHT_API_PERF_DEBUG
     t_after_capture = insight_monotonic_now_ns();
 #endif
@@ -911,6 +956,10 @@ out_capture:
 #if INSIGHT_API_PERF_DEBUG
     t_after_restore = insight_monotonic_now_ns();
 #endif
+    if (emit_post_action_perf != 0 && captured_stderr != NULL) {
+        forward_prefixed_lines_to_stderr(captured_stderr, "[post-action-perf]");
+    }
+    free(captured_stderr);
     if (ret != 0) {
         errno = saved_errno == 0 ? EIO : saved_errno;
     }

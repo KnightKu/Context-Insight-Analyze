@@ -29,6 +29,8 @@ int nvme_post_action_stats_init(uint32_t sector_size);
 
 int nvme_post_action_stats_set_mdts_bytes(uint64_t mdts_bytes);
 
+int nvme_post_action_stats_set_block_size_bytes(uint64_t block_size_bytes);
+
 void nvme_post_action_stats_advanced_record_overwrite(uint64_t start_lba,
                                                       uint64_t len_lba,
                                                       uint64_t abs_time_us);
@@ -41,11 +43,16 @@ int nvme_post_action_stats_get_advanced_life_count(uint64_t range_kib,
 
 void nvme_post_action_stats_update_write(uint64_t start_lba,
                                          uint64_t len_lba,
-                                         uint64_t abs_time_us);
+                                         uint64_t abs_time_us,
+                                         int track_read_count,
+                                         int track_w2fr,
+                                         int track_life_cycle);
 
 void nvme_post_action_stats_update_read(uint64_t start_lba,
                                         uint64_t len_lba,
-                                        uint64_t abs_time_us);
+                                        uint64_t abs_time_us,
+                                        int track_read_count,
+                                        int track_w2fr);
 
 void nvme_post_action_stats_print_summary_debug(int debug_enabled);
 
