@@ -1334,6 +1334,15 @@ int nvme_post_action_set_handler(nvme_read_post_action_t action, void *ctx) {
     return 0;
 }
 
+void nvme_post_action_get_handler(nvme_read_post_action_t *out_action, void **out_ctx) {
+    if (out_action != NULL) {
+        *out_action = g_post_action;
+    }
+    if (out_ctx != NULL) {
+        *out_ctx = g_post_action_ctx;
+    }
+}
+
 int nvme_post_action_process(void *data, uint32_t data_len, uint64_t offset_bytes) {
     if (g_post_action(g_post_action_ctx, data, data_len, offset_bytes) != 0) {
         if (errno == 0) {

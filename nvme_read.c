@@ -460,6 +460,7 @@ static int run_read_post_pipeline(int nvme_fd,
 }
 
 static int g_nvme_read_debug = 0;
+static int g_nvme_read_print_end_reports = 1;
 static pthread_mutex_t g_nvme_read_perf_mutex = PTHREAD_MUTEX_INITIALIZER;
 static nvme_read_perf_stats_t g_nvme_read_last_perf;
 
@@ -521,6 +522,15 @@ int nvme_read_set_block_size_bytes(uint64_t block_size_bytes) {
 
 int nvme_read_set_stat_sample_collection(int enabled) {
     return nvme_post_action_set_stat_sample_collection(enabled);
+}
+
+int nvme_read_set_print_end_reports(int enabled) {
+    g_nvme_read_print_end_reports = (enabled != 0) ? 1 : 0;
+    return 0;
+}
+
+int nvme_read_get_print_end_reports(void) {
+    return g_nvme_read_print_end_reports;
 }
 
 int nvme_read_set_lba_stats_read_count(int enabled) {
@@ -765,7 +775,9 @@ int nvme_read(const char *device_name,
     int pipeline_rc = run_read_post_pipeline(nvme_fd, sector_size, slba, data_len, read_chunk_bytes,
                                              &total_read_bytes);
 #if NVME_POST_ACTION_PERF_DEBUG
-    nvme_post_action_perf_fprint_summary(stderr);
+    if (g_nvme_read_print_end_reports != 0) {
+        nvme_post_action_perf_fprint_summary(stderr);
+    }
 #endif
     if (pipeline_rc != 0) {
         close(nvme_fd);
@@ -773,7 +785,8 @@ int nvme_read(const char *device_name,
     }
 
     struct timespec ts_end;
-    if (g_nvme_read_debug != 0 && clock_gettime(CLOCK_MONOTONIC, &ts_end) == 0) {
+    if (g_nvme_read_debug != 0 && g_nvme_read_print_end_reports != 0 &&
+        clock_gettime(CLOCK_MONOTONIC, &ts_end) == 0) {
         double elapsed_s = (double)(ts_end.tv_sec - ts_begin.tv_sec) +
                            (double)(ts_end.tv_nsec - ts_begin.tv_nsec) / 1000000000.0;
         if (elapsed_s <= 0.0) {
@@ -790,10 +803,12 @@ int nvme_read(const char *device_name,
                 (unsigned long long)invalid_records);
         nvme_post_action_stats_print_summary_debug(g_nvme_read_debug);
     }
-    // Latency summary is controlled by -l/--latency and should not depend on debug.
-    nvme_post_action_print_latency_report();
-    nvme_post_action_print_lba_stats_report();
-    nvme_post_action_print_workload_stats_report();
+    if (g_nvme_read_print_end_reports != 0) {
+        /* Latency summary is controlled by -l/--latency and should not depend on debug. */
+        nvme_post_action_print_latency_report();
+        nvme_post_action_print_lba_stats_report();
+        nvme_post_action_print_workload_stats_report();
+    }
 
     close(nvme_fd);
     return 0;

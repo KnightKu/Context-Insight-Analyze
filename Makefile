@@ -3,11 +3,11 @@ CFLAGS := -Wall -Wextra -pedantic -std=c11 -I.
 LDFLAGS := -lpthread
 
 TARGET := sfx_ctx_insight_analyze
-SRCS := main.c nvme_read.c post_action.c post_action_stats.c post_action_latency.c
+SRCS := main.c nvme_read.c post_action.c post_action_stats.c post_action_latency.c insight_metalog.c
 OBJS := $(SRCS:.c=.o)
 LIB_TARGET := libinsight_api.a
 SHARED_LIB_TARGET := libinsight_api.so
-LIB_SRCS := insight_api.c nvme_read.c post_action.c post_action_stats.c post_action_latency.c
+LIB_SRCS := insight_api.c nvme_read.c post_action.c post_action_stats.c post_action_latency.c insight_metalog.c
 LIB_OBJS := $(LIB_SRCS:.c=.o)
 SHARED_LIB_OBJS := $(LIB_SRCS:.c=.pic.o)
 TEST_TARGET := post_action_file_tester
