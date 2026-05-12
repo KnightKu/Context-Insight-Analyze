@@ -7,17 +7,24 @@
  *   44-49: 3×u16 — layer_start, layer_count, placement_group
  *   50-53: 4×u8  — op, object_type, owner_type, coalesced_count
  *   54-63: 10 bytes reserved (zero-filled; e.g. future block_hash/model_id/dp_rank/lora_id)
+ *
+ * Records are processed in 64-byte units (little-endian u64 fields where noted).
+ * insight_metalog_read() installs a dedicated nvme_read post_action that scans
+ * each chunk for insight_metalog_record entries and aggregates per-session
+ * min/max of ts_us and lba_byte_offset.
  */
 
 #ifndef INSIGHT_METALOG_H
 #define INSIGHT_METALOG_H
 
 #include <stdint.h>
+#include <stddef.h>
 
 /* session_id: use when cmd.owner_id == -1 */
 #define INSIGHT_METALOG_SESSION_ID_INVALID UINT64_C(0xFFFFFFFFFFFFFFFF)
 
-/* op */
+#define INSIGHT_METALOG_RECORD_BYTES 64U
+
 #define INSIGHT_METALOG_OP_READ  0U
 #define INSIGHT_METALOG_OP_WRITE 1U
 #define INSIGHT_METALOG_OP_TRIM  2U
@@ -50,5 +57,38 @@ struct insight_metalog_record {
 
 _Static_assert(sizeof(struct insight_metalog_record) == 64,
 	       "insight_metalog_record must be exactly 64 bytes");
+
+/** Per-session aggregate over all parsed metalog records. */
+struct insight_metalog_session_summary {
+	uint64_t session_id;
+	uint64_t ts_us_start;
+	uint64_t ts_us_end;
+	uint64_t lba_byte_offset_start;
+	uint64_t lba_byte_offset_end;
+};
+
+/**
+ * Read NVMe log range via nvme_read(), parse 64-byte metalog records, and
+ * build one summary row per distinct session_id (min/max ts_us and
+ * lba_byte_offset across records for that session).
+ *
+ * On success, *out_sessions points to a heap-allocated array of length
+ * *out_count; free with insight_metalog_sessions_free().
+ *
+ * The underlying nvme_read() is run with end-of-run optional stderr output
+ * disabled for that call only (latency / LBA / workload summaries, debug
+ * bandwidth stats, and post-action perf summary when those features apply).
+ *
+ * Returns 0 on success, -1 on error (errno set). nvme_read() soft-stop is
+ * treated as success; partial log is still summarized.
+ */
+int insight_metalog_read(const char *device_name,
+			 uint64_t slba,
+			 uint64_t data_len,
+			 struct insight_metalog_session_summary **out_sessions,
+			 size_t *out_count);
+
+/** Frees the array returned by insight_metalog_read(); sessions may be NULL. */
+void insight_metalog_sessions_free(struct insight_metalog_session_summary *sessions);
 
 #endif /* INSIGHT_METALOG_H */

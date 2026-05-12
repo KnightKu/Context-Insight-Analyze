@@ -29,6 +29,8 @@ int nvme_post_action_default(void *ctx, void *data, uint32_t data_len, uint64_t 
 
 int nvme_post_action_set_handler(nvme_read_post_action_t action, void *ctx);
 
+void nvme_post_action_get_handler(nvme_read_post_action_t *out_action, void **out_ctx);
+
 int nvme_post_action_process(void *data, uint32_t data_len, uint64_t offset_bytes);
 
 int nvme_post_action_set_debug(int enabled);
