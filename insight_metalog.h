@@ -20,6 +20,7 @@
 #include <stdint.h>
 #include <stddef.h>
 
+
 /* session_id: use when cmd.owner_id == -1 */
 #define INSIGHT_METALOG_SESSION_ID_INVALID UINT64_C(0xFFFFFFFFFFFFFFFF)
 
@@ -83,8 +84,6 @@ struct insight_metalog_session_summary {
  * treated as success; partial log is still summarized.
  */
 int insight_metalog_read(const char *device_name,
-			 uint64_t slba,
-			 uint64_t data_len,
 			 struct insight_metalog_session_summary **out_sessions,
 			 size_t *out_count);
 
