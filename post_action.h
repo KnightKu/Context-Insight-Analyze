@@ -53,6 +53,12 @@ int nvme_post_action_set_block_size_bytes(uint64_t block_size_bytes);
 
 uint64_t nvme_post_action_get_block_size_bytes(void);
 
+/**
+ * Restrict read/write/trim record processing to LBAs overlapping [lba_start, lba_end]
+ * (inclusive, same 4KiB LBA units as log records). Both zero disables filtering.
+ */
+int nvme_post_action_set_lba_range_filter(uint64_t lba_start, uint64_t lba_end);
+
 int nvme_post_action_set_stat_sample_collection(int enabled);
 
 void nvme_post_action_reset_latency_stats(void);
