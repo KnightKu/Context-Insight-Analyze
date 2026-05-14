@@ -210,7 +210,9 @@ int insight_get_session_time_window(const struct insight_metalog_session_summary
 				    char *ts_start_local,
 				    size_t ts_start_local_len,
 				    char *ts_end_local,
-				    size_t ts_end_local_len) {
+				    size_t ts_end_local_len,
+				    uint64_t *out_lba_byte_offset_start,
+				    uint64_t *out_lba_byte_offset_end) {
 	if (sessions == NULL || ts_start_local == NULL || ts_end_local == NULL ||
 	    ts_start_local_len == 0U || ts_end_local_len == 0U) {
 		errno = EINVAL;
@@ -225,6 +227,12 @@ int insight_get_session_time_window(const struct insight_metalog_session_summary
 		}
 		if (format_ts_us_local(sessions[i].ts_us_end, ts_end_local, ts_end_local_len) != 0) {
 			return -1;
+		}
+		if (out_lba_byte_offset_start != NULL) {
+			*out_lba_byte_offset_start = sessions[i].lba_byte_offset_start;
+		}
+		if (out_lba_byte_offset_end != NULL) {
+			*out_lba_byte_offset_end = sessions[i].lba_byte_offset_end;
 		}
 		return 0;
 	}

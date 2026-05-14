@@ -73,8 +73,11 @@ int main(int argc, char *argv[]) {
 
     char time_start[INSIGHT_METALOG_TIME_STR_BUFSIZ];
     char time_end[INSIGHT_METALOG_TIME_STR_BUFSIZ];
+    uint64_t lba_byte_offset_start = 0ULL;
+    uint64_t lba_byte_offset_end = 0ULL;
     if (insight_get_session_time_window(sessions, session_count, session_id, time_start,
-                                        sizeof(time_start), time_end, sizeof(time_end)) != 0) {
+                                        sizeof(time_start), time_end, sizeof(time_end),
+                                        &lba_byte_offset_start, &lba_byte_offset_end) != 0) {
         fprintf(stderr, "insight_get_session_time_window failed: %s\n", strerror(errno));
         insight_metalog_sessions_free(sessions);
         return 3;
@@ -83,88 +86,112 @@ int main(int argc, char *argv[]) {
     insight_metalog_sessions_free(sessions);
     sessions = NULL;
 
-    printf("session_id=%" PRIu64 " time_start=\"%s\" time_end=\"%s\"\n\n",
-           (uint64_t)session_id, time_start, time_end);
+    uint64_t byte_lo = lba_byte_offset_start;
+    uint64_t byte_hi = lba_byte_offset_end;
+    if (byte_lo > byte_hi) {
+        uint64_t t = byte_lo;
+        byte_lo = byte_hi;
+        byte_hi = t;
+    }
+    const uint64_t lba_filter_start = byte_lo / NVME_LBA_SIZE_BYTES;
+    const uint64_t lba_filter_end = byte_hi / NVME_LBA_SIZE_BYTES;
+
+    printf("session_id=%" PRIu64 " time_start=\"%s\" time_end=\"%s\" "
+           "lba_byte_offset_start=%" PRIu64 " lba_byte_offset_end=%" PRIu64 " "
+           "insight_lba_start=%" PRIu64 " insight_lba_end=%" PRIu64 "\n\n",
+           (uint64_t)session_id, time_start, time_end, lba_byte_offset_start, lba_byte_offset_end,
+           lba_filter_start, lba_filter_end);
 
     char json_buffer[INSIGHT_JSON_BUFFER_BYTES];
 
-    if (get_read_latency_percentiles(device, time_start, time_end, 0ULL, 0ULL, json_buffer) != 0) {
+    if (get_read_latency_percentiles(device, time_start, time_end, lba_filter_start, lba_filter_end,
+                                     json_buffer) != 0) {
         fprintf(stderr, "get_read_latency_percentiles failed: %s\n", strerror(errno));
         return 4;
     }
     printf("=== read_latency_percentiles ===\n%s\n\n", json_buffer);
 
-    if (get_write_latency_percentiles(device, time_start, time_end, 0ULL, 0ULL, json_buffer) != 0) {
+    if (get_write_latency_percentiles(device, time_start, time_end, lba_filter_start, lba_filter_end,
+                                      json_buffer) != 0) {
         fprintf(stderr, "get_write_latency_percentiles failed: %s\n", strerror(errno));
         return 14;
     }
     printf("=== write_latency_percentiles ===\n%s\n\n", json_buffer);
 
-    if (get_write_amplification(device, time_start, time_end, 0ULL, 0ULL, json_buffer) != 0) {
+    if (get_write_amplification(device, time_start, time_end, lba_filter_start, lba_filter_end,
+                                json_buffer) != 0) {
         fprintf(stderr, "get_write_amplification failed: %s\n", strerror(errno));
         return 5;
     }
     printf("=== write_amplification ===\n%s\n\n", json_buffer);
 
-    if (get_qd_distribution(device, time_start, time_end, 0ULL, 0ULL, json_buffer) != 0) {
+    if (get_qd_distribution(device, time_start, time_end, lba_filter_start, lba_filter_end,
+                            json_buffer) != 0) {
         fprintf(stderr, "get_qd_distribution failed: %s\n", strerror(errno));
         return 6;
     }
     printf("=== qd_distribution ===\n%s\n\n", json_buffer);
 
-    if (get_read_size_distribution(device, time_start, time_end, 0ULL, 0ULL, json_buffer) != 0) {
+    if (get_read_size_distribution(device, time_start, time_end, lba_filter_start, lba_filter_end,
+                                  json_buffer) != 0) {
         fprintf(stderr, "get_read_size_distribution failed: %s\n", strerror(errno));
         return 7;
     }
     printf("=== read_size_distribution ===\n%s\n\n", json_buffer);
 
-    if (get_write_size_distribution(device, time_start, time_end, 0ULL, 0ULL, json_buffer) != 0) {
+    if (get_write_size_distribution(device, time_start, time_end, lba_filter_start, lba_filter_end,
+                                   json_buffer) != 0) {
         fprintf(stderr, "get_write_size_distribution failed: %s\n", strerror(errno));
         return 8;
     }
     printf("=== write_size_distribution ===\n%s\n\n", json_buffer);
 
-    if (get_read_throughput_distribution(device, time_start, time_end, 0ULL, 0ULL, json_buffer) != 0) {
+    if (get_read_throughput_distribution(device, time_start, time_end, lba_filter_start,
+                                       lba_filter_end, json_buffer) != 0) {
         fprintf(stderr, "get_read_throughput_distribution failed: %s\n", strerror(errno));
         return 9;
     }
     printf("=== read_throughput_distribution ===\n%s\n\n", json_buffer);
 
-    if (get_write_throughput_distribution(device, time_start, time_end, 0ULL, 0ULL, json_buffer) != 0) {
+    if (get_write_throughput_distribution(device, time_start, time_end, lba_filter_start,
+                                         lba_filter_end, json_buffer) != 0) {
         fprintf(stderr, "get_write_throughput_distribution failed: %s\n", strerror(errno));
         return 10;
     }
     printf("=== write_throughput_distribution ===\n%s\n", json_buffer);
 
-    if (get_read_count_distribution(device, block_size, time_start, time_end, 0ULL, 0ULL,
-                                      json_buffer) != 0) {
+    if (get_read_count_distribution(device, block_size, time_start, time_end, lba_filter_start,
+                                    lba_filter_end, json_buffer) != 0) {
         fprintf(stderr, "get_read_count_distribution failed: %s\n", strerror(errno));
         return 11;
     }
     printf("=== read_count_distribution ===\n%s\n\n", json_buffer);
 
-    if (get_write_to_first_read_distribution(device, block_size, time_start, time_end, 0ULL, 0ULL,
-                                              json_buffer) !=
+    if (get_write_to_first_read_distribution(device, block_size, time_start, time_end,
+                                             lba_filter_start, lba_filter_end, json_buffer) !=
         0) {
         fprintf(stderr, "get_write_to_first_read_distribution failed: %s\n", strerror(errno));
         return 12;
     }
     printf("=== write_to_first_read_distribution ===\n%s\n\n", json_buffer);
 
-    if (get_lifecycle_distribution(device, block_size, time_start, time_end, 0ULL, 0ULL, json_buffer) !=
+    if (get_lifecycle_distribution(device, block_size, time_start, time_end, lba_filter_start,
+                                    lba_filter_end, json_buffer) !=
         0) {
         fprintf(stderr, "get_lifecycle_distribution failed: %s\n", strerror(errno));
         return 13;
     }
     printf("=== lifecycle_distribution ===\n%s\n\n", json_buffer);
 
-    if (get_nand_write_volume(device, time_start, time_end, 0ULL, 0ULL, json_buffer) != 0) {
+    if (get_nand_write_volume(device, time_start, time_end, lba_filter_start, lba_filter_end,
+                              json_buffer) != 0) {
         fprintf(stderr, "get_nand_write_volume failed: %s\n", strerror(errno));
         return 15;
     }
     printf("=== nand_write_volume ===\n%s\n\n", json_buffer);
 
-    if (get_gc_data_movement(device, time_start, time_end, 0ULL, 0ULL, json_buffer) != 0) {
+    if (get_gc_data_movement(device, time_start, time_end, lba_filter_start, lba_filter_end,
+                             json_buffer) != 0) {
         fprintf(stderr, "get_gc_data_movement failed: %s\n", strerror(errno));
         return 16;
     }
