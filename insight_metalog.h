@@ -101,6 +101,10 @@ void insight_metalog_sessions_free(struct insight_metalog_session_summary *sessi
  * @p ts_start_local and @p ts_end_local must each hold at least
  * INSIGHT_METALOG_TIME_STR_BUFSIZ bytes for a typical strftime result.
  *
+ * On success, copies the matched row's lba_byte_offset_start / end into
+ * @p out_lba_byte_offset_start / @p out_lba_byte_offset_end when the
+ * corresponding pointer is non-NULL (byte offsets from the metalog aggregate).
+ *
  * Returns 0 on success, -1 on error. errno: EINVAL (bad args), ENOENT (no such
  * session), ENOBUFS (strftime buffer too small), or ERANGE/EOVERFLOW from time
  * conversion.
@@ -111,6 +115,8 @@ int insight_get_session_time_window(const struct insight_metalog_session_summary
 				    char *ts_start_local,
 				    size_t ts_start_local_len,
 				    char *ts_end_local,
-				    size_t ts_end_local_len);
+				    size_t ts_end_local_len,
+				    uint64_t *out_lba_byte_offset_start,
+				    uint64_t *out_lba_byte_offset_end);
 
 #endif /* INSIGHT_METALOG_H */

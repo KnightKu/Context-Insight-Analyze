@@ -117,6 +117,8 @@ static int run_query_and_fill_json(const char *device,
                                    uint64_t block_size,
                                    const char *time_start,
                                    const char *time_end,
+                                   uint64_t lba_start,
+                                   uint64_t lba_end,
                                    insight_query_type_t query_type,
                                    char *json_buffer);
 
@@ -514,6 +516,8 @@ static int extract_write_amplification_from_samples(const char *device,
                                                     uint64_t block_size,
                                                     const char *time_start,
                                                     const char *time_end,
+                                                    uint64_t lba_start,
+                                                    uint64_t lba_end,
                                                     char *json_buffer) {
     if (device == NULL || time_start == NULL || time_end == NULL ||
         json_buffer == NULL) {
@@ -523,6 +527,7 @@ static int extract_write_amplification_from_samples(const char *device,
 
     char scratch_json[INSIGHT_JSON_BUFFER_BYTES];
     if (run_query_and_fill_json(device, block_size, time_start, time_end,
+                                lba_start, lba_end,
                                 INSIGHT_QUERY_WA, scratch_json) != 0) {
         return -1;
     }
@@ -590,6 +595,8 @@ static int extract_stat_volume_from_samples(const char *device,
                                             uint64_t block_size,
                                             const char *time_start,
                                             const char *time_end,
+                                            uint64_t lba_start,
+                                            uint64_t lba_end,
                                             insight_query_type_t query_type,
                                             char *json_buffer) {
     if (device == NULL || time_start == NULL || time_end == NULL || json_buffer == NULL ||
@@ -599,6 +606,7 @@ static int extract_stat_volume_from_samples(const char *device,
     }
     char scratch_json[INSIGHT_JSON_BUFFER_BYTES];
     if (run_query_and_fill_json(device, block_size, time_start, time_end,
+                                lba_start, lba_end,
                                 query_type, scratch_json) != 0) {
         return -1;
     }
@@ -641,6 +649,8 @@ static int run_query_and_fill_wrapped_json(const char *device,
                                            uint64_t block_size,
                                            const char *time_start,
                                            const char *time_end,
+                                           uint64_t lba_start,
+                                           uint64_t lba_end,
                                            insight_query_type_t query_type,
                                            const char *api_name,
                                            char *json_buffer) {
@@ -650,6 +660,7 @@ static int run_query_and_fill_wrapped_json(const char *device,
     }
     char raw_result_json[INSIGHT_JSON_BUFFER_BYTES];
     if (run_query_and_fill_json(device, block_size, time_start, time_end,
+                                lba_start, lba_end,
                                 query_type, raw_result_json) != 0) {
         return -1;
     }
@@ -696,6 +707,8 @@ static int run_query_and_fill_wrapped_json(const char *device,
 static int extract_latency_bucket_result(const char *device,
                                          const char *time_start,
                                          const char *time_end,
+                                         uint64_t lba_start,
+                                         uint64_t lba_end,
                                          const char *api_name,
                                          const char *bucket_key,
                                          char *json_buffer) {
@@ -706,6 +719,7 @@ static int extract_latency_bucket_result(const char *device,
     }
     char raw_result_json[INSIGHT_JSON_BUFFER_BYTES];
     if (run_query_and_fill_json(device, 0ULL, time_start, time_end,
+                                lba_start, lba_end,
                                 INSIGHT_QUERY_LATENCY, raw_result_json) != 0) {
         return -1;
     }
@@ -785,6 +799,8 @@ static int run_query_and_fill_json(const char *device,
                                    uint64_t block_size,
                                    const char *time_start,
                                    const char *time_end,
+                                   uint64_t lba_start,
+                                   uint64_t lba_end,
                                    insight_query_type_t query_type,
                                    char *json_buffer) {
     int allow_zero_block = insight_query_allow_zero_block_size(query_type);
@@ -800,6 +816,10 @@ static int run_query_and_fill_json(const char *device,
     if (parse_datetime_ymdhms(time_start, &start_ms) != 0 ||
         parse_datetime_ymdhms(time_end, &end_ms) != 0 ||
         start_ms > end_ms) {
+        errno = EINVAL;
+        return -1;
+    }
+    if ((lba_start != 0ULL || lba_end != 0ULL) && lba_start > lba_end) {
         errno = EINVAL;
         return -1;
     }
@@ -855,7 +875,8 @@ static int run_query_and_fill_json(const char *device,
                                             (query_type == INSIGHT_QUERY_WRITE_THROUGHPUT)) != 0 ||
         nvme_read_set_trim_size_dist(0) != 0 ||
         nvme_read_set_block_size_bytes(block_size) != 0 ||
-        nvme_read_set_time_window(1, start_ms, 1, end_ms) != 0) {
+        nvme_read_set_time_window(1, start_ms, 1, end_ms) != 0 ||
+        nvme_read_set_lba_range_filter(lba_start, lba_end) != 0) {
         int saved_errno = errno;
         pthread_mutex_unlock(&g_insight_api_mutex);
         free(captured_stderr);
@@ -877,6 +898,7 @@ static int run_query_and_fill_json(const char *device,
     int saved_stderr = dup(STDERR_FILENO);
     if (saved_stderr < 0) {
         int saved_errno = errno;
+        (void)nvme_read_set_lba_range_filter(0ULL, 0ULL);
         pthread_mutex_unlock(&g_insight_api_mutex);
         free(captured_stderr);
         errno = saved_errno;
@@ -887,6 +909,7 @@ static int run_query_and_fill_json(const char *device,
     if (capture_file == NULL) {
         int saved_errno = errno;
         close(saved_stderr);
+        (void)nvme_read_set_lba_range_filter(0ULL, 0ULL);
         pthread_mutex_unlock(&g_insight_api_mutex);
         free(captured_stderr);
         errno = saved_errno;
@@ -945,6 +968,7 @@ static int run_query_and_fill_json(const char *device,
 #endif
 
 out_capture:
+    (void)nvme_read_set_lba_range_filter(0ULL, 0ULL);
     (void)fflush(stderr);
     if (dup2(saved_stderr, STDERR_FILENO) < 0 && saved_errno == 0) {
         saved_errno = errno;
@@ -1000,8 +1024,11 @@ out_capture:
 int get_read_latency_percentiles(const char *device,
                                  const char *time_start,
                                  const char *time_end,
+                                 uint64_t lba_start,
+                                 uint64_t lba_end,
                                  char *json_buffer) {
     return extract_latency_bucket_result(device, time_start, time_end,
+                                         lba_start, lba_end,
                                          "get_read_latency_percentiles",
                                          "read",
                                          json_buffer);
@@ -1010,8 +1037,11 @@ int get_read_latency_percentiles(const char *device,
 int get_write_latency_percentiles(const char *device,
                                   const char *time_start,
                                   const char *time_end,
+                                  uint64_t lba_start,
+                                  uint64_t lba_end,
                                   char *json_buffer) {
     return extract_latency_bucket_result(device, time_start, time_end,
+                                         lba_start, lba_end,
                                          "get_write_latency_percentiles",
                                          "write",
                                          json_buffer);
@@ -1020,17 +1050,23 @@ int get_write_latency_percentiles(const char *device,
 int get_write_amplification(const char *device,
                             const char *time_start,
                             const char *time_end,
+                            uint64_t lba_start,
+                            uint64_t lba_end,
                             char *json_buffer) {
     return extract_write_amplification_from_samples(device, 0ULL,
                                                     time_start, time_end,
+                                                    lba_start, lba_end,
                                                     json_buffer);
 }
 
 int get_qd_distribution(const char *device,
                         const char *time_start,
                         const char *time_end,
+                        uint64_t lba_start,
+                        uint64_t lba_end,
                         char *json_buffer) {
     return run_query_and_fill_wrapped_json(device, 0ULL, time_start, time_end,
+                                           lba_start, lba_end,
                                            INSIGHT_QUERY_QD,
                                            "get_qd_distribution",
                                            json_buffer);
@@ -1039,8 +1075,11 @@ int get_qd_distribution(const char *device,
 int get_read_size_distribution(const char *device,
                                const char *time_start,
                                const char *time_end,
+                               uint64_t lba_start,
+                               uint64_t lba_end,
                                char *json_buffer) {
     return run_query_and_fill_wrapped_json(device, 0ULL, time_start, time_end,
+                                           lba_start, lba_end,
                                            INSIGHT_QUERY_READ_SIZE,
                                            "get_read_size_distribution",
                                            json_buffer);
@@ -1049,8 +1088,11 @@ int get_read_size_distribution(const char *device,
 int get_write_size_distribution(const char *device,
                                 const char *time_start,
                                 const char *time_end,
+                                uint64_t lba_start,
+                                uint64_t lba_end,
                                 char *json_buffer) {
     return run_query_and_fill_wrapped_json(device, 0ULL, time_start, time_end,
+                                           lba_start, lba_end,
                                            INSIGHT_QUERY_WRITE_SIZE,
                                            "get_write_size_distribution",
                                            json_buffer);
@@ -1059,8 +1101,11 @@ int get_write_size_distribution(const char *device,
 int get_read_throughput_distribution(const char *device,
                                      const char *time_start,
                                      const char *time_end,
+                                     uint64_t lba_start,
+                                     uint64_t lba_end,
                                      char *json_buffer) {
     return run_query_and_fill_wrapped_json(device, 0ULL, time_start, time_end,
+                                           lba_start, lba_end,
                                            INSIGHT_QUERY_READ_THROUGHPUT,
                                            "get_read_throughput_distribution",
                                            json_buffer);
@@ -1069,8 +1114,11 @@ int get_read_throughput_distribution(const char *device,
 int get_write_throughput_distribution(const char *device,
                                       const char *time_start,
                                       const char *time_end,
+                                      uint64_t lba_start,
+                                      uint64_t lba_end,
                                       char *json_buffer) {
     return run_query_and_fill_wrapped_json(device, 0, time_start, time_end,
+                                           lba_start, lba_end,
                                            INSIGHT_QUERY_WRITE_THROUGHPUT,
                                            "get_write_throughput_distribution",
                                            json_buffer);
@@ -1080,8 +1128,11 @@ int get_read_count_distribution(const char *device,
                                 uint64_t block_size,
                                 const char *time_start,
                                 const char *time_end,
+                                uint64_t lba_start,
+                                uint64_t lba_end,
                                 char *json_buffer) {
     return run_query_and_fill_wrapped_json(device, block_size, time_start, time_end,
+                                           lba_start, lba_end,
                                            INSIGHT_QUERY_READ_COUNT,
                                            "get_read_count_distribution",
                                            json_buffer);
@@ -1091,8 +1142,11 @@ int get_write_to_first_read_distribution(const char *device,
                                          uint64_t block_size,
                                          const char *time_start,
                                          const char *time_end,
+                                         uint64_t lba_start,
+                                         uint64_t lba_end,
                                          char *json_buffer) {
     return run_query_and_fill_wrapped_json(device, block_size, time_start, time_end,
+                                           lba_start, lba_end,
                                            INSIGHT_QUERY_W2FR,
                                            "get_write_to_first_read_distribution",
                                            json_buffer);
@@ -1102,8 +1156,11 @@ int get_lifecycle_distribution(const char *device,
                                uint64_t block_size,
                                const char *time_start,
                                const char *time_end,
+                               uint64_t lba_start,
+                               uint64_t lba_end,
                                char *json_buffer) {
     return run_query_and_fill_wrapped_json(device, block_size, time_start, time_end,
+                                           lba_start, lba_end,
                                            INSIGHT_QUERY_LIFECYCLE,
                                            "get_lifecycle_distribution",
                                            json_buffer);
@@ -1112,11 +1169,15 @@ int get_lifecycle_distribution(const char *device,
 int get_nand_write_volume(const char *device,
                           const char *time_start,
                           const char *time_end,
+                          uint64_t lba_start,
+                          uint64_t lba_end,
                           char *json_buffer) {
     return extract_stat_volume_from_samples(device,
                                             NVME_LBA_SIZE_BYTES,
                                             time_start,
                                             time_end,
+                                            lba_start,
+                                            lba_end,
                                             INSIGHT_QUERY_NAND_WRITE_VOLUME,
                                             json_buffer);
 }
@@ -1124,11 +1185,15 @@ int get_nand_write_volume(const char *device,
 int get_gc_data_movement(const char *device,
                          const char *time_start,
                          const char *time_end,
+                         uint64_t lba_start,
+                         uint64_t lba_end,
                          char *json_buffer) {
     return extract_stat_volume_from_samples(device,
                                             NVME_LBA_SIZE_BYTES,
                                             time_start,
                                             time_end,
+                                            lba_start,
+                                            lba_end,
                                             INSIGHT_QUERY_GC_DATA_MOVEMENT,
                                             json_buffer);
 }
