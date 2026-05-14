@@ -306,8 +306,6 @@ static int compose_query_result_json(const char *api_name,
                                      uint64_t block_size,
                                      const char *time_start,
                                      const char *time_end,
-                                     uint64_t lba_start,
-                                     uint64_t lba_end,
                                      const char *result_json,
                                      char *json_buffer) {
     if (api_name == NULL || device == NULL || time_start == NULL || time_end == NULL ||
@@ -367,13 +365,9 @@ static int compose_query_result_json(const char *api_name,
         return -1;
     }
     n = snprintf(json_buffer + pos, INSIGHT_JSON_BUFFER_BYTES - pos,
-                 "\",\n"
-                 "    \"lba_start\": %llu,\n"
-                 "    \"lba_end\": %llu\n"
+                 "\"\n"
                  "  },\n"
-                 "  \"result\": ",
-                 (unsigned long long)lba_start,
-                 (unsigned long long)lba_end);
+                 "  \"result\": ");
     if (n < 0 || (size_t)n >= (INSIGHT_JSON_BUFFER_BYTES - pos)) {
         errno = ENOSPC;
         return -1;
@@ -574,8 +568,6 @@ static int extract_write_amplification_from_samples(const char *device,
                                      block_size,
                                      time_start,
                                      time_end,
-                                     lba_start,
-                                     lba_end,
                                      result_json,
                                      json_buffer);
 }
@@ -649,8 +641,6 @@ static int extract_stat_volume_from_samples(const char *device,
                                      0ULL,
                                      time_start,
                                      time_end,
-                                     lba_start,
-                                     lba_end,
                                      result_json,
                                      json_buffer);
 }
@@ -710,8 +700,6 @@ static int run_query_and_fill_wrapped_json(const char *device,
                                      block_size,
                                      time_start,
                                      time_end,
-                                     lba_start,
-                                     lba_end,
                                      flattened_result_json,
                                      json_buffer);
 }
@@ -803,8 +791,6 @@ static int extract_latency_bucket_result(const char *device,
                                      0ULL,
                                      time_start,
                                      time_end,
-                                     lba_start,
-                                     lba_end,
                                      result_json,
                                      json_buffer);
 }
