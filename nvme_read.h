@@ -87,6 +87,22 @@ int nvme_read(const char *device_name,
               uint64_t data_len,
               void *buffer);
 
+/**
+ * Read @p data_len bytes starting at @p file_offset_bytes in @p file_path and
+ * run the same reader/worker pipeline and post-action as nvme_read().
+ * @p slba is passed to nvme_post_action_set_base_lba() (logical base for the
+ * stream, same as nvme_read). @p buffer is unused (reserved for API symmetry).
+ *
+ * Chunk size is NVME_READ_CHUNK_BYTES (no Identify/MDTS query). The file must
+ * support pread(); @p file_offset_bytes and @p data_len must satisfy the same
+ * 4096-byte alignment rules as nvme_read().
+ */
+int nvme_read_from_file(const char *file_path,
+                        uint64_t file_offset_bytes,
+                        uint64_t slba,
+                        uint64_t data_len,
+                        void *buffer);
+
 void nvme_read_perf_reset(void);
 
 void nvme_read_perf_get(nvme_read_perf_stats_t *out);
