@@ -13,10 +13,13 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
+#include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
 
 #define NVME_READ_PIPELINE_SLOTS 4U
+#define NVME_PIPELINE_IO_DEVICE 0
+#define NVME_PIPELINE_IO_FILE 1
 #define NVME_MDTS_MAX_CAP 6U
 #define NVME_IO_AUDIT_LBA_MAGIC 0x494C4F47
 
@@ -57,9 +60,11 @@ typedef struct {
 
 typedef struct {
     nvme_pipeline_state_t *state;
-    int nvme_fd;
+    int io_kind; /* NVME_PIPELINE_IO_DEVICE or NVME_PIPELINE_IO_FILE */
+    int io_fd;
     uint32_t sector_size;
     uint64_t slba;
+    uint64_t file_seek_base; /* file mode: absolute offset for logical byte 0 */
     uint64_t data_len;
     uint64_t read_chunk_bytes;
 } nvme_pipeline_reader_args_t;
@@ -191,67 +196,138 @@ static void *pipeline_reader_thread(void *arg) {
         uint64_t remaining = args->data_len - offset;
         uint32_t chunk_size = (uint32_t)(remaining > args->read_chunk_bytes ? args->read_chunk_bytes : remaining);
 
-        if (args->slba > (UINT64_MAX - LOG_START_LBA) ||
-            (LOG_START_LBA + args->slba) > (UINT64_MAX - offset)) {
-            int saved_errno = ERANGE;
-            fprintf(stderr, "lba overflow at offset=%llu\n",
-                    (unsigned long long)offset);
-            pthread_mutex_lock(&state->mutex);
-            state->producer_failed = 1;
-            state->producer_errno = saved_errno;
-            state->producer_done = 1;
-            state->stop = 1;
-            pipeline_push_free_locked(state, slot_idx);
-            pthread_cond_broadcast(&state->cv_free);
-            pthread_cond_broadcast(&state->cv_ready);
-            pthread_mutex_unlock(&state->mutex);
-            return NULL;
+        if (args->io_kind == NVME_PIPELINE_IO_FILE) {
+            if (args->file_seek_base > (UINT64_MAX - offset) ||
+                (args->file_seek_base + offset) > (UINT64_MAX - (uint64_t)chunk_size)) {
+                int saved_errno = ERANGE;
+                fprintf(stderr, "file read offset overflow at logical offset=%llu\n",
+                        (unsigned long long)offset);
+                pthread_mutex_lock(&state->mutex);
+                state->producer_failed = 1;
+                state->producer_errno = saved_errno;
+                state->producer_done = 1;
+                state->stop = 1;
+                pipeline_push_free_locked(state, slot_idx);
+                pthread_cond_broadcast(&state->cv_free);
+                pthread_cond_broadcast(&state->cv_ready);
+                pthread_mutex_unlock(&state->mutex);
+                return NULL;
+            }
+        } else {
+            if (args->slba > (UINT64_MAX - LOG_START_LBA) ||
+                (LOG_START_LBA + args->slba) > (UINT64_MAX - offset)) {
+                int saved_errno = ERANGE;
+                fprintf(stderr, "lba overflow at offset=%llu\n",
+                        (unsigned long long)offset);
+                pthread_mutex_lock(&state->mutex);
+                state->producer_failed = 1;
+                state->producer_errno = saved_errno;
+                state->producer_done = 1;
+                state->stop = 1;
+                pipeline_push_free_locked(state, slot_idx);
+                pthread_cond_broadcast(&state->cv_free);
+                pthread_cond_broadcast(&state->cv_ready);
+                pthread_mutex_unlock(&state->mutex);
+                return NULL;
+            }
         }
-
-        uint64_t lba_bytes;
-
-	//log read
-        if (g_nvme_read_print_end_reports) {
-	    lba_bytes = LOG_START_LBA + args->slba + offset;
-	} else {
-            //metalog read
-	    lba_bytes = INSIGHT_METALOG_LBA_START + args->slba + offset;
-        }
-	uint64_t start_lba = lba_bytes / (uint64_t)args->sector_size;
-        struct nvme_passthru_cmd cmd;
-        memset(&cmd, 0, sizeof(cmd));
-        cmd.opcode = 0x02;      // NVM Read
-        cmd.nsid = 1;
-        cmd.addr = (uint64_t)(uintptr_t)slot->buf;
-        cmd.data_len = chunk_size;
-        cmd.cdw10 = (uint32_t)(start_lba & 0xFFFFFFFFULL);
-        cmd.cdw11 = (uint32_t)((start_lba >> 32) & 0xFFFFFFFFULL);
-        cmd.cdw12 = (uint32_t)(chunk_size / (uint64_t)args->sector_size) - 1U;
-        cmd.cdw14 = (uint32_t)NVME_IO_AUDIT_LBA_MAGIC;
-        //cmd.cdw14 = (uint32_t)(lba & 0xFFFFFFFFULL);
-        //cmd.cdw15 = (uint32_t)((lba >> 32) & 0xFFFFFFFFULL);
 
         uint64_t io_begin_ns = monotonic_now_ns();
-        if (ioctl(args->nvme_fd, NVME_IOCTL_IO_CMD, &cmd) < 0) {
-            int saved_errno = errno == 0 ? EIO : errno;
-            uint64_t io_end_ns = monotonic_now_ns();
-            fprintf(stderr, "ioctl failed at offset=%llu: %s\n",
-                    (unsigned long long)offset, strerror(saved_errno));
-            pthread_mutex_lock(&state->mutex);
-            if (io_begin_ns != 0ULL && io_end_ns >= io_begin_ns) {
-                state->io_ns += (io_end_ns - io_begin_ns);
+
+        if (args->io_kind == NVME_PIPELINE_IO_FILE) {
+            uint64_t pos = args->file_seek_base + offset;
+            uint8_t *wp = (uint8_t *)slot->buf;
+            size_t left = (size_t)chunk_size;
+            while (left > 0U) {
+                /* chunk_size is capped by NVME_READ_CHUNK_BYTES; fits in ssize_t for pread */
+                size_t nwant = left;
+                ssize_t n = pread(args->io_fd, wp, nwant, (off_t)pos);
+                if (n < 0) {
+                    int saved_errno = errno == 0 ? EIO : errno;
+                    uint64_t io_end_ns = monotonic_now_ns();
+                    fprintf(stderr, "pread failed at file_offset=%llu: %s\n",
+                            (unsigned long long)pos, strerror(saved_errno));
+                    pthread_mutex_lock(&state->mutex);
+                    if (io_begin_ns != 0ULL && io_end_ns >= io_begin_ns) {
+                        state->io_ns += (io_end_ns - io_begin_ns);
+                    }
+                    ++state->io_calls;
+                    state->producer_failed = 1;
+                    state->producer_errno = saved_errno;
+                    state->producer_done = 1;
+                    state->stop = 1;
+                    pipeline_push_free_locked(state, slot_idx);
+                    pthread_cond_broadcast(&state->cv_free);
+                    pthread_cond_broadcast(&state->cv_ready);
+                    pthread_mutex_unlock(&state->mutex);
+                    return NULL;
+                }
+                if (n == 0) {
+                    int saved_errno = EIO;
+                    uint64_t io_end_ns = monotonic_now_ns();
+                    fprintf(stderr, "pread unexpected EOF at file_offset=%llu\n",
+                            (unsigned long long)pos);
+                    pthread_mutex_lock(&state->mutex);
+                    if (io_begin_ns != 0ULL && io_end_ns >= io_begin_ns) {
+                        state->io_ns += (io_end_ns - io_begin_ns);
+                    }
+                    ++state->io_calls;
+                    state->producer_failed = 1;
+                    state->producer_errno = saved_errno;
+                    state->producer_done = 1;
+                    state->stop = 1;
+                    pipeline_push_free_locked(state, slot_idx);
+                    pthread_cond_broadcast(&state->cv_free);
+                    pthread_cond_broadcast(&state->cv_ready);
+                    pthread_mutex_unlock(&state->mutex);
+                    return NULL;
+                }
+                wp += (size_t)n;
+                pos += (uint64_t)n;
+                left -= (size_t)n;
             }
-            ++state->io_calls;
-            state->producer_failed = 1;
-            state->producer_errno = saved_errno;
-            state->producer_done = 1;
-            state->stop = 1;
-            pipeline_push_free_locked(state, slot_idx);
-            pthread_cond_broadcast(&state->cv_free);
-            pthread_cond_broadcast(&state->cv_ready);
-            pthread_mutex_unlock(&state->mutex);
-            return NULL;
+        } else {
+            uint64_t lba_bytes;
+
+            if (g_nvme_read_print_end_reports) {
+                lba_bytes = LOG_START_LBA + args->slba + offset;
+            } else {
+                lba_bytes = INSIGHT_METALOG_LBA_START + args->slba + offset;
+            }
+            uint64_t start_lba = lba_bytes / (uint64_t)args->sector_size;
+            struct nvme_passthru_cmd cmd;
+            memset(&cmd, 0, sizeof(cmd));
+            cmd.opcode = 0x02; /* NVM Read */
+            cmd.nsid = 1;
+            cmd.addr = (uint64_t)(uintptr_t)slot->buf;
+            cmd.data_len = chunk_size;
+            cmd.cdw10 = (uint32_t)(start_lba & 0xFFFFFFFFULL);
+            cmd.cdw11 = (uint32_t)((start_lba >> 32) & 0xFFFFFFFFULL);
+            cmd.cdw12 = (uint32_t)(chunk_size / (uint64_t)args->sector_size) - 1U;
+            cmd.cdw14 = (uint32_t)NVME_IO_AUDIT_LBA_MAGIC;
+
+            if (ioctl(args->io_fd, NVME_IOCTL_IO_CMD, &cmd) < 0) {
+                int saved_errno = errno == 0 ? EIO : errno;
+                uint64_t io_end_ns = monotonic_now_ns();
+                fprintf(stderr, "ioctl failed at offset=%llu: %s\n",
+                        (unsigned long long)offset, strerror(saved_errno));
+                pthread_mutex_lock(&state->mutex);
+                if (io_begin_ns != 0ULL && io_end_ns >= io_begin_ns) {
+                    state->io_ns += (io_end_ns - io_begin_ns);
+                }
+                ++state->io_calls;
+                state->producer_failed = 1;
+                state->producer_errno = saved_errno;
+                state->producer_done = 1;
+                state->stop = 1;
+                pipeline_push_free_locked(state, slot_idx);
+                pthread_cond_broadcast(&state->cv_free);
+                pthread_cond_broadcast(&state->cv_ready);
+                pthread_mutex_unlock(&state->mutex);
+                return NULL;
+            }
         }
+
         uint64_t io_end_ns = monotonic_now_ns();
 
         pthread_mutex_lock(&state->mutex);
@@ -351,9 +427,11 @@ static void *pipeline_worker_thread(void *arg) {
     return NULL;
 }
 
-static int run_read_post_pipeline(int nvme_fd,
+static int run_read_post_pipeline(int io_kind,
+                                  int io_fd,
                                   uint32_t sector_size,
                                   uint64_t slba,
+                                  uint64_t file_seek_base,
                                   uint64_t data_len,
                                   uint64_t read_chunk_bytes,
                                   uint64_t *processed_bytes_out) {
@@ -371,9 +449,11 @@ static int run_read_post_pipeline(int nvme_fd,
     nvme_pipeline_reader_args_t reader_args;
     memset(&reader_args, 0, sizeof(reader_args));
     reader_args.state = &state;
-    reader_args.nvme_fd = nvme_fd;
+    reader_args.io_kind = io_kind;
+    reader_args.io_fd = io_fd;
     reader_args.sector_size = sector_size;
     reader_args.slba = slba;
+    reader_args.file_seek_base = file_seek_base;
     reader_args.data_len = data_len;
     reader_args.read_chunk_bytes = read_chunk_bytes;
 
@@ -792,8 +872,8 @@ int nvme_read(const char *device_name,
 #if NVME_POST_ACTION_PERF_DEBUG
     nvme_post_action_perf_reset();
 #endif
-    int pipeline_rc = run_read_post_pipeline(nvme_fd, sector_size, slba, data_len, read_chunk_bytes,
-                                             &total_read_bytes);
+    int pipeline_rc = run_read_post_pipeline(NVME_PIPELINE_IO_DEVICE, nvme_fd, sector_size, slba, 0ULL,
+                                             data_len, read_chunk_bytes, &total_read_bytes);
 #if NVME_POST_ACTION_PERF_DEBUG
     if (g_nvme_read_print_end_reports != 0) {
         nvme_post_action_perf_fprint_summary(stderr);
@@ -831,5 +911,150 @@ int nvme_read(const char *device_name,
     }
 
     close(nvme_fd);
+    return 0;
+}
+
+int nvme_read_from_file(const char *file_path,
+                        uint64_t file_offset_bytes,
+                        uint64_t slba,
+                        uint64_t data_len,
+                        void *buffer) {
+    (void)buffer;
+
+    if (file_path == NULL || data_len == 0ULL) {
+        errno = EINVAL;
+        fprintf(stderr, "invalid argument: file_path/data_len\n");
+        return -1;
+    }
+
+    nvme_post_action_reset_invalid_count();
+
+    int file_fd = open(file_path, O_RDONLY);
+    if (file_fd < 0) {
+        fprintf(stderr, "open %s failed: %s\n", file_path, strerror(errno));
+        return -1;
+    }
+
+    struct stat st;
+    if (fstat(file_fd, &st) != 0) {
+        fprintf(stderr, "fstat %s failed: %s\n", file_path, strerror(errno));
+        close(file_fd);
+        return -1;
+    }
+    if (!S_ISREG(st.st_mode)) {
+        errno = EINVAL;
+        fprintf(stderr, "not a regular file: %s\n", file_path);
+        close(file_fd);
+        return -1;
+    }
+    if (st.st_size < 0) {
+        errno = EIO;
+        fprintf(stderr, "invalid file size for %s\n", file_path);
+        close(file_fd);
+        return -1;
+    }
+    const uint64_t file_size = (uint64_t)st.st_size;
+    if (file_offset_bytes > file_size || (file_size - file_offset_bytes) < data_len) {
+        errno = EINVAL;
+        fprintf(stderr,
+                "file range out of bounds: offset=%llu len=%llu file_size=%llu (%s)\n",
+                (unsigned long long)file_offset_bytes,
+                (unsigned long long)data_len,
+                (unsigned long long)file_size,
+                file_path);
+        close(file_fd);
+        return -1;
+    }
+
+    uint32_t sector_size = (uint32_t)NVME_LBA_SIZE_BYTES;
+    if (g_nvme_read_debug != 0) {
+        fprintf(stderr, "nvme_read_from_file: sector_size=%u bytes\n", (unsigned int)sector_size);
+    }
+    (void)nvme_post_action_set_sector_size(sector_size);
+    (void)nvme_post_action_set_base_lba(slba);
+
+    if (data_len % (uint64_t)sector_size != 0ULL) {
+        errno = EINVAL;
+        fprintf(stderr, "data_len must be %u-byte aligned, got %llu\n",
+                (unsigned int)sector_size, (unsigned long long)data_len);
+        close(file_fd);
+        return -1;
+    }
+    if (slba % (uint64_t)sector_size != 0ULL) {
+        errno = EINVAL;
+        fprintf(stderr, "slba must be %u-byte aligned, got %llu\n",
+                (unsigned int)sector_size, (unsigned long long)slba);
+        close(file_fd);
+        return -1;
+    }
+    if (file_offset_bytes % (uint64_t)sector_size != 0ULL) {
+        errno = EINVAL;
+        fprintf(stderr, "file_offset_bytes must be %u-byte aligned, got %llu\n",
+                (unsigned int)sector_size, (unsigned long long)file_offset_bytes);
+        close(file_fd);
+        return -1;
+    }
+
+    if (NVME_READ_CHUNK_BYTES % (uint64_t)sector_size != 0ULL) {
+        errno = EINVAL;
+        fprintf(stderr, "NVME_READ_CHUNK_BYTES must be %u-byte aligned\n",
+                (unsigned int)sector_size);
+        close(file_fd);
+        return -1;
+    }
+
+    const uint64_t read_chunk_bytes = NVME_READ_CHUNK_BYTES;
+    (void)nvme_read_set_mdts_bytes(read_chunk_bytes);
+
+    struct timespec ts_begin;
+    if (clock_gettime(CLOCK_MONOTONIC, &ts_begin) != 0) {
+        fprintf(stderr, "clock_gettime begin failed: %s\n", strerror(errno));
+        close(file_fd);
+        return -1;
+    }
+
+    uint64_t total_read_bytes = 0ULL;
+#if NVME_POST_ACTION_PERF_DEBUG
+    nvme_post_action_perf_reset();
+#endif
+    int pipeline_rc = run_read_post_pipeline(NVME_PIPELINE_IO_FILE, file_fd, sector_size, slba,
+                                             file_offset_bytes, data_len, read_chunk_bytes,
+                                             &total_read_bytes);
+#if NVME_POST_ACTION_PERF_DEBUG
+    if (g_nvme_read_print_end_reports != 0) {
+        nvme_post_action_perf_fprint_summary(stderr);
+    }
+#endif
+    if (pipeline_rc != 0) {
+        close(file_fd);
+        return -1;
+    }
+
+    struct timespec ts_end;
+    if (g_nvme_read_debug != 0 && g_nvme_read_print_end_reports != 0 &&
+        clock_gettime(CLOCK_MONOTONIC, &ts_end) == 0) {
+        double elapsed_s = (double)(ts_end.tv_sec - ts_begin.tv_sec) +
+                           (double)(ts_end.tv_nsec - ts_begin.tv_nsec) / 1000000000.0;
+        if (elapsed_s <= 0.0) {
+            elapsed_s = 1e-9;
+        }
+        double bandwidth_mib_s =
+            ((double)total_read_bytes / (1024.0 * 1024.0)) / elapsed_s;
+        uint64_t invalid_records = nvme_post_action_get_invalid_count();
+        fprintf(stderr,
+                "file read stats: bytes=%llu elapsed=%.6f sec bandwidth=%.2f MiB/s invalid_records=%llu\n",
+                (unsigned long long)total_read_bytes,
+                elapsed_s,
+                bandwidth_mib_s,
+                (unsigned long long)invalid_records);
+        nvme_post_action_stats_print_summary_debug(g_nvme_read_debug);
+    }
+    if (g_nvme_read_print_end_reports != 0) {
+        nvme_post_action_print_latency_report();
+        nvme_post_action_print_lba_stats_report();
+        nvme_post_action_print_workload_stats_report();
+    }
+
+    close(file_fd);
     return 0;
 }
