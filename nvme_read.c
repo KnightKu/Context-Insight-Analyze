@@ -217,7 +217,7 @@ static void *pipeline_reader_thread(void *arg) {
             if (args->slba > (UINT64_MAX - LOG_START_LBA) ||
                 (LOG_START_LBA + args->slba) > (UINT64_MAX - offset)) {
                 int saved_errno = ERANGE;
-                fprintf(stderr, "backup_lba overflow at offset=%llu\n",
+                fprintf(stderr, "lba overflow at offset=%llu\n",
                         (unsigned long long)offset);
                 pthread_mutex_lock(&state->mutex);
                 state->producer_failed = 1;
@@ -807,7 +807,7 @@ int nvme_read(const char *device_name,
 	    lba_bytes = LOG_START_LBA + slba;
 	    if (lba_bytes >= LOG_END_LBA) {
 		errno = ERANGE;
-		fprintf(stderr, "backup_lba base out of range: base=%llu LOG_END_LBA=%llu\n",
+		fprintf(stderr, "lba base out of range: base=%llu, LOG_END_LBA=%llu\n",
 			(unsigned long long)lba_bytes, (unsigned long long)LOG_END_LBA);
 		close(nvme_fd);
 		return -1;
@@ -815,7 +815,7 @@ int nvme_read(const char *device_name,
 	    if (data_len > (UINT64_MAX - lba_bytes)) {
 		errno = ERANGE;
 		fprintf(stderr,
-			"backup_lba end overflow: base=%llu data_len=%llu\n",
+			"lba end overflow: base=%llu data_len=%llu\n",
 			(unsigned long long)lba_bytes,
 			(unsigned long long)data_len);
 		close(nvme_fd);
@@ -824,7 +824,7 @@ int nvme_read(const char *device_name,
 	    if ((lba_bytes + data_len) > LOG_END_LBA) {
 		errno = ERANGE;
 		fprintf(stderr,
-			"backup_lba range exceeds LOG_END_LBA: base=%llu span_bytes=%llu LOG_END_LBA=%llu\n",
+			"lba range exceeds LOG_END_LBA: base=%llu span_bytes=%llu LOG_END_LBA=%llu\n",
 			(unsigned long long)lba_bytes,
 			(unsigned long long)data_len,
 			(unsigned long long)LOG_END_LBA);
@@ -835,7 +835,7 @@ int nvme_read(const char *device_name,
 	    lba_bytes = INSIGHT_METALOG_LBA_START + slba;
 	    if (lba_bytes >= LOG_START_LBA) {
 		errno = ERANGE;
-		fprintf(stderr, "backup_lba base out of range: base=%llu INSIGHT_METALOG_LBA_END=%llu\n",
+		fprintf(stderr, "lba base out of range: base=%llu, INSIGHT_METALOG_LBA_END=%llu\n",
 			(unsigned long long)lba_bytes, (unsigned long long)LOG_START_LBA);
 		close(nvme_fd);
 		return -1;
@@ -843,7 +843,7 @@ int nvme_read(const char *device_name,
 	    if (data_len > (LOG_START_LBA - lba_bytes)) {
 		errno = ERANGE;
 		fprintf(stderr,
-			"backup_lba end overflow: base=%llu data_len=%llu\n",
+			"lba end overflow: base=%llu data_len=%llu\n",
 			(unsigned long long)lba_bytes,
 			(unsigned long long)data_len);
 		close(nvme_fd);
@@ -852,7 +852,7 @@ int nvme_read(const char *device_name,
 	    if ((lba_bytes + data_len) > LOG_START_LBA) {
 		errno = ERANGE;
 		fprintf(stderr,
-			"backup_lba range exceeds INSIGHT_METALOG_LBA_END: base=%llu span_bytes=%llu INSIGHT_METALOG_LBA_END=%llu\n",
+			"lba range exceeds INSIGHT_METALOG_LBA_END: base=%llu span_bytes=%llu INSIGHT_METALOG_LBA_END=%llu\n",
 			(unsigned long long)lba_bytes,
 			(unsigned long long)data_len,
 			(unsigned long long)INSIGHT_METALOG_LBA_END);

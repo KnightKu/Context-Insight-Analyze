@@ -39,6 +39,83 @@ static int parse_u64_str(const char *s, uint64_t *out) {
     return 0;
 }
 
+/**
+ * insight_api JSON uses a fixed "query" layout with time_start / time_end.
+ * For this example, replace those keys with numeric session_id only.
+ */
+static int session_example_rewrite_query_json(char *buf, size_t buf_size, uint64_t session_id) {
+    if (buf == NULL || buf_size == 0U) {
+        return -1;
+    }
+    const char *ts = strstr(buf, "    \"time_start\":");
+    if (ts == NULL) {
+        return -1;
+    }
+    const char *te_key = strstr(ts, "    \"time_end\":");
+    if (te_key == NULL) {
+        return -1;
+    }
+    const char *colon = strchr(te_key + 1, ':');
+    if (colon == NULL) {
+        return -1;
+    }
+    const char *q = colon + 1;
+    while (*q == ' ' || *q == '\t') {
+        ++q;
+    }
+    if (*q != '"') {
+        return -1;
+    }
+    ++q;
+    while (*q != '\0') {
+        if (*q == '\\' && q[1] != '\0') {
+            q += 2;
+            continue;
+        }
+        if (*q == '"') {
+            break;
+        }
+        ++q;
+    }
+    if (*q != '"') {
+        return -1;
+    }
+    ++q;
+    if (*q == '\r') {
+        ++q;
+    }
+    if (*q == '\n') {
+        ++q;
+    }
+
+    char insert[96];
+    int ilen = snprintf(insert, sizeof(insert), "    \"session_id\": %" PRIu64 "\n", session_id);
+    if (ilen < 0 || (size_t)ilen >= sizeof(insert)) {
+        return -1;
+    }
+
+    size_t prefix_len = (size_t)(ts - (const char *)buf);
+    size_t suffix_len = strlen(q);
+    if (prefix_len + (size_t)ilen + suffix_len + 1U > buf_size) {
+        return -1;
+    }
+
+    char tmp[INSIGHT_JSON_BUFFER_BYTES];
+    memcpy(tmp, buf, prefix_len);
+    memcpy(tmp + prefix_len, insert, (size_t)ilen);
+    memcpy(tmp + prefix_len + (size_t)ilen, q, suffix_len + 1U);
+    memcpy(buf, tmp, prefix_len + (size_t)ilen + suffix_len + 1U);
+    return 0;
+}
+
+static int rewrite_session_json_or_fail(char *json_buffer, uint64_t session_id) {
+    if (session_example_rewrite_query_json(json_buffer, INSIGHT_JSON_BUFFER_BYTES, session_id) != 0) {
+        fprintf(stderr, "session_example_rewrite_query_json failed\n");
+        return 17;
+    }
+    return 0;
+}
+
 int main(int argc, char *argv[]) {
     if (argc != 4) {
         fprintf(stderr, "usage: %s <device> <session_id> <block_size_bytes>\n", argv[0]);
@@ -109,12 +186,18 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "get_read_latency_percentiles failed: %s\n", strerror(errno));
         return 4;
     }
+    if (rewrite_session_json_or_fail(json_buffer, session_id) != 0) {
+        return 17;
+    }
     printf("=== read_latency_percentiles ===\n%s\n\n", json_buffer);
 
     if (get_write_latency_percentiles(device, time_start, time_end, lba_filter_start, lba_filter_end,
                                       json_buffer) != 0) {
         fprintf(stderr, "get_write_latency_percentiles failed: %s\n", strerror(errno));
         return 14;
+    }
+    if (rewrite_session_json_or_fail(json_buffer, session_id) != 0) {
+        return 17;
     }
     printf("=== write_latency_percentiles ===\n%s\n\n", json_buffer);
 
@@ -123,12 +206,18 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "get_write_amplification failed: %s\n", strerror(errno));
         return 5;
     }
+    if (rewrite_session_json_or_fail(json_buffer, session_id) != 0) {
+        return 17;
+    }
     printf("=== write_amplification ===\n%s\n\n", json_buffer);
 
     if (get_qd_distribution(device, time_start, time_end, lba_filter_start, lba_filter_end,
                             json_buffer) != 0) {
         fprintf(stderr, "get_qd_distribution failed: %s\n", strerror(errno));
         return 6;
+    }
+    if (rewrite_session_json_or_fail(json_buffer, session_id) != 0) {
+        return 17;
     }
     printf("=== qd_distribution ===\n%s\n\n", json_buffer);
 
@@ -137,12 +226,18 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "get_read_size_distribution failed: %s\n", strerror(errno));
         return 7;
     }
+    if (rewrite_session_json_or_fail(json_buffer, session_id) != 0) {
+        return 17;
+    }
     printf("=== read_size_distribution ===\n%s\n\n", json_buffer);
 
     if (get_write_size_distribution(device, time_start, time_end, lba_filter_start, lba_filter_end,
                                    json_buffer) != 0) {
         fprintf(stderr, "get_write_size_distribution failed: %s\n", strerror(errno));
         return 8;
+    }
+    if (rewrite_session_json_or_fail(json_buffer, session_id) != 0) {
+        return 17;
     }
     printf("=== write_size_distribution ===\n%s\n\n", json_buffer);
 
@@ -151,6 +246,9 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "get_read_throughput_distribution failed: %s\n", strerror(errno));
         return 9;
     }
+    if (rewrite_session_json_or_fail(json_buffer, session_id) != 0) {
+        return 17;
+    }
     printf("=== read_throughput_distribution ===\n%s\n\n", json_buffer);
 
     if (get_write_throughput_distribution(device, time_start, time_end, lba_filter_start,
@@ -158,12 +256,18 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "get_write_throughput_distribution failed: %s\n", strerror(errno));
         return 10;
     }
+    if (rewrite_session_json_or_fail(json_buffer, session_id) != 0) {
+        return 17;
+    }
     printf("=== write_throughput_distribution ===\n%s\n", json_buffer);
 
     if (get_read_count_distribution(device, block_size, time_start, time_end, lba_filter_start,
                                     lba_filter_end, json_buffer) != 0) {
         fprintf(stderr, "get_read_count_distribution failed: %s\n", strerror(errno));
         return 11;
+    }
+    if (rewrite_session_json_or_fail(json_buffer, session_id) != 0) {
+        return 17;
     }
     printf("=== read_count_distribution ===\n%s\n\n", json_buffer);
 
@@ -173,6 +277,9 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "get_write_to_first_read_distribution failed: %s\n", strerror(errno));
         return 12;
     }
+    if (rewrite_session_json_or_fail(json_buffer, session_id) != 0) {
+        return 17;
+    }
     printf("=== write_to_first_read_distribution ===\n%s\n\n", json_buffer);
 
     if (get_lifecycle_distribution(device, block_size, time_start, time_end, lba_filter_start,
@@ -181,6 +288,9 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "get_lifecycle_distribution failed: %s\n", strerror(errno));
         return 13;
     }
+    if (rewrite_session_json_or_fail(json_buffer, session_id) != 0) {
+        return 17;
+    }
     printf("=== lifecycle_distribution ===\n%s\n\n", json_buffer);
 
     if (get_nand_write_volume(device, time_start, time_end, lba_filter_start, lba_filter_end,
@@ -188,12 +298,18 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "get_nand_write_volume failed: %s\n", strerror(errno));
         return 15;
     }
+    if (rewrite_session_json_or_fail(json_buffer, session_id) != 0) {
+        return 17;
+    }
     printf("=== nand_write_volume ===\n%s\n\n", json_buffer);
 
     if (get_gc_data_movement(device, time_start, time_end, lba_filter_start, lba_filter_end,
                              json_buffer) != 0) {
         fprintf(stderr, "get_gc_data_movement failed: %s\n", strerror(errno));
         return 16;
+    }
+    if (rewrite_session_json_or_fail(json_buffer, session_id) != 0) {
+        return 17;
     }
     printf("=== gc_data_movement ===\n%s\n", json_buffer);
 
