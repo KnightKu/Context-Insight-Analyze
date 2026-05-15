@@ -119,4 +119,6 @@ int insight_get_session_time_window(const struct insight_metalog_session_summary
 				    uint64_t *out_lba_byte_offset_start,
 				    uint64_t *out_lba_byte_offset_end);
 
+void insight_print_sessions(const struct insight_metalog_session_summary *sessions,
+				    size_t session_count);
 #endif /* INSIGHT_METALOG_H */

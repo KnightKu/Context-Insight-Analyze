@@ -5,6 +5,7 @@
 #include "nvme_read.h"
 #include "post_action.h"
 
+#include <stdio.h>
 #include <errno.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -202,6 +203,25 @@ static int format_ts_us_local(uint64_t ts_us, char *buf, size_t buf_len) {
 		return -1;
 	}
 	return 0;
+}
+
+void insight_print_sessions(const struct insight_metalog_session_summary *sessions,
+			    size_t session_count) {
+	if (sessions == NULL || session_count == 0) {
+		errno = EINVAL;
+		return;
+	}
+	for (size_t i = 0; i < session_count; ++i) {
+		char ts_1[64] = {0};
+		char ts_2[64] = {0};
+
+		format_ts_us_local(sessions[i].ts_us_start, ts_1, 64);
+		format_ts_us_local(sessions[i].ts_us_end, ts_2, 64);
+		printf("session: %lu, ts:[%s, %s], lba:[%lu, %lu]\n",
+			sessions[i].session_id, ts_1, ts_2, 
+			sessions[i].lba_byte_offset_start,
+			sessions[i].lba_byte_offset_end);
+	}
 }
 
 int insight_get_session_time_window(const struct insight_metalog_session_summary *sessions,
