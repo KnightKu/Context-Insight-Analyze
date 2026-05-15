@@ -933,7 +933,7 @@ static int run_query_and_fill_json(const char *device,
         ret = -1;
         goto out_capture;
     }
-    if (nvme_read(device, INSIGHT_SCAN_SLBA_BYTES, scan_bytes, NULL) != 0) {
+    if (nvme_read(device, INSIGHT_SCAN_SLBA_BYTES, scan_bytes) != 0) {
         saved_errno = errno;
         ret = -1;
         goto out_capture;

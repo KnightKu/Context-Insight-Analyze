@@ -735,9 +735,7 @@ static uint64_t get_mdts_chunk_bytes_or_default(int nvme_fd) {
 
 int nvme_read(const char *device_name,
               uint64_t slba,
-              uint64_t data_len,
-              void *buffer) {
-    (void)buffer;
+              uint64_t data_len) {
 
     if (device_name == NULL || data_len == 0) {
         errno = EINVAL;
@@ -917,10 +915,7 @@ int nvme_read(const char *device_name,
 int nvme_read_from_file(const char *file_path,
                         uint64_t file_offset_bytes,
                         uint64_t slba,
-                        uint64_t data_len,
-                        void *buffer) {
-    (void)buffer;
-
+                        uint64_t data_len) {
     if (file_path == NULL || data_len == 0ULL) {
         errno = EINVAL;
         fprintf(stderr, "invalid argument: file_path/data_len\n");

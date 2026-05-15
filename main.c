@@ -266,7 +266,7 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    if (nvme_read(device_name, slba, data_len, NULL) != 0) {
+    if (nvme_read(device_name, slba, data_len) != 0) {
         fprintf(stderr, "nvme_read failed: %s\n", strerror(errno));
         return 1;
     }
