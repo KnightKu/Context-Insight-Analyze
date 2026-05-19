@@ -372,7 +372,8 @@ static void *pipeline_worker_thread(void *arg) {
             int saved_errno = errno == 0 ? EIO : errno;
             uint64_t post_end_ns = monotonic_now_ns();
             if (saved_errno == ECANCELED || saved_errno == ENODATA || saved_errno == EPIPE) {
-                const char *reason = (saved_errno == ECANCELED) ?
+#ifdef READ_DEBUG
+	    const char *reason = (saved_errno == ECANCELED) ?
                     "overwrite detected" :
                     ((saved_errno == ENODATA) ?
                         "all-zero termination marker" :
@@ -382,6 +383,7 @@ static void *pipeline_worker_thread(void *arg) {
                         "stop further log read/parse\n",
                         (unsigned long long)slot->offset,
                         reason);
+#endif
                 pthread_mutex_lock(&state->mutex);
                 if (post_begin_ns != 0ULL && post_end_ns >= post_begin_ns) {
                     state->post_action_ns += (post_end_ns - post_begin_ns);

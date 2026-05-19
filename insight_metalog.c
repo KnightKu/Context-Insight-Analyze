@@ -107,9 +107,10 @@ static int insight_metalog_post_action(void *ctx, void *data, uint32_t data_len,
 	     pos += INSIGHT_METALOG_RECORD_BYTES) {
 		const unsigned char *rec = base + (size_t)pos;
 		if (metalog_record_is_all_zero(rec) != 0) {
-			if (agg->consecutive_all_zero < UINT32_MAX) {
+			if (agg->consecutive_all_zero < INSIGHT_METALOG_CONSECUTIVE_ZERO_STOP) {
 				++agg->consecutive_all_zero;
 			}
+
 			if (agg->consecutive_all_zero >= INSIGHT_METALOG_CONSECUTIVE_ZERO_STOP) {
 				errno = ENODATA;
 				return -1;
