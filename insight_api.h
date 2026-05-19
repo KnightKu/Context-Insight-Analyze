@@ -9,6 +9,16 @@ extern "C" {
 
 #define INSIGHT_JSON_BUFFER_BYTES 65536U
 
+/** Pass to insight_api_set_json_query_session_id() to emit time_start/time_end in query JSON. */
+#define INSIGHT_JSON_QUERY_SESSION_ID_NONE (-1LL)
+
+/**
+ * When set to a value >= 0, compose_query_result_json() puts session_id in the
+ * query object and omits time_start/time_end. When INSIGHT_JSON_QUERY_SESSION_ID_NONE,
+ * query JSON uses time_start/time_end and omits session_id.
+ */
+int insight_api_set_json_query_session_id(int64_t session_id);
+
 int get_read_latency_percentiles(const char *device,
                                  const char *time_start,
                                  const char *time_end,

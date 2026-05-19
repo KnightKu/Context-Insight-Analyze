@@ -71,6 +71,12 @@ static int insight_query_total_key_should_rename(insight_query_type_t query_type
 }
 
 static pthread_mutex_t g_insight_api_mutex = PTHREAD_MUTEX_INITIALIZER;
+static int64_t g_insight_api_json_query_session_id = INSIGHT_JSON_QUERY_SESSION_ID_NONE;
+
+int insight_api_set_json_query_session_id(int64_t session_id) {
+    g_insight_api_json_query_session_id = session_id;
+    return 0;
+}
 
 #if INSIGHT_API_PERF_DEBUG
 static uint64_t insight_monotonic_now_ns(void) {
@@ -306,10 +312,14 @@ static int compose_query_result_json(const char *api_name,
                                      uint64_t block_size,
                                      const char *time_start,
                                      const char *time_end,
+                                     int64_t session_id,
                                      const char *result_json,
                                      char *json_buffer) {
-    if (api_name == NULL || device == NULL || time_start == NULL || time_end == NULL ||
-        result_json == NULL || json_buffer == NULL) {
+    if (api_name == NULL || device == NULL || result_json == NULL || json_buffer == NULL) {
+        errno = EINVAL;
+        return -1;
+    }
+    if (session_id < 0 && (time_start == NULL || time_end == NULL)) {
         errno = EINVAL;
         return -1;
     }
@@ -337,35 +347,61 @@ static int compose_query_result_json(const char *api_name,
     if (append_json_escaped_string(json_buffer, INSIGHT_JSON_BUFFER_BYTES, &pos, device) != 0) {
         return -1;
     }
-    n = snprintf(json_buffer + pos, INSIGHT_JSON_BUFFER_BYTES - pos,
-                 include_block_size != 0 ?
+    if (include_block_size != 0) {
+        n = snprintf(json_buffer + pos, INSIGHT_JSON_BUFFER_BYTES - pos,
                      "\",\n"
-                     "    \"block_size\": %llu,\n"
-                     "    \"time_start\": \"" :
-                     "\",\n"
+                     "    \"block_size\": %llu",
+                     (unsigned long long)block_size);
+        if (n < 0 || (size_t)n >= (INSIGHT_JSON_BUFFER_BYTES - pos)) {
+            errno = ENOSPC;
+            return -1;
+        }
+        pos += (size_t)n;
+    }
+    if (session_id >= 0) {
+        n = snprintf(json_buffer + pos, INSIGHT_JSON_BUFFER_BYTES - pos,
+                     "%s\n"
+                     "    \"session_id\": %" PRIu64,
+                     (include_block_size != 0) ? "," : "\",",
+                     (uint64_t)session_id);
+        if (n < 0 || (size_t)n >= (INSIGHT_JSON_BUFFER_BYTES - pos)) {
+            errno = ENOSPC;
+            return -1;
+        }
+        pos += (size_t)n;
+    } else {
+        n = snprintf(json_buffer + pos, INSIGHT_JSON_BUFFER_BYTES - pos,
+                     "%s\n"
                      "    \"time_start\": \"",
-                 (unsigned long long)block_size);
-    if (n < 0 || (size_t)n >= (INSIGHT_JSON_BUFFER_BYTES - pos)) {
-        errno = ENOSPC;
-        return -1;
-    }
-    pos += (size_t)n;
-    if (append_json_escaped_string(json_buffer, INSIGHT_JSON_BUFFER_BYTES, &pos, time_start) != 0) {
-        return -1;
+                     (include_block_size != 0) ? "," : "\",");
+        if (n < 0 || (size_t)n >= (INSIGHT_JSON_BUFFER_BYTES - pos)) {
+            errno = ENOSPC;
+            return -1;
+        }
+        pos += (size_t)n;
+        if (append_json_escaped_string(json_buffer, INSIGHT_JSON_BUFFER_BYTES, &pos, time_start) != 0) {
+            return -1;
+        }
+        n = snprintf(json_buffer + pos, INSIGHT_JSON_BUFFER_BYTES - pos,
+                     "\",\n"
+                     "    \"time_end\": \"");
+        if (n < 0 || (size_t)n >= (INSIGHT_JSON_BUFFER_BYTES - pos)) {
+            errno = ENOSPC;
+            return -1;
+        }
+        pos += (size_t)n;
+        if (append_json_escaped_string(json_buffer, INSIGHT_JSON_BUFFER_BYTES, &pos, time_end) != 0) {
+            return -1;
+        }
+        n = snprintf(json_buffer + pos, INSIGHT_JSON_BUFFER_BYTES - pos, "\"");
+        if (n < 0 || (size_t)n >= (INSIGHT_JSON_BUFFER_BYTES - pos)) {
+            errno = ENOSPC;
+            return -1;
+        }
+        pos += (size_t)n;
     }
     n = snprintf(json_buffer + pos, INSIGHT_JSON_BUFFER_BYTES - pos,
-                 "\",\n"
-                 "    \"time_end\": \"");
-    if (n < 0 || (size_t)n >= (INSIGHT_JSON_BUFFER_BYTES - pos)) {
-        errno = ENOSPC;
-        return -1;
-    }
-    pos += (size_t)n;
-    if (append_json_escaped_string(json_buffer, INSIGHT_JSON_BUFFER_BYTES, &pos, time_end) != 0) {
-        return -1;
-    }
-    n = snprintf(json_buffer + pos, INSIGHT_JSON_BUFFER_BYTES - pos,
-                 "\"\n"
+                 "\n"
                  "  },\n"
                  "  \"result\": ");
     if (n < 0 || (size_t)n >= (INSIGHT_JSON_BUFFER_BYTES - pos)) {
@@ -568,6 +604,7 @@ static int extract_write_amplification_from_samples(const char *device,
                                      block_size,
                                      time_start,
                                      time_end,
+                                     g_insight_api_json_query_session_id,
                                      result_json,
                                      json_buffer);
 }
@@ -641,6 +678,7 @@ static int extract_stat_volume_from_samples(const char *device,
                                      0ULL,
                                      time_start,
                                      time_end,
+                                     g_insight_api_json_query_session_id,
                                      result_json,
                                      json_buffer);
 }
@@ -700,6 +738,7 @@ static int run_query_and_fill_wrapped_json(const char *device,
                                      block_size,
                                      time_start,
                                      time_end,
+                                     g_insight_api_json_query_session_id,
                                      flattened_result_json,
                                      json_buffer);
 }
@@ -791,6 +830,7 @@ static int extract_latency_bucket_result(const char *device,
                                      0ULL,
                                      time_start,
                                      time_end,
+                                     g_insight_api_json_query_session_id,
                                      result_json,
                                      json_buffer);
 }
