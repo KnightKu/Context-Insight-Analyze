@@ -22,6 +22,7 @@ typedef struct {
 	struct insight_metalog_session_summary *items;
 	size_t count;
 	size_t cap;
+	uint32_t consecutive_all_zero;
 } insight_metalog_agg_t;
 
 static inline uint64_t metalog_load_le64(const unsigned char *p) {
@@ -106,8 +107,16 @@ static int insight_metalog_post_action(void *ctx, void *data, uint32_t data_len,
 	     pos += INSIGHT_METALOG_RECORD_BYTES) {
 		const unsigned char *rec = base + (size_t)pos;
 		if (metalog_record_is_all_zero(rec) != 0) {
+			if (agg->consecutive_all_zero < UINT32_MAX) {
+				++agg->consecutive_all_zero;
+			}
+			if (agg->consecutive_all_zero >= INSIGHT_METALOG_CONSECUTIVE_ZERO_STOP) {
+				errno = ENODATA;
+				return -1;
+			}
 			continue;
 		}
+		agg->consecutive_all_zero = 0U;
 		uint64_t ts_us = metalog_load_le64(rec + 8);
 		uint64_t session_id = metalog_load_le64(rec + 16);
 		uint64_t lba_off = metalog_load_le64(rec + 32);
