@@ -26,6 +26,9 @@
 
 #define INSIGHT_METALOG_RECORD_BYTES 64U
 
+/** Consecutive all-zero 64-byte records that trigger nvme_read soft-stop (ENODATA). */
+#define INSIGHT_METALOG_CONSECUTIVE_ZERO_STOP 2U
+
 #define INSIGHT_METALOG_OP_READ  0U
 #define INSIGHT_METALOG_OP_WRITE 1U
 #define INSIGHT_METALOG_OP_TRIM  2U
@@ -80,8 +83,9 @@ struct insight_metalog_session_summary {
  * disabled for that call only (latency / LBA / workload summaries, debug
  * bandwidth stats, and post-action perf summary when those features apply).
  *
- * Returns 0 on success, -1 on error (errno set). nvme_read() soft-stop is
- * treated as success; partial log is still summarized.
+ * Returns 0 on success, -1 on error (errno set). nvme_read() soft-stop
+ * (e.g. INSIGHT_METALOG_CONSECUTIVE_ZERO_STOP consecutive all-zero records)
+ * is treated as success; partial log is still summarized.
  */
 int insight_metalog_read(const char *device_name,
 			 struct insight_metalog_session_summary **out_sessions,
