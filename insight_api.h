@@ -9,7 +9,11 @@ extern "C" {
 
 #define INSIGHT_JSON_BUFFER_BYTES 65536U
 
-/** Use for @p session_id to emit time_start/time_end in query JSON (omit session_id). */
+/**
+ * Use for @p session_id to select caller-supplied time_start/time_end and lba_start/lba_end.
+ * Any other value selects session mode: insight_api resolves time/LBA via insight_metalog_read()
+ * and insight_get_session_time_window() (caller time/LBA may be NULL / ignored).
+ */
 #define INSIGHT_JSON_QUERY_SESSION_ID_NONE (-1LL)
 
 int get_read_latency_percentiles(const char *device,
