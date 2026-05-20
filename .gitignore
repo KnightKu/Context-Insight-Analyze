@@ -1,0 +1,8 @@
+*.o
+*.pic.o
+*.a
+*.so
+insight_api_tester
+insight_api_json_tester
+insight_api_example
+insight_api_session_example

@@ -1,16 +1,50 @@
-# Context-Insight-Analyze
+# Context Insight API
 
-This project is an NVMe read-path tool based on Linux NVMe ioctl interfaces. It supports:
+C library for querying NVMe insight logs: latency percentiles, workload distributions, write amplification, and related statistics. Output is JSON suitable for downstream parsing.
 
-- Configurable `slba` and `data_len` arguments (with `K/M/G/T` unit suffixes)
-- Dynamic MDTS probing to select a safe chunk size
-- A pluggable post-action callback in the read path (default implementation includes structured record parsing)
-- Post-action parsing without file output (read data is validated/parsed in-memory only)
-- Trim group aggregation (`total_ranges > 1`) into a single object with `ranges[]`
-- Early termination marker support: an all-zero 16-byte record (`0x00` * 16) is treated as end-of-valid data and triggers soft-stop
+## Layout
 
-## Documentation
+| Path | Purpose |
+|------|---------|
+| `include/insight_api.h` | Public API |
+| `src/` | Library implementation (NVMe read path, post-action parsers, metalog, JSON helpers) |
+| `examples/` | Example programs (time-window and session-id query modes) |
+| `tests/` | API validation tests |
+| `docs/insight_api.md` | API reference |
 
-- Design document: `docs/design.md`
-- Architecture document: `docs/architecture.md`
-- Usage guide: `docs/usage.md`
+## Build
+
+```bash
+make clean && make
+```
+
+Artifacts:
+
+- `libinsight_api.a` — static library
+- `libinsight_api.so` — shared library
+- `insight_api_example` — time-window queries
+- `insight_api_session_example` — session-id queries
+
+Link your program with `-L. -linsight_api -lpthread -lm` and `-Iinclude`.
+
+## Tests
+
+```bash
+make test
+```
+
+## Examples
+
+Time window (caller supplies start/end and optional LBA range):
+
+```bash
+sudo ./insight_api_example /dev/nvme0n1 "2026-05-19 17:50:23" "2026-05-19 17:50:28" 4096
+```
+
+Session id (time/LBA resolved inside the library via metalog):
+
+```bash
+sudo ./insight_api_session_example /dev/nvme0n1 42 4096
+```
+
+See `docs/insight_api.md` for full interface documentation.
