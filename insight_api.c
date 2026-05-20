@@ -2,6 +2,7 @@
 
 #include "insight_api.h"
 
+#include "insight_metalog.h"
 #include "nvme_read.h"
 #include "post_action.h"
 #include "post_action_stats.h"
@@ -113,12 +114,89 @@ static const char *insight_query_type_name(insight_query_type_t query_type) {
 }
 #endif
 
+typedef struct {
+    const char *time_start;
+    const char *time_end;
+    uint64_t lba_start;
+    uint64_t lba_end;
+    char time_start_buf[INSIGHT_METALOG_TIME_STR_BUFSIZ];
+    char time_end_buf[INSIGHT_METALOG_TIME_STR_BUFSIZ];
+} insight_api_resolved_query_t;
+
+static int insight_api_resolve_query(const char *device,
+                                     const char *time_start_in,
+                                     const char *time_end_in,
+                                     uint64_t lba_start_in,
+                                     uint64_t lba_end_in,
+                                     int64_t session_id,
+                                     insight_api_resolved_query_t *out) {
+    if (out == NULL) {
+        errno = EINVAL;
+        return -1;
+    }
+    if (session_id == INSIGHT_JSON_QUERY_SESSION_ID_NONE) {
+        if (time_start_in == NULL || time_end_in == NULL) {
+            errno = EINVAL;
+            return -1;
+        }
+        if ((lba_start_in != 0ULL || lba_end_in != 0ULL) && lba_start_in > lba_end_in) {
+            errno = EINVAL;
+            return -1;
+        }
+        out->time_start = time_start_in;
+        out->time_end = time_end_in;
+        out->lba_start = lba_start_in;
+        out->lba_end = lba_end_in;
+        return 0;
+    }
+    if (device == NULL || session_id < 0) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    struct insight_metalog_session_summary *sessions = NULL;
+    size_t session_count = 0U;
+    if (insight_metalog_read(device, &sessions, &session_count) != 0) {
+        return -1;
+    }
+
+    uint64_t lba_byte_start = 0ULL;
+    uint64_t lba_byte_end = 0ULL;
+    int rc = insight_get_session_time_window(sessions,
+                                             session_count,
+                                             (uint64_t)session_id,
+                                             out->time_start_buf,
+                                             sizeof(out->time_start_buf),
+                                             out->time_end_buf,
+                                             sizeof(out->time_end_buf),
+                                             &lba_byte_start,
+                                             &lba_byte_end);
+    insight_metalog_sessions_free(sessions);
+    if (rc != 0) {
+        return -1;
+    }
+
+    out->time_start = out->time_start_buf;
+    out->time_end = out->time_end_buf;
+    uint64_t byte_lo = lba_byte_start;
+    uint64_t byte_hi = lba_byte_end;
+    if (byte_lo > byte_hi) {
+        uint64_t t = byte_lo;
+        byte_lo = byte_hi;
+        byte_hi = t;
+    }
+    out->lba_start = byte_lo / NVME_LBA_SIZE_BYTES;
+    out->lba_end = byte_hi / NVME_LBA_SIZE_BYTES;
+    return 0;
+}
+
 static int run_query_and_fill_json(const char *device,
                                    uint64_t block_size,
                                    const char *time_start,
                                    const char *time_end,
                                    uint64_t lba_start,
                                    uint64_t lba_end,
+                                   int64_t session_id,
                                    insight_query_type_t query_type,
                                    char *json_buffer);
 
@@ -550,15 +628,14 @@ static int extract_write_amplification_from_samples(const char *device,
                                                     uint64_t lba_end,
                                                     int64_t session_id,
                                                     char *json_buffer) {
-    if (device == NULL || time_start == NULL || time_end == NULL ||
-        json_buffer == NULL) {
+    if (device == NULL || json_buffer == NULL) {
         errno = EINVAL;
         return -1;
     }
 
     char scratch_json[INSIGHT_JSON_BUFFER_BYTES];
     if (run_query_and_fill_json(device, block_size, time_start, time_end,
-                                lba_start, lba_end,
+                                lba_start, lba_end, session_id,
                                 INSIGHT_QUERY_WA, scratch_json) != 0) {
         return -1;
     }
@@ -632,14 +709,13 @@ static int extract_stat_volume_from_samples(const char *device,
                                             int64_t session_id,
                                             insight_query_type_t query_type,
                                             char *json_buffer) {
-    if (device == NULL || time_start == NULL || time_end == NULL || json_buffer == NULL ||
-        insight_query_is_stat_volume(query_type) == 0) {
+    if (device == NULL || json_buffer == NULL || insight_query_is_stat_volume(query_type) == 0) {
         errno = EINVAL;
         return -1;
     }
     char scratch_json[INSIGHT_JSON_BUFFER_BYTES];
     if (run_query_and_fill_json(device, block_size, time_start, time_end,
-                                lba_start, lba_end,
+                                lba_start, lba_end, session_id,
                                 query_type, scratch_json) != 0) {
         return -1;
     }
@@ -695,7 +771,7 @@ static int run_query_and_fill_wrapped_json(const char *device,
     }
     char raw_result_json[INSIGHT_JSON_BUFFER_BYTES];
     if (run_query_and_fill_json(device, block_size, time_start, time_end,
-                                lba_start, lba_end,
+                                lba_start, lba_end, session_id,
                                 query_type, raw_result_json) != 0) {
         return -1;
     }
@@ -749,14 +825,13 @@ static int extract_latency_bucket_result(const char *device,
                                          const char *api_name,
                                          const char *bucket_key,
                                          char *json_buffer) {
-    if (device == NULL || time_start == NULL || time_end == NULL ||
-        api_name == NULL || bucket_key == NULL || json_buffer == NULL) {
+    if (device == NULL || api_name == NULL || bucket_key == NULL || json_buffer == NULL) {
         errno = EINVAL;
         return -1;
     }
     char raw_result_json[INSIGHT_JSON_BUFFER_BYTES];
     if (run_query_and_fill_json(device, 0ULL, time_start, time_end,
-                                lba_start, lba_end,
+                                lba_start, lba_end, session_id,
                                 INSIGHT_QUERY_LATENCY, raw_result_json) != 0) {
         return -1;
     }
@@ -839,25 +914,36 @@ static int run_query_and_fill_json(const char *device,
                                    const char *time_end,
                                    uint64_t lba_start,
                                    uint64_t lba_end,
+                                   int64_t session_id,
                                    insight_query_type_t query_type,
                                    char *json_buffer) {
     int allow_zero_block = insight_query_allow_zero_block_size(query_type);
     if (device == NULL || json_buffer == NULL ||
-        (block_size == 0ULL && allow_zero_block == 0) ||
-        time_start == NULL || time_end == NULL) {
+        (block_size == 0ULL && allow_zero_block == 0)) {
         errno = EINVAL;
         return -1;
     }
 
+    insight_api_resolved_query_t resolved;
+    if (insight_api_resolve_query(device, time_start, time_end, lba_start, lba_end,
+                                  session_id, &resolved) != 0) {
+        return -1;
+    }
+    const char *effective_time_start = resolved.time_start;
+    const char *effective_time_end = resolved.time_end;
+    const uint64_t effective_lba_start = resolved.lba_start;
+    const uint64_t effective_lba_end = resolved.lba_end;
+
     uint64_t start_ms = 0ULL;
     uint64_t end_ms = 0ULL;
-    if (parse_datetime_ymdhms(time_start, &start_ms) != 0 ||
-        parse_datetime_ymdhms(time_end, &end_ms) != 0 ||
+    if (parse_datetime_ymdhms(effective_time_start, &start_ms) != 0 ||
+        parse_datetime_ymdhms(effective_time_end, &end_ms) != 0 ||
         start_ms > end_ms) {
         errno = EINVAL;
         return -1;
     }
-    if ((lba_start != 0ULL || lba_end != 0ULL) && lba_start > lba_end) {
+    if ((effective_lba_start != 0ULL || effective_lba_end != 0ULL) &&
+        effective_lba_start > effective_lba_end) {
         errno = EINVAL;
         return -1;
     }
@@ -914,7 +1000,7 @@ static int run_query_and_fill_json(const char *device,
         nvme_read_set_trim_size_dist(0) != 0 ||
         nvme_read_set_block_size_bytes(block_size) != 0 ||
         nvme_read_set_time_window(1, start_ms, 1, end_ms) != 0 ||
-        nvme_read_set_lba_range_filter(lba_start, lba_end) != 0) {
+        nvme_read_set_lba_range_filter(effective_lba_start, effective_lba_end) != 0) {
         int saved_errno = errno;
         pthread_mutex_unlock(&g_insight_api_mutex);
         free(captured_stderr);
