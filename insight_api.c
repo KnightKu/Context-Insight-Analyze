@@ -18,8 +18,11 @@
 #include <time.h>
 #include <unistd.h>
 
-#define INSIGHT_SCAN_SLBA_BYTES 0ULL
-#define INSIGHT_SCAN_DATA_LEN_11T_BYTES (11ULL * 1024ULL * 1024ULL * 1024ULL * 1024ULL)
+#define NVME_LBA_SIZE_BYTES 4096ULL
+#define LOG_START_LBA (963899008ULL * NVME_LBA_SIZE_BYTES)
+#define LOG_END_LBA (3516309888ULL * NVME_LBA_SIZE_BYTES)
+#define LOG_LEN (LOG_END_LBA - LOG_START_LBA)
+
 #ifndef INSIGHT_API_PERF_DEBUG
 #define INSIGHT_API_PERF_DEBUG 0
 #endif
@@ -232,18 +235,6 @@ static int parse_datetime_ymdhms(const char *arg, uint64_t *out_ms) {
     }
     *out_ms = (uint64_t)ts * 1000ULL;
     return 0;
-}
-
-static uint64_t insight_effective_scan_bytes(void) {
-    uint64_t log_span_bytes = 0ULL;
-    if (LOG_END_LBA > LOG_START_LBA) {
-        log_span_bytes = LOG_END_LBA - LOG_START_LBA;
-    }
-    if (log_span_bytes == 0ULL) {
-        return 0ULL;
-    }
-    return (INSIGHT_SCAN_DATA_LEN_11T_BYTES < log_span_bytes) ?
-        INSIGHT_SCAN_DATA_LEN_11T_BYTES : log_span_bytes;
 }
 
 static int insight_env_enabled_exact_one(const char *name) {
@@ -726,13 +717,7 @@ static int run_query_and_fill_json(const char *device,
     t_after_redirect = insight_monotonic_now_ns();
 #endif
 
-    uint64_t scan_bytes = insight_effective_scan_bytes();
-    if (scan_bytes == 0ULL) {
-        saved_errno = ERANGE;
-        ret = -1;
-        goto out_capture;
-    }
-    if (nvme_read(device, INSIGHT_SCAN_SLBA_BYTES, scan_bytes) != 0) {
+    if (nvme_read(device, LOG_START_LBA, LOG_LEN) != 0) {
         saved_errno = errno;
         ret = -1;
         goto out_capture;
