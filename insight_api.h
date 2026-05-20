@@ -9,11 +9,15 @@ extern "C" {
 
 #define INSIGHT_JSON_BUFFER_BYTES 65536U
 
+/** Use for @p session_id to emit time_start/time_end in query JSON (omit session_id). */
+#define INSIGHT_JSON_QUERY_SESSION_ID_NONE (-1LL)
+
 int get_read_latency_percentiles(const char *device,
                                  const char *time_start,
                                  const char *time_end,
                                  uint64_t lba_start,
                                  uint64_t lba_end,
+                                 int64_t session_id,
                                  char *json_buffer);
 
 int get_write_latency_percentiles(const char *device,
@@ -21,6 +25,7 @@ int get_write_latency_percentiles(const char *device,
                                   const char *time_end,
                                   uint64_t lba_start,
                                   uint64_t lba_end,
+                                  int64_t session_id,
                                   char *json_buffer);
 
 int get_write_amplification(const char *device,
@@ -28,6 +33,7 @@ int get_write_amplification(const char *device,
                             const char *time_end,
                             uint64_t lba_start,
                             uint64_t lba_end,
+                            int64_t session_id,
                             char *json_buffer);
 
 int get_qd_distribution(const char *device,
@@ -35,6 +41,7 @@ int get_qd_distribution(const char *device,
                         const char *time_end,
                         uint64_t lba_start,
                         uint64_t lba_end,
+                        int64_t session_id,
                         char *json_buffer);
 
 int get_read_size_distribution(const char *device,
@@ -42,6 +49,7 @@ int get_read_size_distribution(const char *device,
                                const char *time_end,
                                uint64_t lba_start,
                                uint64_t lba_end,
+                               int64_t session_id,
                                char *json_buffer);
 
 int get_write_size_distribution(const char *device,
@@ -49,21 +57,24 @@ int get_write_size_distribution(const char *device,
                                 const char *time_end,
                                 uint64_t lba_start,
                                 uint64_t lba_end,
+                                int64_t session_id,
                                 char *json_buffer);
 
 int get_read_throughput_distribution(const char *device,
-                                    const char *time_start,
-                                    const char *time_end,
-                                    uint64_t lba_start,
-                                    uint64_t lba_end,
-                                    char *json_buffer);
-
-int get_write_throughput_distribution(const char *device,
                                      const char *time_start,
                                      const char *time_end,
                                      uint64_t lba_start,
                                      uint64_t lba_end,
+                                     int64_t session_id,
                                      char *json_buffer);
+
+int get_write_throughput_distribution(const char *device,
+                                      const char *time_start,
+                                      const char *time_end,
+                                      uint64_t lba_start,
+                                      uint64_t lba_end,
+                                      int64_t session_id,
+                                      char *json_buffer);
 
 int get_read_count_distribution(const char *device,
                                 uint64_t block_size,
@@ -71,6 +82,7 @@ int get_read_count_distribution(const char *device,
                                 const char *time_end,
                                 uint64_t lba_start,
                                 uint64_t lba_end,
+                                int64_t session_id,
                                 char *json_buffer);
 
 int get_write_to_first_read_distribution(const char *device,
@@ -79,6 +91,7 @@ int get_write_to_first_read_distribution(const char *device,
                                          const char *time_end,
                                          uint64_t lba_start,
                                          uint64_t lba_end,
+                                         int64_t session_id,
                                          char *json_buffer);
 
 int get_lifecycle_distribution(const char *device,
@@ -87,6 +100,7 @@ int get_lifecycle_distribution(const char *device,
                                const char *time_end,
                                uint64_t lba_start,
                                uint64_t lba_end,
+                               int64_t session_id,
                                char *json_buffer);
 
 int get_nand_write_volume(const char *device,
@@ -94,6 +108,7 @@ int get_nand_write_volume(const char *device,
                           const char *time_end,
                           uint64_t lba_start,
                           uint64_t lba_end,
+                          int64_t session_id,
                           char *json_buffer);
 
 int get_gc_data_movement(const char *device,
@@ -101,6 +116,7 @@ int get_gc_data_movement(const char *device,
                          const char *time_end,
                          uint64_t lba_start,
                          uint64_t lba_end,
+                         int64_t session_id,
                          char *json_buffer);
 
 #ifdef __cplusplus

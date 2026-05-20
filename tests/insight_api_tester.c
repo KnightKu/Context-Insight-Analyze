@@ -22,6 +22,7 @@ int main(void) {
     rc = get_read_latency_percentiles(NULL,
                                       "2024-03-09 16:00:05", "2024-03-09 16:00:15",
                                       0ULL, 0ULL,
+                                      INSIGHT_JSON_QUERY_SESSION_ID_NONE,
                                       json_buf);
     if (expect_invalid("get_read_latency_percentiles(NULL device)", rc) != 0) {
         return 1;
@@ -31,6 +32,7 @@ int main(void) {
     rc = get_write_latency_percentiles(NULL,
                                        "2024-03-09 16:00:05", "2024-03-09 16:00:15",
                                        0ULL, 0ULL,
+                                       INSIGHT_JSON_QUERY_SESSION_ID_NONE,
                                        json_buf);
     if (expect_invalid("get_write_latency_percentiles(NULL device)", rc) != 0) {
         return 1;
@@ -40,6 +42,7 @@ int main(void) {
     rc = get_write_amplification(NULL,
                                  "2024-03-09 16:00:05", "2024-03-09 16:00:15",
                                  0ULL, 0ULL,
+                                 INSIGHT_JSON_QUERY_SESSION_ID_NONE,
                                  json_buf);
     if (expect_invalid("get_write_amplification(NULL device)", rc) != 0) {
         return 1;
@@ -49,6 +52,7 @@ int main(void) {
     rc = get_qd_distribution("/dev/null",
                              "bad-time", "2024-03-09 16:00:15",
                              0ULL, 0ULL,
+                             INSIGHT_JSON_QUERY_SESSION_ID_NONE,
                              json_buf);
     if (expect_invalid("get_qd_distribution(invalid time_start)", rc) != 0) {
         return 1;
@@ -58,6 +62,7 @@ int main(void) {
     rc = get_read_size_distribution(NULL,
                                     "2024-03-09 16:00:05", "2024-03-09 16:00:15",
                                     0ULL, 0ULL,
+                                    INSIGHT_JSON_QUERY_SESSION_ID_NONE,
                                     json_buf);
     if (expect_invalid("get_read_size_distribution(NULL device)", rc) != 0) {
         return 1;
@@ -67,6 +72,7 @@ int main(void) {
     rc = get_write_size_distribution(NULL,
                                      "2024-03-09 16:00:05", "2024-03-09 16:00:15",
                                      0ULL, 0ULL,
+                                     INSIGHT_JSON_QUERY_SESSION_ID_NONE,
                                      json_buf);
     if (expect_invalid("get_write_size_distribution(NULL device)", rc) != 0) {
         return 1;
@@ -76,6 +82,7 @@ int main(void) {
     rc = get_read_throughput_distribution(NULL,
                                           "2024-03-09 16:00:05", "2024-03-09 16:00:15",
                                           0ULL, 0ULL,
+                                          INSIGHT_JSON_QUERY_SESSION_ID_NONE,
                                           json_buf);
     if (expect_invalid("get_read_throughput_distribution(NULL device)", rc) != 0) {
         return 1;
@@ -85,6 +92,7 @@ int main(void) {
     rc = get_write_throughput_distribution(NULL,
                                            "2024-03-09 16:00:05", "2024-03-09 16:00:15",
                                            0ULL, 0ULL,
+                                           INSIGHT_JSON_QUERY_SESSION_ID_NONE,
                                            json_buf);
     if (expect_invalid("get_write_throughput_distribution(NULL device)", rc) != 0) {
         return 1;
@@ -94,6 +102,7 @@ int main(void) {
     rc = get_read_count_distribution(NULL, 4096ULL,
                                      "2024-03-09 16:00:05", "2024-03-09 16:00:15",
                                      0ULL, 0ULL,
+                                     INSIGHT_JSON_QUERY_SESSION_ID_NONE,
                                      json_buf);
     if (expect_invalid("get_read_count_distribution(NULL device)", rc) != 0) {
         return 1;
@@ -103,6 +112,7 @@ int main(void) {
     rc = get_write_to_first_read_distribution("/dev/null", 0ULL,
                                               "2024-03-09 16:00:05", "2024-03-09 16:00:15",
                                               0ULL, 0ULL,
+                                              INSIGHT_JSON_QUERY_SESSION_ID_NONE,
                                               json_buf);
     if (expect_invalid("get_write_to_first_read_distribution(zero block_size)", rc) != 0) {
         return 1;
@@ -112,6 +122,7 @@ int main(void) {
     rc = get_lifecycle_distribution("/dev/null", 4096ULL,
                                     "bad-time", "2024-03-09 16:00:15",
                                     0ULL, 0ULL,
+                                    INSIGHT_JSON_QUERY_SESSION_ID_NONE,
                                     json_buf);
     if (expect_invalid("get_lifecycle_distribution(invalid time_start)", rc) != 0) {
         return 1;
@@ -121,6 +132,7 @@ int main(void) {
     rc = get_nand_write_volume(NULL,
                                "2024-03-09 16:00:05", "2024-03-09 16:00:15",
                                0ULL, 0ULL,
+                               INSIGHT_JSON_QUERY_SESSION_ID_NONE,
                                json_buf);
     if (expect_invalid("get_nand_write_volume(NULL device)", rc) != 0) {
         return 1;
@@ -130,6 +142,7 @@ int main(void) {
     rc = get_gc_data_movement("/dev/null",
                               "bad-time", "2024-03-09 16:00:15",
                               0ULL, 0ULL,
+                              INSIGHT_JSON_QUERY_SESSION_ID_NONE,
                               json_buf);
     if (expect_invalid("get_gc_data_movement(invalid time_start)", rc) != 0) {
         return 1;
