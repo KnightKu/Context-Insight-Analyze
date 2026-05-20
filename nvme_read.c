@@ -300,7 +300,6 @@ static void *pipeline_reader_thread(void *arg) {
             cmd.cdw11 = (uint32_t)((start_lba >> 32) & 0xFFFFFFFFULL);
             cmd.cdw12 = (uint32_t)(chunk_size / (uint64_t)args->sector_size) - 1U;
             cmd.cdw14 = (uint32_t)NVME_IO_AUDIT_LBA_MAGIC;
-		printf("%lu, %u\n", start_lba, chunk_size);
             if (ioctl(args->io_fd, NVME_IOCTL_IO_CMD, &cmd) < 0) {
                 int saved_errno = errno == 0 ? EIO : errno;
                 uint64_t io_end_ns = monotonic_now_ns();
