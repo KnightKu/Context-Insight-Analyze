@@ -287,15 +287,10 @@ static void *pipeline_reader_thread(void *arg) {
                 left -= (size_t)n;
             }
         } else {
-            uint64_t lba_bytes;
-
-            if (g_nvme_read_print_end_reports) {
-                lba_bytes = LOG_START_LBA + args->slba + offset;
-            } else {
-                lba_bytes = INSIGHT_METALOG_LBA_START + args->slba + offset;
-            }
+            uint64_t lba_bytes = args->slba + offset;
             uint64_t start_lba = lba_bytes / (uint64_t)args->sector_size;
             struct nvme_passthru_cmd cmd;
+
             memset(&cmd, 0, sizeof(cmd));
             cmd.opcode = 0x02; /* NVM Read */
             cmd.nsid = 1;
@@ -305,7 +300,7 @@ static void *pipeline_reader_thread(void *arg) {
             cmd.cdw11 = (uint32_t)((start_lba >> 32) & 0xFFFFFFFFULL);
             cmd.cdw12 = (uint32_t)(chunk_size / (uint64_t)args->sector_size) - 1U;
             cmd.cdw14 = (uint32_t)NVME_IO_AUDIT_LBA_MAGIC;
-
+		printf("%lu, %u\n", start_lba, chunk_size);
             if (ioctl(args->io_fd, NVME_IOCTL_IO_CMD, &cmd) < 0) {
                 int saved_errno = errno == 0 ? EIO : errno;
                 uint64_t io_end_ns = monotonic_now_ns();
@@ -793,72 +788,12 @@ int nvme_read(const char *device_name,
         return -1;
     }
 
-    if (slba > (UINT64_MAX - LOG_START_LBA)) {
+    if (slba > LOG_END_LBA) {
         errno = ERANGE;
         fprintf(stderr, "slba overflow after LOG_START_LBA add: slba=%llu\n",
                 (unsigned long long)slba);
         close(nvme_fd);
         return -1;
-    }
-    uint64_t lba_bytes = LOG_START_LBA + slba;
-
-    // log read lba range_check
-    if (g_nvme_read_print_end_reports) { 
-	    lba_bytes = LOG_START_LBA + slba;
-	    if (lba_bytes >= LOG_END_LBA) {
-		errno = ERANGE;
-		fprintf(stderr, "lba base out of range: base=%llu, LOG_END_LBA=%llu\n",
-			(unsigned long long)lba_bytes, (unsigned long long)LOG_END_LBA);
-		close(nvme_fd);
-		return -1;
-	    }
-	    if (data_len > (UINT64_MAX - lba_bytes)) {
-		errno = ERANGE;
-		fprintf(stderr,
-			"lba end overflow: base=%llu data_len=%llu\n",
-			(unsigned long long)lba_bytes,
-			(unsigned long long)data_len);
-		close(nvme_fd);
-		return -1;
-	    }
-	    if ((lba_bytes + data_len) > LOG_END_LBA) {
-		errno = ERANGE;
-		fprintf(stderr,
-			"lba range exceeds LOG_END_LBA: base=%llu span_bytes=%llu LOG_END_LBA=%llu\n",
-			(unsigned long long)lba_bytes,
-			(unsigned long long)data_len,
-			(unsigned long long)LOG_END_LBA);
-		close(nvme_fd);
-		return -1;
-	    }
-    } else {
-	    lba_bytes = INSIGHT_METALOG_LBA_START + slba;
-	    if (lba_bytes >= LOG_START_LBA) {
-		errno = ERANGE;
-		fprintf(stderr, "lba base out of range: base=%llu, INSIGHT_METALOG_LBA_END=%llu\n",
-			(unsigned long long)lba_bytes, (unsigned long long)LOG_START_LBA);
-		close(nvme_fd);
-		return -1;
-	    }
-	    if (data_len > (LOG_START_LBA - lba_bytes)) {
-		errno = ERANGE;
-		fprintf(stderr,
-			"lba end overflow: base=%llu data_len=%llu\n",
-			(unsigned long long)lba_bytes,
-			(unsigned long long)data_len);
-		close(nvme_fd);
-		return -1;
-	    }
-	    if ((lba_bytes + data_len) > LOG_START_LBA) {
-		errno = ERANGE;
-		fprintf(stderr,
-			"lba range exceeds INSIGHT_METALOG_LBA_END: base=%llu span_bytes=%llu INSIGHT_METALOG_LBA_END=%llu\n",
-			(unsigned long long)lba_bytes,
-			(unsigned long long)data_len,
-			(unsigned long long)INSIGHT_METALOG_LBA_END);
-		close(nvme_fd);
-		return -1;
-	    } 
     }
 
     struct timespec ts_begin;
