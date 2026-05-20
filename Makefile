@@ -7,7 +7,7 @@ SRCS := main.c nvme_read.c post_action.c post_action_stats.c post_action_latency
 OBJS := $(SRCS:.c=.o)
 LIB_TARGET := libinsight_api.a
 SHARED_LIB_TARGET := libinsight_api.so
-LIB_SRCS := insight_api.c nvme_read.c post_action.c post_action_stats.c post_action_latency.c insight_metalog.c
+LIB_SRCS := insight_api.c insight_api_json.c nvme_read.c post_action.c post_action_stats.c post_action_latency.c insight_metalog.c
 LIB_OBJS := $(LIB_SRCS:.c=.o)
 SHARED_LIB_OBJS := $(LIB_SRCS:.c=.pic.o)
 TEST_TARGET := post_action_file_tester
@@ -16,6 +16,9 @@ TEST_OBJS := $(TEST_SRCS:.c=.o)
 API_TEST_TARGET := insight_api_tester
 API_TEST_SRCS := tests/insight_api_tester.c
 API_TEST_OBJS := $(API_TEST_SRCS:.c=.o)
+JSON_TEST_TARGET := insight_api_json_tester
+JSON_TEST_SRCS := tests/insight_api_json_tester.c insight_api_json.c
+JSON_TEST_OBJS := $(JSON_TEST_SRCS:.c=.o)
 API_EXAMPLE_TARGET := insight_api_example
 API_EXAMPLE_SRCS := examples/insight_api_example.c
 API_EXAMPLE_OBJS := $(API_EXAMPLE_SRCS:.c=.o)
@@ -45,6 +48,9 @@ $(TEST_TARGET): $(TEST_OBJS)
 $(API_TEST_TARGET): $(API_TEST_OBJS) $(LIB_TARGET)
 	$(CC) $(CFLAGS) -o $@ $(API_TEST_OBJS) $(LIB_TARGET) $(LDFLAGS)
 
+$(JSON_TEST_TARGET): $(JSON_TEST_OBJS)
+	$(CC) $(CFLAGS) -o $@ $(JSON_TEST_OBJS) $(LDFLAGS)
+
 $(API_EXAMPLE_TARGET): $(API_EXAMPLE_OBJS) $(LIB_TARGET)
 	$(CC) $(CFLAGS) -o $@ $(API_EXAMPLE_OBJS) $(LIB_TARGET) $(LDFLAGS)
 
@@ -68,6 +74,7 @@ test: $(TEST_TARGET)
 clean:
 	rm -f $(OBJS) $(TARGET) $(LIB_OBJS) $(LIB_TARGET) $(SHARED_LIB_OBJS) $(SHARED_LIB_TARGET) \
 		$(TEST_OBJS) $(TEST_TARGET) $(API_TEST_OBJS) $(API_TEST_TARGET) \
+		$(JSON_TEST_OBJS) $(JSON_TEST_TARGET) \
 		$(API_EXAMPLE_OBJS) $(API_EXAMPLE_TARGET) \
 		$(API_SESSION_EXAMPLE_OBJS) $(API_SESSION_EXAMPLE_TARGET) \
 		$(DYN_API_DEMO_OBJS) $(DYN_API_DEMO_TARGET)

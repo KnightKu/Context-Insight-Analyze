@@ -247,3 +247,7 @@ echo "all post-action tests passed"
 echo "[extra] build and run insight api tester"
 make insight_api_tester >/dev/null
 ./insight_api_tester >/dev/null 2>&1
+
+echo "[extra] build and run insight api json tester"
+make insight_api_json_tester >/dev/null
+./insight_api_json_tester >/dev/null 2>&1

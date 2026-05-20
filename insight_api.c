@@ -2,6 +2,7 @@
 
 #include "insight_api.h"
 
+#include "insight_api_json.h"
 #include "insight_metalog.h"
 #include "nvme_read.h"
 #include "post_action.h"
@@ -9,6 +10,7 @@
 
 #include <errno.h>
 #include <inttypes.h>
+#include <math.h>
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -18,8 +20,6 @@
 
 #define INSIGHT_SCAN_SLBA_BYTES 0ULL
 #define INSIGHT_SCAN_DATA_LEN_11T_BYTES (11ULL * 1024ULL * 1024ULL * 1024ULL * 1024ULL)
-#define INSIGHT_CAPTURE_MAX_BYTES (INSIGHT_JSON_BUFFER_BYTES * 4U)
-
 #ifndef INSIGHT_API_PERF_DEBUG
 #define INSIGHT_API_PERF_DEBUG 0
 #endif
@@ -246,49 +246,6 @@ static uint64_t insight_effective_scan_bytes(void) {
         INSIGHT_SCAN_DATA_LEN_11T_BYTES : log_span_bytes;
 }
 
-static int capture_stderr_content(FILE *src, char *out, size_t out_size) {
-    if (src == NULL || out == NULL || out_size == 0U) {
-        errno = EINVAL;
-        return -1;
-    }
-
-    char *scratch = (char *)malloc(INSIGHT_CAPTURE_MAX_BYTES);
-    if (scratch == NULL) {
-        errno = ENOMEM;
-        return -1;
-    }
-
-    size_t total = 0U;
-    while (total < (INSIGHT_CAPTURE_MAX_BYTES - 1U)) {
-        size_t room = (INSIGHT_CAPTURE_MAX_BYTES - 1U) - total;
-        size_t got = fread(scratch + total, 1U, room, src);
-        if (got == 0U) {
-            break;
-        }
-        total += got;
-    }
-    scratch[total] = '\0';
-
-    const char *begin = strchr(scratch, '{');
-    const char *end = strrchr(scratch, '}');
-    if (begin == NULL || end == NULL || end < begin) {
-        free(scratch);
-        errno = ENODATA;
-        return -1;
-    }
-
-    size_t json_len = (size_t)(end - begin + 1);
-    if (json_len >= out_size) {
-        free(scratch);
-        errno = ENOSPC;
-        return -1;
-    }
-    memcpy(out, begin, json_len);
-    out[json_len] = '\0';
-    free(scratch);
-    return 0;
-}
-
 static int insight_env_enabled_exact_one(const char *name) {
     const char *value = getenv(name);
     return (value != NULL && strcmp(value, "1") == 0) ? 1 : 0;
@@ -313,300 +270,15 @@ static void forward_prefixed_lines_to_stderr(const char *text, const char *prefi
     }
 }
 
-static int append_json_escaped_string(char *dst, size_t dst_size, size_t *cursor, const char *src) {
-    if (dst == NULL || cursor == NULL || src == NULL || dst_size == 0U) {
-        errno = EINVAL;
-        return -1;
-    }
-    for (const unsigned char *p = (const unsigned char *)src; *p != '\0'; ++p) {
-        const char *esc = NULL;
-        switch (*p) {
-            case '\"':
-                esc = "\\\"";
-                break;
-            case '\\':
-                esc = "\\\\";
-                break;
-            case '\b':
-                esc = "\\b";
-                break;
-            case '\f':
-                esc = "\\f";
-                break;
-            case '\n':
-                esc = "\\n";
-                break;
-            case '\r':
-                esc = "\\r";
-                break;
-            case '\t':
-                esc = "\\t";
-                break;
-            default:
-                break;
-        }
-        if (esc != NULL) {
-            size_t n = strlen(esc);
-            if ((*cursor + n) >= dst_size) {
-                errno = ENOSPC;
-                return -1;
-            }
-            memcpy(dst + *cursor, esc, n);
-            *cursor += n;
-            continue;
-        }
-        if (*p < 0x20U) {
-            if ((*cursor + 6U) >= dst_size) {
-                errno = ENOSPC;
-                return -1;
-            }
-            int n = snprintf(dst + *cursor, dst_size - *cursor, "\\u%04x", (unsigned int)*p);
-            if (n < 0 || (size_t)n >= (dst_size - *cursor)) {
-                errno = ENOSPC;
-                return -1;
-            }
-            *cursor += (size_t)n;
-            continue;
-        }
-        if ((*cursor + 1U) >= dst_size) {
-            errno = ENOSPC;
-            return -1;
-        }
-        dst[*cursor] = (char)*p;
-        *cursor += 1U;
-    }
-    return 0;
-}
-
-static int compose_query_result_json(const char *api_name,
-                                     const char *device,
-                                     int include_block_size,
-                                     uint64_t block_size,
-                                     const char *time_start,
-                                     const char *time_end,
-                                     int64_t session_id,
-                                     const char *result_json,
-                                     char *json_buffer) {
-    if (api_name == NULL || device == NULL || result_json == NULL || json_buffer == NULL) {
-        errno = EINVAL;
-        return -1;
-    }
-    if (session_id < 0 && (time_start == NULL || time_end == NULL)) {
-        errno = EINVAL;
-        return -1;
-    }
-    size_t pos = 0U;
-    int n = snprintf(json_buffer + pos, INSIGHT_JSON_BUFFER_BYTES - pos,
-                     "{\n"
-                     "  \"query\": {\n"
-                     "    \"api\": \"");
-    if (n < 0 || (size_t)n >= (INSIGHT_JSON_BUFFER_BYTES - pos)) {
-        errno = ENOSPC;
-        return -1;
-    }
-    pos += (size_t)n;
-    if (append_json_escaped_string(json_buffer, INSIGHT_JSON_BUFFER_BYTES, &pos, api_name) != 0) {
-        return -1;
-    }
-    n = snprintf(json_buffer + pos, INSIGHT_JSON_BUFFER_BYTES - pos,
-                 "\",\n"
-                     "    \"device\": \"");
-    if (n < 0 || (size_t)n >= (INSIGHT_JSON_BUFFER_BYTES - pos)) {
-        errno = ENOSPC;
-        return -1;
-    }
-    pos += (size_t)n;
-    if (append_json_escaped_string(json_buffer, INSIGHT_JSON_BUFFER_BYTES, &pos, device) != 0) {
-        return -1;
-    }
-    if (include_block_size != 0) {
-        n = snprintf(json_buffer + pos, INSIGHT_JSON_BUFFER_BYTES - pos,
-                     "\",\n"
-                     "    \"block_size\": %llu",
-                     (unsigned long long)block_size);
-        if (n < 0 || (size_t)n >= (INSIGHT_JSON_BUFFER_BYTES - pos)) {
-            errno = ENOSPC;
-            return -1;
-        }
-        pos += (size_t)n;
-    }
-    if (session_id >= 0) {
-        n = snprintf(json_buffer + pos, INSIGHT_JSON_BUFFER_BYTES - pos,
-                     "%s\n"
-                     "    \"session_id\": %" PRIu64,
-                     (include_block_size != 0) ? "," : "\",",
-                     (uint64_t)session_id);
-        if (n < 0 || (size_t)n >= (INSIGHT_JSON_BUFFER_BYTES - pos)) {
-            errno = ENOSPC;
-            return -1;
-        }
-        pos += (size_t)n;
-    } else {
-        n = snprintf(json_buffer + pos, INSIGHT_JSON_BUFFER_BYTES - pos,
-                     "%s\n"
-                     "    \"time_start\": \"",
-                     (include_block_size != 0) ? "," : "\",");
-        if (n < 0 || (size_t)n >= (INSIGHT_JSON_BUFFER_BYTES - pos)) {
-            errno = ENOSPC;
-            return -1;
-        }
-        pos += (size_t)n;
-        if (append_json_escaped_string(json_buffer, INSIGHT_JSON_BUFFER_BYTES, &pos, time_start) != 0) {
-            return -1;
-        }
-        n = snprintf(json_buffer + pos, INSIGHT_JSON_BUFFER_BYTES - pos,
-                     "\",\n"
-                     "    \"time_end\": \"");
-        if (n < 0 || (size_t)n >= (INSIGHT_JSON_BUFFER_BYTES - pos)) {
-            errno = ENOSPC;
-            return -1;
-        }
-        pos += (size_t)n;
-        if (append_json_escaped_string(json_buffer, INSIGHT_JSON_BUFFER_BYTES, &pos, time_end) != 0) {
-            return -1;
-        }
-        n = snprintf(json_buffer + pos, INSIGHT_JSON_BUFFER_BYTES - pos, "\"");
-        if (n < 0 || (size_t)n >= (INSIGHT_JSON_BUFFER_BYTES - pos)) {
-            errno = ENOSPC;
-            return -1;
-        }
-        pos += (size_t)n;
-    }
-    n = snprintf(json_buffer + pos, INSIGHT_JSON_BUFFER_BYTES - pos,
-                 "\n"
-                 "  },\n"
-                 "  \"result\": ");
-    if (n < 0 || (size_t)n >= (INSIGHT_JSON_BUFFER_BYTES - pos)) {
-        errno = ENOSPC;
-        return -1;
-    }
-    pos += (size_t)n;
-    size_t result_len = strlen(result_json);
-    if ((pos + result_len + 3U) >= INSIGHT_JSON_BUFFER_BYTES) {
-        errno = ENOSPC;
-        return -1;
-    }
-    memcpy(json_buffer + pos, result_json, result_len);
-    pos += result_len;
-    json_buffer[pos++] = '\n';
-    json_buffer[pos++] = '}';
-    json_buffer[pos] = '\0';
-    return 0;
-}
-
-static void skip_json_ws(const char **p) {
-    while (**p == ' ' || **p == '\t' || **p == '\n' || **p == '\r') {
-        ++(*p);
-    }
-}
-
-static int flatten_single_root_object(const char *input_json,
-                                      char *flattened_json,
-                                      size_t flattened_json_size) {
-    if (input_json == NULL || flattened_json == NULL || flattened_json_size == 0U) {
-        errno = EINVAL;
-        return -1;
-    }
-    const char *p = input_json;
-    skip_json_ws(&p);
-    if (*p != '{') {
-        errno = EINVAL;
-        return -1;
-    }
-    ++p;
-    skip_json_ws(&p);
-    if (*p != '\"') {
-        errno = EINVAL;
-        return -1;
-    }
-    ++p;
-    while (*p != '\0') {
-        if (*p == '\\' && p[1] != '\0') {
-            p += 2;
-            continue;
-        }
-        if (*p == '\"') {
-            ++p;
-            break;
-        }
-        ++p;
-    }
-    if (*(p - 1) != '\"') {
-        errno = EINVAL;
-        return -1;
-    }
-    skip_json_ws(&p);
-    if (*p != ':') {
-        errno = EINVAL;
-        return -1;
-    }
-    ++p;
-    skip_json_ws(&p);
-    if (*p != '{') {
-        errno = EINVAL;
-        return -1;
-    }
-    const char *value_start = p;
-    int depth = 0;
-    while (*p != '\0') {
-        if (*p == '\"') {
-            ++p;
-            while (*p != '\0') {
-                if (*p == '\\' && p[1] != '\0') {
-                    p += 2;
-                    continue;
-                }
-                if (*p == '\"') {
-                    ++p;
-                    break;
-                }
-                ++p;
-            }
-            continue;
-        }
-        if (*p == '{') {
-            ++depth;
-        } else if (*p == '}') {
-            --depth;
-            if (depth == 0) {
-                ++p;
-                break;
-            }
-        }
-        ++p;
-    }
-    if (depth != 0) {
-        errno = EINVAL;
-        return -1;
-    }
-    const char *value_end = p;
-    skip_json_ws(&p);
-    if (*p != '}') {
-        errno = EINVAL;
-        return -1;
-    }
-    ++p;
-    skip_json_ws(&p);
-    if (*p != '\0') {
-        errno = EINVAL;
-        return -1;
-    }
-    size_t out_len = (size_t)(value_end - value_start);
-    if (out_len >= flattened_json_size) {
-        errno = ENOSPC;
-        return -1;
-    }
-    memcpy(flattened_json, value_start, out_len);
-    flattened_json[out_len] = '\0';
-    return 0;
-}
-
 static int compose_write_amplification_result_json(double wa_value,
                                                    char *result_json,
                                                    size_t result_json_size) {
     if (result_json == NULL || result_json_size == 0U) {
         errno = EINVAL;
         return -1;
+    }
+    if (!isfinite(wa_value)) {
+        wa_value = 0.0;
     }
     int n = snprintf(result_json, result_json_size,
                      "{\n"
@@ -670,7 +342,7 @@ static int extract_write_amplification_from_samples(const char *device,
     if (compose_write_amplification_result_json(wa_value, result_json, sizeof(result_json)) != 0) {
         return -1;
     }
-    return compose_query_result_json("get_write_amplification",
+    return insight_json_compose_query_result("get_write_amplification",
                                      device,
                                      0,
                                      block_size,
@@ -687,6 +359,9 @@ static int compose_stat_volume_result_json(double volume_mib,
     if (result_json == NULL || result_json_size == 0U) {
         errno = EINVAL;
         return -1;
+    }
+    if (!isfinite(volume_mib)) {
+        volume_mib = 0.0;
     }
     int n = snprintf(result_json, result_json_size,
                      "{\n"
@@ -744,7 +419,7 @@ static int extract_stat_volume_from_samples(const char *device,
     if (compose_stat_volume_result_json(volume_mib, result_json, sizeof(result_json)) != 0) {
         return -1;
     }
-    return compose_query_result_json(api_name,
+    return insight_json_compose_query_result(api_name,
                                      device,
                                      0,
                                      0ULL,
@@ -776,7 +451,7 @@ static int run_query_and_fill_wrapped_json(const char *device,
         return -1;
     }
     char flattened_result_json[INSIGHT_JSON_BUFFER_BYTES];
-    if (flatten_single_root_object(raw_result_json, flattened_result_json,
+    if (insight_json_flatten_single_root_object(raw_result_json, flattened_result_json,
                                    sizeof(flattened_result_json)) != 0) {
         return -1;
     }
@@ -805,7 +480,7 @@ static int run_query_and_fill_wrapped_json(const char *device,
             memcpy(p, new_key, new_len);
         }
     }
-    return compose_query_result_json(api_name,
+    return insight_json_compose_query_result(api_name,
                                      device,
                                      (block_size != 0ULL) ? 1 : 0,
                                      block_size,
@@ -836,7 +511,7 @@ static int extract_latency_bucket_result(const char *device,
         return -1;
     }
     char flattened_result_json[INSIGHT_JSON_BUFFER_BYTES];
-    if (flatten_single_root_object(raw_result_json, flattened_result_json,
+    if (insight_json_flatten_single_root_object(raw_result_json, flattened_result_json,
                                    sizeof(flattened_result_json)) != 0) {
         return -1;
     }
@@ -897,7 +572,7 @@ static int extract_latency_bucket_result(const char *device,
     }
     memcpy(result_json, obj_start, bucket_len);
     result_json[bucket_len] = '\0';
-    return compose_query_result_json(api_name,
+    return insight_json_compose_query_result(api_name,
                                      device,
                                      0,
                                      0ULL,
@@ -965,7 +640,7 @@ static int run_query_and_fill_json(const char *device,
     int emit_post_action_perf = insight_env_enabled_exact_one("NVME_POST_ACTION_PERF");
     char *captured_stderr = NULL;
     if (emit_post_action_perf != 0) {
-        captured_stderr = (char *)malloc(INSIGHT_CAPTURE_MAX_BYTES);
+        captured_stderr = (char *)malloc(INSIGHT_JSON_CAPTURE_MAX_BYTES);
         if (captured_stderr == NULL) {
             emit_post_action_perf = 0;
         } else {
@@ -1074,14 +749,15 @@ static int run_query_and_fill_json(const char *device,
         goto out_capture;
     }
 
-    if (capture_stderr_content(capture_file, json_buffer, INSIGHT_JSON_BUFFER_BYTES) != 0) {
+    if (insight_json_capture_stderr_object(capture_file, json_buffer, INSIGHT_JSON_BUFFER_BYTES,
+                                           INSIGHT_JSON_CAPTURE_MAX_BYTES) != 0) {
         saved_errno = errno;
         ret = -1;
         goto out_capture;
     }
     if (emit_post_action_perf != 0 && captured_stderr != NULL) {
         if (fseek(capture_file, 0L, SEEK_SET) == 0) {
-            size_t got = fread(captured_stderr, 1U, INSIGHT_CAPTURE_MAX_BYTES - 1U, capture_file);
+            size_t got = fread(captured_stderr, 1U, INSIGHT_JSON_CAPTURE_MAX_BYTES - 1U, capture_file);
             captured_stderr[got] = '\0';
         } else {
             captured_stderr[0] = '\0';
