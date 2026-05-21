@@ -157,24 +157,22 @@ static int insight_api_resolve_query(const char *device,
         return -1;
     }
 
-    struct insight_metalog_session_summary *sessions = NULL;
-    size_t session_count = 0U;
-    if (insight_metalog_read(device, &sessions, &session_count) != 0) {
+    struct insight_metalog_session_summary session;
+    memset(&session, 0, sizeof(session));
+    if (insight_metalog_read(device, &session, (unsigned int)session_id) != 0) {
         return -1;
     }
 
     uint64_t lba_byte_start = 0ULL;
     uint64_t lba_byte_end = 0ULL;
-    int rc = insight_get_session_time_window(sessions,
-                                             session_count,
-                                             (uint64_t)session_id,
-                                             out->time_start_buf,
-                                             sizeof(out->time_start_buf),
-                                             out->time_end_buf,
-                                             sizeof(out->time_end_buf),
-                                             &lba_byte_start,
-                                             &lba_byte_end);
-    insight_metalog_sessions_free(sessions);
+    int rc = insight_metalog_session_time_window(&session,
+                                                 out->time_start_buf,
+                                                 sizeof(out->time_start_buf),
+                                                 out->time_end_buf,
+                                                 sizeof(out->time_end_buf),
+                                                 &lba_byte_start,
+                                                 &lba_byte_end);
+    insight_metalog_session_free(&session);
     if (rc != 0) {
         return -1;
     }
