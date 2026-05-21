@@ -63,8 +63,6 @@ int nvme_read_set_time_window(int has_start, uint64_t time_start_ms,
 
 int nvme_read_set_block_size_bytes(uint64_t block_size_bytes);
 
-int nvme_read_set_lba_range_filter(uint64_t lba_start, uint64_t lba_end);
-
 struct insight_lba_bitmap;
 typedef struct insight_lba_bitmap insight_lba_bitmap;
 

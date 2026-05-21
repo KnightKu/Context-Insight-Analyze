@@ -11,7 +11,7 @@ LIB_SRCS := insight_api.c insight_api_json.c nvme_read.c post_action.c post_acti
 LIB_OBJS := $(LIB_SRCS:.c=.o)
 SHARED_LIB_OBJS := $(LIB_SRCS:.c=.pic.o)
 TEST_TARGET := post_action_file_tester
-TEST_SRCS := tests/post_action_file_tester.c nvme_read.c post_action.c post_action_stats.c post_action_latency.c
+TEST_SRCS := tests/post_action_file_tester.c nvme_read.c post_action.c post_action_stats.c post_action_latency.c insight_metalog.c
 TEST_OBJS := $(TEST_SRCS:.c=.o)
 API_TEST_TARGET := insight_api_tester
 API_TEST_SRCS := tests/insight_api_tester.c

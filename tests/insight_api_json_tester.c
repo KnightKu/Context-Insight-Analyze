@@ -147,7 +147,7 @@ static void test_flatten_and_compose(void) {
                                                 0ULL,
                                                 "2024-03-09 16:00:05",
                                                 "2024-03-09 16:00:15",
-                                                INSIGHT_JSON_QUERY_SESSION_ID_NONE,
+                                                7LL,
                                                 result,
                                                 envelope));
     expect_json_valid("full envelope", envelope);
@@ -160,7 +160,7 @@ static void test_flatten_and_compose(void) {
     expect_fail("compose rejects invalid result",
                 insight_json_compose_query_result("x", "/d", 0, 0ULL,
                                                   "2024-03-09 16:00:05", "2024-03-09 16:00:15",
-                                                  INSIGHT_JSON_QUERY_SESSION_ID_NONE,
+                                                  0LL,
                                                   bad_result, envelope),
                 EINVAL);
 
@@ -171,13 +171,14 @@ static void test_flatten_and_compose(void) {
                                                 "/dev/nvme1n1",
                                                 0,
                                                 0ULL,
-                                                NULL,
-                                                NULL,
+                                                "2024-03-09 16:00:05",
+                                                "2024-03-09 16:00:15",
                                                 42LL,
                                                 inner,
                                                 envelope));
     expect_json_valid("session envelope", envelope);
     expect_str_eq("session_id field", strstr(envelope, "\"session_id\": 42") != NULL ? "yes" : "no", "yes");
+    expect_str_eq("time_start field", strstr(envelope, "\"time_start\": \"2024-03-09 16:00:05\"") != NULL ? "yes" : "no", "yes");
 
     const char *escaped_dev = "/dev/\"weird\"";
     errno = 0;
@@ -188,7 +189,7 @@ static void test_flatten_and_compose(void) {
                                                 0ULL,
                                                 "2024-03-09 16:00:05",
                                                 "2024-03-09 16:00:15",
-                                                INSIGHT_JSON_QUERY_SESSION_ID_NONE,
+                                                1LL,
                                                 inner,
                                                 envelope));
     expect_json_valid("escaped envelope", envelope);
@@ -238,7 +239,7 @@ static void test_python_cross_check(void) {
                                           0ULL,
                                           "2026-05-19 17:50:23",
                                           "2026-05-19 17:50:28",
-                                          INSIGHT_JSON_QUERY_SESSION_ID_NONE,
+                                          3LL,
                                           result,
                                           envelope) != 0) {
         fprintf(stderr, "compose for python check failed\n");
