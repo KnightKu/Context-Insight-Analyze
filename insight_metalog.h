@@ -11,6 +11,7 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include <stdio.h>
 
 #define INSIGHT_METALOG_SESSION_ID_INVALID UINT64_C(0xFFFFFFFFFFFFFFFF)
 
@@ -101,5 +102,14 @@ int insight_metalog_session_time_window(const struct insight_metalog_session_sum
 int insight_lba_bitmap_overlaps_lba_range(const insight_lba_bitmap *bitmap,
 					    uint64_t start_lba,
 					    uint64_t len_lba);
+
+/**
+ * Print all maximal contiguous LBA ranges covered by set bits in @p bitmap.
+ * Each range is [lba_start, lba_end] inclusive, in 4KiB LBA unit indices
+ * (same coordinate system as insight_lba_bitmap_overlaps_lba_range()).
+ *
+ * @p out may be NULL (defaults to stdout). No-op if @p bitmap is NULL.
+ */
+void insight_lba_bitmap_print_ranges(const insight_lba_bitmap *bitmap, FILE *out);
 
 #endif /* INSIGHT_METALOG_H */

@@ -6,6 +6,7 @@
 #include "post_action.h"
 
 #include <errno.h>
+#include <inttypes.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -130,6 +131,74 @@ static int insight_lba_bitmap_set_range(insight_lba_bitmap *bm,
 	return 0;
 }
 
+static int insight_lba_bitmap_unit_is_set(const insight_lba_bitmap *bm, uint64_t unit) {
+	if (bm == NULL || unit >= bm->bit_count) {
+		return 0;
+	}
+	uint64_t word_idx = unit / 64ULL;
+	uint64_t bit_idx = unit % 64ULL;
+	return (bm->words[word_idx] & (1ULL << bit_idx)) != 0ULL ? 1 : 0;
+}
+
+void insight_lba_bitmap_print_ranges(const insight_lba_bitmap *bitmap, FILE *out) {
+	if (out == NULL) {
+		out = stdout;
+	}
+	if (bitmap == NULL) {
+		fprintf(out, "lba_bitmap: (null)\n");
+		return;
+	}
+
+	uint64_t range_count = 0ULL;
+	int in_range = 0;
+	uint64_t range_start = 0ULL;
+	uint64_t range_end = 0ULL;
+
+	fprintf(out,
+		"lba_bitmap ranges (unit=%llu bytes, capacity=%llu bytes):\n",
+		(unsigned long long)bitmap->unit_bytes,
+		(unsigned long long)bitmap->capacity_bytes);
+
+	for (uint64_t unit = 0ULL; unit < bitmap->bit_count; ++unit) {
+		if (insight_lba_bitmap_unit_is_set(bitmap, unit) == 0) {
+			if (in_range != 0) {
+				fprintf(out,
+					"  lba [%" PRIu64 ", %" PRIu64 "]"
+					"  bytes [%" PRIu64 ", %" PRIu64 "]\n",
+					(uint64_t)range_start,
+					(uint64_t)range_end,
+					(uint64_t)(range_start * bitmap->unit_bytes),
+					(uint64_t)((range_end + 1ULL) * bitmap->unit_bytes - 1ULL));
+				++range_count;
+				in_range = 0;
+			}
+			continue;
+		}
+		if (in_range == 0) {
+			range_start = unit;
+			range_end = unit;
+			in_range = 1;
+		} else {
+			range_end = unit;
+		}
+	}
+	if (in_range != 0) {
+		fprintf(out,
+			"  lba [%" PRIu64 ", %" PRIu64 "]"
+			"  bytes [%" PRIu64 ", %" PRIu64 "]\n",
+			(uint64_t)range_start,
+			(uint64_t)range_end,
+			(uint64_t)(range_start * bitmap->unit_bytes),
+			(uint64_t)((range_end + 1ULL) * bitmap->unit_bytes - 1ULL));
+		++range_count;
+	}
+	if (range_count == 0ULL) {
+		fprintf(out, "  (no set bits)\n");
+	} else {
+		fprintf(out, "  total ranges: %" PRIu64 "\n", range_count);
+	}
+}
+
 int insight_lba_bitmap_overlaps_lba_range(const insight_lba_bitmap *bm,
 					  uint64_t start_lba,
 					  uint64_t len_lba) {
@@ -145,13 +214,7 @@ int insight_lba_bitmap_overlaps_lba_range(const insight_lba_bitmap *bm,
 		return 0;
 	}
 	for (uint64_t lba = start_lba; lba <= last_lba; ++lba) {
-		uint64_t unit = lba;
-		if (unit >= bm->bit_count) {
-			continue;
-		}
-		uint64_t word_idx = unit / 64ULL;
-		uint64_t bit_idx = unit % 64ULL;
-		if ((bm->words[word_idx] & (1ULL << bit_idx)) != 0ULL) {
+		if (insight_lba_bitmap_unit_is_set(bm, lba) != 0) {
 			return 1;
 		}
 	}
