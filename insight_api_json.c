@@ -240,7 +240,11 @@ int insight_json_compose_query_result(const char *api_name,
         errno = EINVAL;
         return -1;
     }
-    if (session_id < 0 || time_start == NULL || time_end == NULL) {
+    if (session_id < 0 && (time_start == NULL || time_end == NULL)) {
+        errno = EINVAL;
+        return -1;
+    }
+    if (session_id >= 0 && (time_start == NULL || time_end == NULL)) {
         errno = EINVAL;
         return -1;
     }
@@ -284,17 +288,29 @@ int insight_json_compose_query_result(const char *api_name,
         }
         pos += (size_t)n;
     }
-    n = snprintf(json_buffer + pos, INSIGHT_JSON_BUFFER_BYTES - pos,
-                 "%s\n"
-                 "    \"session_id\": %" PRIu64 ",\n"
-                 "    \"time_start\": \"",
-                 (include_block_size != 0) ? "," : "\",",
-                 (uint64_t)session_id);
-    if (n < 0 || (size_t)n >= (INSIGHT_JSON_BUFFER_BYTES - pos)) {
-        errno = ENOSPC;
-        return -1;
+    if (session_id >= 0) {
+        n = snprintf(json_buffer + pos, INSIGHT_JSON_BUFFER_BYTES - pos,
+                     "%s\n"
+                     "    \"session_id\": %" PRIu64 ",\n"
+                     "    \"time_start\": \"",
+                     (include_block_size != 0) ? "," : "\",",
+                     (uint64_t)session_id);
+        if (n < 0 || (size_t)n >= (INSIGHT_JSON_BUFFER_BYTES - pos)) {
+            errno = ENOSPC;
+            return -1;
+        }
+        pos += (size_t)n;
+    } else {
+        n = snprintf(json_buffer + pos, INSIGHT_JSON_BUFFER_BYTES - pos,
+                     "%s\n"
+                     "    \"time_start\": \"",
+                     (include_block_size != 0) ? "," : "\",");
+        if (n < 0 || (size_t)n >= (INSIGHT_JSON_BUFFER_BYTES - pos)) {
+            errno = ENOSPC;
+            return -1;
+        }
+        pos += (size_t)n;
     }
-    pos += (size_t)n;
     if (insight_json_append_escaped_string(json_buffer, INSIGHT_JSON_BUFFER_BYTES, &pos, time_start) != 0) {
         return -1;
     }

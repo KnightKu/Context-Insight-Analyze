@@ -12,62 +12,91 @@ extern "C" {
 #define INSIGHT_JSON_BUFFER_BYTES 65536U
 
 /**
- * All queries resolve the time window and LBA filter from @p session_id via
- * insight_metalog_read() and insight_metalog_session_time_window(). Post-action
- * filtering uses the session lba_map bitmap (4KiB units) only.
+ * Use for @p session_id to keep caller-supplied @p time_start / @p time_end.
+ * When @p session_id >= 0, time window and LBA bitmap come from
+ * insight_metalog_read() and insight_metalog_session_time_window() (caller
+ * time strings are ignored).
  */
+#define INSIGHT_JSON_QUERY_SESSION_ID_NONE (-1LL)
+
 int get_read_latency_percentiles(const char *device,
+                                 const char *time_start,
+                                 const char *time_end,
                                  int64_t session_id,
                                  char *json_buffer);
 
 int get_write_latency_percentiles(const char *device,
+                                  const char *time_start,
+                                  const char *time_end,
                                   int64_t session_id,
                                   char *json_buffer);
 
 int get_write_amplification(const char *device,
+                            const char *time_start,
+                            const char *time_end,
                             int64_t session_id,
                             char *json_buffer);
 
 int get_qd_distribution(const char *device,
+                        const char *time_start,
+                        const char *time_end,
                         int64_t session_id,
                         char *json_buffer);
 
 int get_read_size_distribution(const char *device,
+                               const char *time_start,
+                               const char *time_end,
                                int64_t session_id,
                                char *json_buffer);
 
 int get_write_size_distribution(const char *device,
+                                const char *time_start,
+                                const char *time_end,
                                 int64_t session_id,
                                 char *json_buffer);
 
 int get_read_throughput_distribution(const char *device,
+                                     const char *time_start,
+                                     const char *time_end,
                                      int64_t session_id,
                                      char *json_buffer);
 
 int get_write_throughput_distribution(const char *device,
+                                      const char *time_start,
+                                      const char *time_end,
                                       int64_t session_id,
                                       char *json_buffer);
 
 int get_read_count_distribution(const char *device,
                                 uint64_t block_size,
+                                const char *time_start,
+                                const char *time_end,
                                 int64_t session_id,
                                 char *json_buffer);
 
 int get_write_to_first_read_distribution(const char *device,
                                          uint64_t block_size,
+                                         const char *time_start,
+                                         const char *time_end,
                                          int64_t session_id,
                                          char *json_buffer);
 
 int get_lifecycle_distribution(const char *device,
                                uint64_t block_size,
+                               const char *time_start,
+                               const char *time_end,
                                int64_t session_id,
                                char *json_buffer);
 
 int get_nand_write_volume(const char *device,
+                          const char *time_start,
+                          const char *time_end,
                           int64_t session_id,
                           char *json_buffer);
 
 int get_gc_data_movement(const char *device,
+                         const char *time_start,
+                         const char *time_end,
                          int64_t session_id,
                          char *json_buffer);
 

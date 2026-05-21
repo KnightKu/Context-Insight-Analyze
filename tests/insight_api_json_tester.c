@@ -147,7 +147,7 @@ static void test_flatten_and_compose(void) {
                                                 0ULL,
                                                 "2024-03-09 16:00:05",
                                                 "2024-03-09 16:00:15",
-                                                7LL,
+                                                INSIGHT_JSON_QUERY_SESSION_ID_NONE,
                                                 result,
                                                 envelope));
     expect_json_valid("full envelope", envelope);
@@ -160,7 +160,7 @@ static void test_flatten_and_compose(void) {
     expect_fail("compose rejects invalid result",
                 insight_json_compose_query_result("x", "/d", 0, 0ULL,
                                                   "2024-03-09 16:00:05", "2024-03-09 16:00:15",
-                                                  0LL,
+                                                  INSIGHT_JSON_QUERY_SESSION_ID_NONE,
                                                   bad_result, envelope),
                 EINVAL);
 
@@ -189,7 +189,7 @@ static void test_flatten_and_compose(void) {
                                                 0ULL,
                                                 "2024-03-09 16:00:05",
                                                 "2024-03-09 16:00:15",
-                                                1LL,
+                                                  INSIGHT_JSON_QUERY_SESSION_ID_NONE,
                                                 inner,
                                                 envelope));
     expect_json_valid("escaped envelope", envelope);
@@ -239,7 +239,7 @@ static void test_python_cross_check(void) {
                                           0ULL,
                                           "2026-05-19 17:50:23",
                                           "2026-05-19 17:50:28",
-                                          3LL,
+                                          INSIGHT_JSON_QUERY_SESSION_ID_NONE,
                                           result,
                                           envelope) != 0) {
         fprintf(stderr, "compose for python check failed\n");

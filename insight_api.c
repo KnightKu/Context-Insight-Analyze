@@ -134,35 +134,50 @@ static void insight_api_resolved_query_free(insight_api_resolved_query_t *resolv
 }
 
 static int insight_api_resolve_query(const char *device,
+                                     const char *time_start_in,
+                                     const char *time_end_in,
                                      int64_t session_id,
                                      insight_api_resolved_query_t *out) {
-    if (out == NULL || device == NULL || session_id < 0) {
+    if (out == NULL) {
         errno = EINVAL;
         return -1;
     }
     memset(out, 0, sizeof(*out));
-    if (insight_metalog_read(device, &out->session, (unsigned int)session_id) != 0) {
+    if (session_id >= 0) {
+        if (device == NULL) {
+            errno = EINVAL;
+            return -1;
+        }
+        if (insight_metalog_read(device, &out->session, (unsigned int)session_id) != 0) {
+            return -1;
+        }
+        if (insight_metalog_session_time_window(&out->session,
+                                                out->time_start_buf,
+                                                sizeof(out->time_start_buf),
+                                                out->time_end_buf,
+                                                sizeof(out->time_end_buf),
+                                                NULL,
+                                                NULL) != 0) {
+            insight_metalog_session_free(&out->session);
+            memset(out, 0, sizeof(*out));
+            return -1;
+        }
+        out->time_start = out->time_start_buf;
+        out->time_end = out->time_end_buf;
+        if (out->session.lba_map == NULL) {
+            insight_metalog_session_free(&out->session);
+            memset(out, 0, sizeof(*out));
+            errno = ENOENT;
+            return -1;
+        }
+        return 0;
+    }
+    if (device == NULL || time_start_in == NULL || time_end_in == NULL) {
+        errno = EINVAL;
         return -1;
     }
-    if (insight_metalog_session_time_window(&out->session,
-                                            out->time_start_buf,
-                                            sizeof(out->time_start_buf),
-                                            out->time_end_buf,
-                                            sizeof(out->time_end_buf),
-                                            NULL,
-                                            NULL) != 0) {
-        insight_metalog_session_free(&out->session);
-        memset(out, 0, sizeof(*out));
-        return -1;
-    }
-    out->time_start = out->time_start_buf;
-    out->time_end = out->time_end_buf;
-    if (out->session.lba_map == NULL) {
-        insight_metalog_session_free(&out->session);
-        memset(out, 0, sizeof(*out));
-        errno = ENOENT;
-        return -1;
-    }
+    out->time_start = time_start_in;
+    out->time_end = time_end_in;
     return 0;
 }
 
@@ -254,6 +269,8 @@ static int compose_write_amplification_result_json(double wa_value,
 
 static int extract_write_amplification_from_samples(const char *device,
                                                     uint64_t block_size,
+                                                    const char *time_start,
+                                                    const char *time_end,
                                                     int64_t session_id,
                                                     char *json_buffer) {
     if (device == NULL || json_buffer == NULL) {
@@ -262,7 +279,7 @@ static int extract_write_amplification_from_samples(const char *device,
     }
 
     insight_api_resolved_query_t resolved;
-    if (insight_api_resolve_query(device, session_id, &resolved) != 0) {
+    if (insight_api_resolve_query(device, time_start, time_end, session_id, &resolved) != 0) {
         return -1;
     }
 
@@ -343,6 +360,8 @@ static int compose_stat_volume_result_json(double volume_mib,
 
 static int extract_stat_volume_from_samples(const char *device,
                                             uint64_t block_size,
+                                            const char *time_start,
+                                            const char *time_end,
                                             int64_t session_id,
                                             insight_query_type_t query_type,
                                             char *json_buffer) {
@@ -351,7 +370,7 @@ static int extract_stat_volume_from_samples(const char *device,
         return -1;
     }
     insight_api_resolved_query_t resolved;
-    if (insight_api_resolve_query(device, session_id, &resolved) != 0) {
+    if (insight_api_resolve_query(device, time_start, time_end, session_id, &resolved) != 0) {
         return -1;
     }
     char scratch_json[INSIGHT_JSON_BUFFER_BYTES];
@@ -402,6 +421,8 @@ static int extract_stat_volume_from_samples(const char *device,
 
 static int run_query_and_fill_wrapped_json(const char *device,
                                            uint64_t block_size,
+                                           const char *time_start,
+                                           const char *time_end,
                                            int64_t session_id,
                                            insight_query_type_t query_type,
                                            const char *api_name,
@@ -411,7 +432,7 @@ static int run_query_and_fill_wrapped_json(const char *device,
         return -1;
     }
     insight_api_resolved_query_t resolved;
-    if (insight_api_resolve_query(device, session_id, &resolved) != 0) {
+    if (insight_api_resolve_query(device, time_start, time_end, session_id, &resolved) != 0) {
         return -1;
     }
     char raw_result_json[INSIGHT_JSON_BUFFER_BYTES];
@@ -465,6 +486,8 @@ static int run_query_and_fill_wrapped_json(const char *device,
 }
 
 static int extract_latency_bucket_result(const char *device,
+                                         const char *time_start,
+                                         const char *time_end,
                                          int64_t session_id,
                                          const char *api_name,
                                          const char *bucket_key,
@@ -474,7 +497,7 @@ static int extract_latency_bucket_result(const char *device,
         return -1;
     }
     insight_api_resolved_query_t resolved;
-    if (insight_api_resolve_query(device, session_id, &resolved) != 0) {
+    if (insight_api_resolve_query(device, time_start, time_end, session_id, &resolved) != 0) {
         return -1;
     }
     char raw_result_json[INSIGHT_JSON_BUFFER_BYTES];
@@ -570,7 +593,6 @@ static int run_query_and_fill_json(const char *device,
                                    char *json_buffer) {
     int allow_zero_block = insight_query_allow_zero_block_size(query_type);
     if (device == NULL || json_buffer == NULL || resolved == NULL ||
-        resolved->session.lba_map == NULL ||
         (block_size == 0ULL && allow_zero_block == 0)) {
         errno = EINVAL;
         return -1;
@@ -788,95 +810,83 @@ out_capture:
 }
 
 int get_read_latency_percentiles(const char *device,
+                                 const char *time_start,
+                                 const char *time_end,
                                  int64_t session_id,
                                  char *json_buffer) {
-    if (session_id < 0) {
-        errno = EINVAL;
-        return -1;
-    }
-    return extract_latency_bucket_result(device, session_id,
+    return extract_latency_bucket_result(device, time_start, time_end, session_id,
                                          "get_read_latency_percentiles",
                                          "read",
                                          json_buffer);
 }
 
 int get_write_latency_percentiles(const char *device,
+                                  const char *time_start,
+                                  const char *time_end,
                                   int64_t session_id,
                                   char *json_buffer) {
-    if (session_id < 0) {
-        errno = EINVAL;
-        return -1;
-    }
-    return extract_latency_bucket_result(device, session_id,
+    return extract_latency_bucket_result(device, time_start, time_end, session_id,
                                          "get_write_latency_percentiles",
                                          "write",
                                          json_buffer);
 }
 
 int get_write_amplification(const char *device,
+                            const char *time_start,
+                            const char *time_end,
                             int64_t session_id,
                             char *json_buffer) {
-    if (session_id < 0) {
-        errno = EINVAL;
-        return -1;
-    }
-    return extract_write_amplification_from_samples(device, 0ULL, session_id, json_buffer);
+    return extract_write_amplification_from_samples(device, 0ULL, time_start, time_end,
+                                                    session_id, json_buffer);
 }
 
 int get_qd_distribution(const char *device,
+                        const char *time_start,
+                        const char *time_end,
                         int64_t session_id,
                         char *json_buffer) {
-    if (session_id < 0) {
-        errno = EINVAL;
-        return -1;
-    }
-    return run_query_and_fill_wrapped_json(device, 0ULL, session_id, INSIGHT_QUERY_QD,
+    return run_query_and_fill_wrapped_json(device, 0ULL, time_start, time_end, session_id,
+                                           INSIGHT_QUERY_QD,
                                            "get_qd_distribution", json_buffer);
 }
 
 int get_read_size_distribution(const char *device,
+                               const char *time_start,
+                               const char *time_end,
                                int64_t session_id,
                                char *json_buffer) {
-    if (session_id < 0) {
-        errno = EINVAL;
-        return -1;
-    }
-    return run_query_and_fill_wrapped_json(device, 0ULL, session_id, INSIGHT_QUERY_READ_SIZE,
+    return run_query_and_fill_wrapped_json(device, 0ULL, time_start, time_end, session_id,
+                                           INSIGHT_QUERY_READ_SIZE,
                                            "get_read_size_distribution", json_buffer);
 }
 
 int get_write_size_distribution(const char *device,
+                                const char *time_start,
+                                const char *time_end,
                                 int64_t session_id,
                                 char *json_buffer) {
-    if (session_id < 0) {
-        errno = EINVAL;
-        return -1;
-    }
-    return run_query_and_fill_wrapped_json(device, 0ULL, session_id, INSIGHT_QUERY_WRITE_SIZE,
+    return run_query_and_fill_wrapped_json(device, 0ULL, time_start, time_end, session_id,
+                                           INSIGHT_QUERY_WRITE_SIZE,
                                            "get_write_size_distribution", json_buffer);
 }
 
 int get_read_throughput_distribution(const char *device,
+                                     const char *time_start,
+                                     const char *time_end,
                                      int64_t session_id,
                                      char *json_buffer) {
-    if (session_id < 0) {
-        errno = EINVAL;
-        return -1;
-    }
-    return run_query_and_fill_wrapped_json(device, 0ULL, session_id,
+    return run_query_and_fill_wrapped_json(device, 0ULL, time_start, time_end, session_id,
                                            INSIGHT_QUERY_READ_THROUGHPUT,
                                            "get_read_throughput_distribution",
                                            json_buffer);
 }
 
 int get_write_throughput_distribution(const char *device,
+                                      const char *time_start,
+                                      const char *time_end,
                                       int64_t session_id,
                                       char *json_buffer) {
-    if (session_id < 0) {
-        errno = EINVAL;
-        return -1;
-    }
-    return run_query_and_fill_wrapped_json(device, 0ULL, session_id,
+    return run_query_and_fill_wrapped_json(device, 0ULL, time_start, time_end, session_id,
                                            INSIGHT_QUERY_WRITE_THROUGHPUT,
                                            "get_write_throughput_distribution",
                                            json_buffer);
@@ -884,13 +894,15 @@ int get_write_throughput_distribution(const char *device,
 
 int get_read_count_distribution(const char *device,
                                 uint64_t block_size,
+                                const char *time_start,
+                                const char *time_end,
                                 int64_t session_id,
                                 char *json_buffer) {
-    if (session_id < 0 || block_size == 0ULL) {
+    if (block_size == 0ULL) {
         errno = EINVAL;
         return -1;
     }
-    return run_query_and_fill_wrapped_json(device, block_size, session_id,
+    return run_query_and_fill_wrapped_json(device, block_size, time_start, time_end, session_id,
                                            INSIGHT_QUERY_READ_COUNT,
                                            "get_read_count_distribution",
                                            json_buffer);
@@ -898,54 +910,59 @@ int get_read_count_distribution(const char *device,
 
 int get_write_to_first_read_distribution(const char *device,
                                          uint64_t block_size,
+                                         const char *time_start,
+                                         const char *time_end,
                                          int64_t session_id,
                                          char *json_buffer) {
-    if (session_id < 0 || block_size == 0ULL) {
+    if (block_size == 0ULL) {
         errno = EINVAL;
         return -1;
     }
-    return run_query_and_fill_wrapped_json(device, block_size, session_id, INSIGHT_QUERY_W2FR,
+    return run_query_and_fill_wrapped_json(device, block_size, time_start, time_end, session_id,
+                                           INSIGHT_QUERY_W2FR,
                                            "get_write_to_first_read_distribution",
                                            json_buffer);
 }
 
 int get_lifecycle_distribution(const char *device,
                                uint64_t block_size,
+                               const char *time_start,
+                               const char *time_end,
                                int64_t session_id,
                                char *json_buffer) {
-    if (session_id < 0 || block_size == 0ULL) {
+    if (block_size == 0ULL) {
         errno = EINVAL;
         return -1;
     }
-    return run_query_and_fill_wrapped_json(device, block_size, session_id,
+    return run_query_and_fill_wrapped_json(device, block_size, time_start, time_end, session_id,
                                            INSIGHT_QUERY_LIFECYCLE,
                                            "get_lifecycle_distribution",
                                            json_buffer);
 }
 
 int get_nand_write_volume(const char *device,
+                          const char *time_start,
+                          const char *time_end,
                           int64_t session_id,
                           char *json_buffer) {
-    if (session_id < 0) {
-        errno = EINVAL;
-        return -1;
-    }
     return extract_stat_volume_from_samples(device,
                                             NVME_LBA_SIZE_BYTES,
+                                            time_start,
+                                            time_end,
                                             session_id,
                                             INSIGHT_QUERY_NAND_WRITE_VOLUME,
                                             json_buffer);
 }
 
 int get_gc_data_movement(const char *device,
+                         const char *time_start,
+                         const char *time_end,
                          int64_t session_id,
                          char *json_buffer) {
-    if (session_id < 0) {
-        errno = EINVAL;
-        return -1;
-    }
     return extract_stat_volume_from_samples(device,
                                             NVME_LBA_SIZE_BYTES,
+                                            time_start,
+                                            time_end,
                                             session_id,
                                             INSIGHT_QUERY_GC_DATA_MOVEMENT,
                                             json_buffer);
