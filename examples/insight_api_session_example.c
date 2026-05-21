@@ -40,97 +40,151 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    const int64_t query_session_id = (int64_t)session_id;
+    struct insight_metalog_session_summary session;
+    memset(&session, 0, sizeof(session));
+    if (insight_metalog_read(device, &session, (unsigned int)session_id) != 0) {
+        fprintf(stderr, "insight_metalog_read failed: %s\n", strerror(errno));
+        return 2;
+    }
+
+    char time_start[INSIGHT_METALOG_TIME_STR_BUFSIZ];
+    char time_end[INSIGHT_METALOG_TIME_STR_BUFSIZ];
+    if (insight_metalog_session_time_window(&session,
+                                            time_start,
+                                            sizeof(time_start),
+                                            time_end,
+                                            sizeof(time_end),
+                                            NULL,
+                                            NULL) != 0) {
+        fprintf(stderr, "insight_metalog_session_time_window failed: %s\n", strerror(errno));
+        insight_metalog_session_free(&session);
+        return 3;
+    }
+
+    const insight_lba_bitmap *lba_map = session.lba_map;
     printf("session_id=%" PRIu64 " block_size=%" PRIu64
-           " (time/LBA resolved inside insight_api via metalog)\n\n",
-           (uint64_t)session_id, block_size);
+           " time=[%s, %s] (LBA filter via session lba_map bitmap)\n\n",
+           session_id, block_size, time_start, time_end);
 
     char json_buffer[INSIGHT_JSON_BUFFER_BYTES];
 
-    if (get_read_latency_percentiles(device, NULL, NULL, 0ULL, 0ULL, query_session_id,
+    if (get_read_latency_percentiles(device, time_start, time_end, 0ULL, 0ULL,
+                                     INSIGHT_JSON_QUERY_SESSION_ID_NONE, lba_map,
                                      json_buffer) != 0) {
         fprintf(stderr, "get_read_latency_percentiles failed: %s\n", strerror(errno));
+        insight_metalog_session_free(&session);
         return 4;
     }
     printf("=== read_latency_percentiles ===\n%s\n\n", json_buffer);
 
-    if (get_write_latency_percentiles(device, NULL, NULL, 0ULL, 0ULL, query_session_id,
+    if (get_write_latency_percentiles(device, time_start, time_end, 0ULL, 0ULL,
+                                      INSIGHT_JSON_QUERY_SESSION_ID_NONE, lba_map,
                                       json_buffer) != 0) {
         fprintf(stderr, "get_write_latency_percentiles failed: %s\n", strerror(errno));
+        insight_metalog_session_free(&session);
         return 14;
     }
     printf("=== write_latency_percentiles ===\n%s\n\n", json_buffer);
 
-    if (get_write_amplification(device, NULL, NULL, 0ULL, 0ULL, query_session_id, json_buffer) != 0) {
+    if (get_write_amplification(device, time_start, time_end, 0ULL, 0ULL,
+                                INSIGHT_JSON_QUERY_SESSION_ID_NONE, lba_map,
+                                json_buffer) != 0) {
         fprintf(stderr, "get_write_amplification failed: %s\n", strerror(errno));
+        insight_metalog_session_free(&session);
         return 5;
     }
     printf("=== write_amplification ===\n%s\n\n", json_buffer);
 
-    if (get_qd_distribution(device, NULL, NULL, 0ULL, 0ULL, query_session_id, json_buffer) != 0) {
+    if (get_qd_distribution(device, time_start, time_end, 0ULL, 0ULL,
+                              INSIGHT_JSON_QUERY_SESSION_ID_NONE, lba_map,
+                              json_buffer) != 0) {
         fprintf(stderr, "get_qd_distribution failed: %s\n", strerror(errno));
+        insight_metalog_session_free(&session);
         return 6;
     }
     printf("=== qd_distribution ===\n%s\n\n", json_buffer);
 
-    if (get_read_size_distribution(device, NULL, NULL, 0ULL, 0ULL, query_session_id, json_buffer) != 0) {
+    if (get_read_size_distribution(device, time_start, time_end, 0ULL, 0ULL,
+                                   INSIGHT_JSON_QUERY_SESSION_ID_NONE, lba_map,
+                                   json_buffer) != 0) {
         fprintf(stderr, "get_read_size_distribution failed: %s\n", strerror(errno));
+        insight_metalog_session_free(&session);
         return 7;
     }
     printf("=== read_size_distribution ===\n%s\n\n", json_buffer);
 
-    if (get_write_size_distribution(device, NULL, NULL, 0ULL, 0ULL, query_session_id, json_buffer) != 0) {
+    if (get_write_size_distribution(device, time_start, time_end, 0ULL, 0ULL,
+                                    INSIGHT_JSON_QUERY_SESSION_ID_NONE, lba_map,
+                                    json_buffer) != 0) {
         fprintf(stderr, "get_write_size_distribution failed: %s\n", strerror(errno));
+        insight_metalog_session_free(&session);
         return 8;
     }
     printf("=== write_size_distribution ===\n%s\n\n", json_buffer);
 
-    if (get_read_throughput_distribution(device, NULL, NULL, 0ULL, 0ULL, query_session_id,
+    if (get_read_throughput_distribution(device, time_start, time_end, 0ULL, 0ULL,
+                                         INSIGHT_JSON_QUERY_SESSION_ID_NONE, lba_map,
                                          json_buffer) != 0) {
         fprintf(stderr, "get_read_throughput_distribution failed: %s\n", strerror(errno));
+        insight_metalog_session_free(&session);
         return 9;
     }
     printf("=== read_throughput_distribution ===\n%s\n\n", json_buffer);
 
-    if (get_write_throughput_distribution(device, NULL, NULL, 0ULL, 0ULL, query_session_id,
+    if (get_write_throughput_distribution(device, time_start, time_end, 0ULL, 0ULL,
+                                          INSIGHT_JSON_QUERY_SESSION_ID_NONE, lba_map,
                                           json_buffer) != 0) {
         fprintf(stderr, "get_write_throughput_distribution failed: %s\n", strerror(errno));
+        insight_metalog_session_free(&session);
         return 10;
     }
     printf("=== write_throughput_distribution ===\n%s\n", json_buffer);
 
-    if (get_read_count_distribution(device, block_size, NULL, NULL, 0ULL, 0ULL, query_session_id,
+    if (get_read_count_distribution(device, block_size, time_start, time_end, 0ULL, 0ULL,
+                                    INSIGHT_JSON_QUERY_SESSION_ID_NONE, lba_map,
                                     json_buffer) != 0) {
         fprintf(stderr, "get_read_count_distribution failed: %s\n", strerror(errno));
+        insight_metalog_session_free(&session);
         return 11;
     }
     printf("=== read_count_distribution ===\n%s\n\n", json_buffer);
 
-    if (get_write_to_first_read_distribution(device, block_size, NULL, NULL, 0ULL, 0ULL,
-                                             query_session_id, json_buffer) != 0) {
+    if (get_write_to_first_read_distribution(device, block_size, time_start, time_end, 0ULL, 0ULL,
+                                             INSIGHT_JSON_QUERY_SESSION_ID_NONE, lba_map,
+                                             json_buffer) != 0) {
         fprintf(stderr, "get_write_to_first_read_distribution failed: %s\n", strerror(errno));
+        insight_metalog_session_free(&session);
         return 12;
     }
     printf("=== write_to_first_read_distribution ===\n%s\n\n", json_buffer);
 
-    if (get_lifecycle_distribution(device, block_size, NULL, NULL, 0ULL, 0ULL, query_session_id,
+    if (get_lifecycle_distribution(device, block_size, time_start, time_end, 0ULL, 0ULL,
+                                   INSIGHT_JSON_QUERY_SESSION_ID_NONE, lba_map,
                                    json_buffer) != 0) {
         fprintf(stderr, "get_lifecycle_distribution failed: %s\n", strerror(errno));
+        insight_metalog_session_free(&session);
         return 13;
     }
     printf("=== lifecycle_distribution ===\n%s\n\n", json_buffer);
 
-    if (get_nand_write_volume(device, NULL, NULL, 0ULL, 0ULL, query_session_id, json_buffer) != 0) {
+    if (get_nand_write_volume(device, time_start, time_end, 0ULL, 0ULL,
+                              INSIGHT_JSON_QUERY_SESSION_ID_NONE, lba_map,
+                              json_buffer) != 0) {
         fprintf(stderr, "get_nand_write_volume failed: %s\n", strerror(errno));
+        insight_metalog_session_free(&session);
         return 15;
     }
     printf("=== nand_write_volume ===\n%s\n\n", json_buffer);
 
-    if (get_gc_data_movement(device, NULL, NULL, 0ULL, 0ULL, query_session_id, json_buffer) != 0) {
+    if (get_gc_data_movement(device, time_start, time_end, 0ULL, 0ULL,
+                             INSIGHT_JSON_QUERY_SESSION_ID_NONE, lba_map,
+                             json_buffer) != 0) {
         fprintf(stderr, "get_gc_data_movement failed: %s\n", strerror(errno));
+        insight_metalog_session_free(&session);
         return 16;
     }
     printf("=== gc_data_movement ===\n%s\n", json_buffer);
 
+    insight_metalog_session_free(&session);
     return 0;
 }

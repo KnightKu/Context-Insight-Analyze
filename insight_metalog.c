@@ -130,6 +130,34 @@ static int insight_lba_bitmap_set_range(insight_lba_bitmap *bm,
 	return 0;
 }
 
+int insight_lba_bitmap_overlaps_lba_range(const insight_lba_bitmap *bm,
+					  uint64_t start_lba,
+					  uint64_t len_lba) {
+	if (bm == NULL) {
+		errno = EINVAL;
+		return -1;
+	}
+	if (len_lba == 0ULL) {
+		return 0;
+	}
+	uint64_t last_lba = start_lba + len_lba - 1ULL;
+	if (last_lba < start_lba) {
+		return 0;
+	}
+	for (uint64_t lba = start_lba; lba <= last_lba; ++lba) {
+		uint64_t unit = lba;
+		if (unit >= bm->bit_count) {
+			continue;
+		}
+		uint64_t word_idx = unit / 64ULL;
+		uint64_t bit_idx = unit % 64ULL;
+		if ((bm->words[word_idx] & (1ULL << bit_idx)) != 0ULL) {
+			return 1;
+		}
+	}
+	return 0;
+}
+
 static int insight_lba_bitmap_byte_range(const insight_lba_bitmap *bm,
 					 uint64_t *out_byte_start,
 					 uint64_t *out_byte_end) {

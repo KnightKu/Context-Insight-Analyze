@@ -198,6 +198,7 @@ static int run_query_and_fill_json(const char *device,
                                    uint64_t lba_start,
                                    uint64_t lba_end,
                                    int64_t session_id,
+                                   const insight_lba_bitmap *lba_bitmap,
                                    insight_query_type_t query_type,
                                    char *json_buffer);
 
@@ -288,6 +289,7 @@ static int extract_write_amplification_from_samples(const char *device,
                                                     uint64_t lba_start,
                                                     uint64_t lba_end,
                                                     int64_t session_id,
+                                                    const insight_lba_bitmap *lba_bitmap,
                                                     char *json_buffer) {
     if (device == NULL || json_buffer == NULL) {
         errno = EINVAL;
@@ -296,7 +298,7 @@ static int extract_write_amplification_from_samples(const char *device,
 
     char scratch_json[INSIGHT_JSON_BUFFER_BYTES];
     if (run_query_and_fill_json(device, block_size, time_start, time_end,
-                                lba_start, lba_end, session_id,
+                                lba_start, lba_end, session_id, lba_bitmap,
                                 INSIGHT_QUERY_WA, scratch_json) != 0) {
         return -1;
     }
@@ -371,6 +373,7 @@ static int extract_stat_volume_from_samples(const char *device,
                                             uint64_t lba_start,
                                             uint64_t lba_end,
                                             int64_t session_id,
+                                            const insight_lba_bitmap *lba_bitmap,
                                             insight_query_type_t query_type,
                                             char *json_buffer) {
     if (device == NULL || json_buffer == NULL || insight_query_is_stat_volume(query_type) == 0) {
@@ -379,7 +382,7 @@ static int extract_stat_volume_from_samples(const char *device,
     }
     char scratch_json[INSIGHT_JSON_BUFFER_BYTES];
     if (run_query_and_fill_json(device, block_size, time_start, time_end,
-                                lba_start, lba_end, session_id,
+                                lba_start, lba_end, session_id, lba_bitmap,
                                 query_type, scratch_json) != 0) {
         return -1;
     }
@@ -426,6 +429,7 @@ static int run_query_and_fill_wrapped_json(const char *device,
                                            uint64_t lba_start,
                                            uint64_t lba_end,
                                            int64_t session_id,
+                                           const insight_lba_bitmap *lba_bitmap,
                                            insight_query_type_t query_type,
                                            const char *api_name,
                                            char *json_buffer) {
@@ -435,7 +439,7 @@ static int run_query_and_fill_wrapped_json(const char *device,
     }
     char raw_result_json[INSIGHT_JSON_BUFFER_BYTES];
     if (run_query_and_fill_json(device, block_size, time_start, time_end,
-                                lba_start, lba_end, session_id,
+                                lba_start, lba_end, session_id, lba_bitmap,
                                 query_type, raw_result_json) != 0) {
         return -1;
     }
@@ -486,6 +490,7 @@ static int extract_latency_bucket_result(const char *device,
                                          uint64_t lba_start,
                                          uint64_t lba_end,
                                          int64_t session_id,
+                                         const insight_lba_bitmap *lba_bitmap,
                                          const char *api_name,
                                          const char *bucket_key,
                                          char *json_buffer) {
@@ -495,7 +500,7 @@ static int extract_latency_bucket_result(const char *device,
     }
     char raw_result_json[INSIGHT_JSON_BUFFER_BYTES];
     if (run_query_and_fill_json(device, 0ULL, time_start, time_end,
-                                lba_start, lba_end, session_id,
+                                lba_start, lba_end, session_id, lba_bitmap,
                                 INSIGHT_QUERY_LATENCY, raw_result_json) != 0) {
         return -1;
     }
@@ -579,6 +584,7 @@ static int run_query_and_fill_json(const char *device,
                                    uint64_t lba_start,
                                    uint64_t lba_end,
                                    int64_t session_id,
+                                   const insight_lba_bitmap *lba_bitmap,
                                    insight_query_type_t query_type,
                                    char *json_buffer) {
     int allow_zero_block = insight_query_allow_zero_block_size(query_type);
@@ -606,7 +612,8 @@ static int run_query_and_fill_json(const char *device,
         errno = EINVAL;
         return -1;
     }
-    if ((effective_lba_start != 0ULL || effective_lba_end != 0ULL) &&
+    if (lba_bitmap == NULL &&
+        (effective_lba_start != 0ULL || effective_lba_end != 0ULL) &&
         effective_lba_start > effective_lba_end) {
         errno = EINVAL;
         return -1;
@@ -663,8 +670,24 @@ static int run_query_and_fill_json(const char *device,
                                             (query_type == INSIGHT_QUERY_WRITE_THROUGHPUT)) != 0 ||
         nvme_read_set_trim_size_dist(0) != 0 ||
         nvme_read_set_block_size_bytes(block_size) != 0 ||
-        nvme_read_set_time_window(1, start_ms, 1, end_ms) != 0 ||
-        nvme_read_set_lba_range_filter(effective_lba_start, effective_lba_end) != 0) {
+        nvme_read_set_time_window(1, start_ms, 1, end_ms) != 0) {
+        int saved_errno = errno;
+        pthread_mutex_unlock(&g_insight_api_mutex);
+        free(captured_stderr);
+        errno = saved_errno;
+        return -1;
+    }
+    if (lba_bitmap != NULL) {
+        if (nvme_read_set_lba_bitmap_filter(lba_bitmap) != 0 ||
+            nvme_read_set_lba_range_filter(0ULL, 0ULL) != 0) {
+            int saved_errno = errno;
+            pthread_mutex_unlock(&g_insight_api_mutex);
+            free(captured_stderr);
+            errno = saved_errno;
+            return -1;
+        }
+    } else if (nvme_read_set_lba_bitmap_filter(NULL) != 0 ||
+               nvme_read_set_lba_range_filter(effective_lba_start, effective_lba_end) != 0) {
         int saved_errno = errno;
         pthread_mutex_unlock(&g_insight_api_mutex);
         free(captured_stderr);
@@ -686,6 +709,7 @@ static int run_query_and_fill_json(const char *device,
     int saved_stderr = dup(STDERR_FILENO);
     if (saved_stderr < 0) {
         int saved_errno = errno;
+        (void)nvme_read_set_lba_bitmap_filter(NULL);
         (void)nvme_read_set_lba_range_filter(0ULL, 0ULL);
         pthread_mutex_unlock(&g_insight_api_mutex);
         free(captured_stderr);
@@ -697,6 +721,7 @@ static int run_query_and_fill_json(const char *device,
     if (capture_file == NULL) {
         int saved_errno = errno;
         close(saved_stderr);
+        (void)nvme_read_set_lba_bitmap_filter(NULL);
         (void)nvme_read_set_lba_range_filter(0ULL, 0ULL);
         pthread_mutex_unlock(&g_insight_api_mutex);
         free(captured_stderr);
@@ -751,6 +776,7 @@ static int run_query_and_fill_json(const char *device,
 #endif
 
 out_capture:
+    (void)nvme_read_set_lba_bitmap_filter(NULL);
     (void)nvme_read_set_lba_range_filter(0ULL, 0ULL);
     (void)fflush(stderr);
     if (dup2(saved_stderr, STDERR_FILENO) < 0 && saved_errno == 0) {
@@ -810,9 +836,10 @@ int get_read_latency_percentiles(const char *device,
                                  uint64_t lba_start,
                                  uint64_t lba_end,
                                  int64_t session_id,
+                                 const insight_lba_bitmap *lba_bitmap,
                                  char *json_buffer) {
     return extract_latency_bucket_result(device, time_start, time_end,
-                                         lba_start, lba_end, session_id,
+                                         lba_start, lba_end, session_id, lba_bitmap,
                                          "get_read_latency_percentiles",
                                          "read",
                                          json_buffer);
@@ -824,9 +851,10 @@ int get_write_latency_percentiles(const char *device,
                                   uint64_t lba_start,
                                   uint64_t lba_end,
                                   int64_t session_id,
+                                  const insight_lba_bitmap *lba_bitmap,
                                   char *json_buffer) {
     return extract_latency_bucket_result(device, time_start, time_end,
-                                         lba_start, lba_end, session_id,
+                                         lba_start, lba_end, session_id, lba_bitmap,
                                          "get_write_latency_percentiles",
                                          "write",
                                          json_buffer);
@@ -838,11 +866,12 @@ int get_write_amplification(const char *device,
                             uint64_t lba_start,
                             uint64_t lba_end,
                             int64_t session_id,
+                            const insight_lba_bitmap *lba_bitmap,
                             char *json_buffer) {
     return extract_write_amplification_from_samples(device, 0ULL,
                                                     time_start, time_end,
                                                     lba_start, lba_end,
-                                                    session_id,
+                                                    session_id, lba_bitmap,
                                                     json_buffer);
 }
 
@@ -852,9 +881,10 @@ int get_qd_distribution(const char *device,
                         uint64_t lba_start,
                         uint64_t lba_end,
                         int64_t session_id,
+                        const insight_lba_bitmap *lba_bitmap,
                         char *json_buffer) {
     return run_query_and_fill_wrapped_json(device, 0ULL, time_start, time_end,
-                                           lba_start, lba_end, session_id,
+                                           lba_start, lba_end, session_id, lba_bitmap,
                                            INSIGHT_QUERY_QD,
                                            "get_qd_distribution",
                                            json_buffer);
@@ -866,9 +896,10 @@ int get_read_size_distribution(const char *device,
                                uint64_t lba_start,
                                uint64_t lba_end,
                                int64_t session_id,
+                               const insight_lba_bitmap *lba_bitmap,
                                char *json_buffer) {
     return run_query_and_fill_wrapped_json(device, 0ULL, time_start, time_end,
-                                           lba_start, lba_end, session_id,
+                                           lba_start, lba_end, session_id, lba_bitmap,
                                            INSIGHT_QUERY_READ_SIZE,
                                            "get_read_size_distribution",
                                            json_buffer);
@@ -880,9 +911,10 @@ int get_write_size_distribution(const char *device,
                                 uint64_t lba_start,
                                 uint64_t lba_end,
                                 int64_t session_id,
+                                const insight_lba_bitmap *lba_bitmap,
                                 char *json_buffer) {
     return run_query_and_fill_wrapped_json(device, 0ULL, time_start, time_end,
-                                           lba_start, lba_end, session_id,
+                                           lba_start, lba_end, session_id, lba_bitmap,
                                            INSIGHT_QUERY_WRITE_SIZE,
                                            "get_write_size_distribution",
                                            json_buffer);
@@ -894,9 +926,10 @@ int get_read_throughput_distribution(const char *device,
                                      uint64_t lba_start,
                                      uint64_t lba_end,
                                      int64_t session_id,
+                                     const insight_lba_bitmap *lba_bitmap,
                                      char *json_buffer) {
     return run_query_and_fill_wrapped_json(device, 0ULL, time_start, time_end,
-                                           lba_start, lba_end, session_id,
+                                           lba_start, lba_end, session_id, lba_bitmap,
                                            INSIGHT_QUERY_READ_THROUGHPUT,
                                            "get_read_throughput_distribution",
                                            json_buffer);
@@ -908,9 +941,10 @@ int get_write_throughput_distribution(const char *device,
                                       uint64_t lba_start,
                                       uint64_t lba_end,
                                       int64_t session_id,
+                                      const insight_lba_bitmap *lba_bitmap,
                                       char *json_buffer) {
     return run_query_and_fill_wrapped_json(device, 0, time_start, time_end,
-                                           lba_start, lba_end, session_id,
+                                           lba_start, lba_end, session_id, lba_bitmap,
                                            INSIGHT_QUERY_WRITE_THROUGHPUT,
                                            "get_write_throughput_distribution",
                                            json_buffer);
@@ -923,9 +957,10 @@ int get_read_count_distribution(const char *device,
                                 uint64_t lba_start,
                                 uint64_t lba_end,
                                 int64_t session_id,
+                                const insight_lba_bitmap *lba_bitmap,
                                 char *json_buffer) {
     return run_query_and_fill_wrapped_json(device, block_size, time_start, time_end,
-                                           lba_start, lba_end, session_id,
+                                           lba_start, lba_end, session_id, lba_bitmap,
                                            INSIGHT_QUERY_READ_COUNT,
                                            "get_read_count_distribution",
                                            json_buffer);
@@ -938,9 +973,10 @@ int get_write_to_first_read_distribution(const char *device,
                                          uint64_t lba_start,
                                          uint64_t lba_end,
                                          int64_t session_id,
+                                         const insight_lba_bitmap *lba_bitmap,
                                          char *json_buffer) {
     return run_query_and_fill_wrapped_json(device, block_size, time_start, time_end,
-                                           lba_start, lba_end, session_id,
+                                           lba_start, lba_end, session_id, lba_bitmap,
                                            INSIGHT_QUERY_W2FR,
                                            "get_write_to_first_read_distribution",
                                            json_buffer);
@@ -953,9 +989,10 @@ int get_lifecycle_distribution(const char *device,
                                uint64_t lba_start,
                                uint64_t lba_end,
                                int64_t session_id,
+                               const insight_lba_bitmap *lba_bitmap,
                                char *json_buffer) {
     return run_query_and_fill_wrapped_json(device, block_size, time_start, time_end,
-                                           lba_start, lba_end, session_id,
+                                           lba_start, lba_end, session_id, lba_bitmap,
                                            INSIGHT_QUERY_LIFECYCLE,
                                            "get_lifecycle_distribution",
                                            json_buffer);
@@ -967,6 +1004,7 @@ int get_nand_write_volume(const char *device,
                           uint64_t lba_start,
                           uint64_t lba_end,
                           int64_t session_id,
+                          const insight_lba_bitmap *lba_bitmap,
                           char *json_buffer) {
     return extract_stat_volume_from_samples(device,
                                             NVME_LBA_SIZE_BYTES,
@@ -975,6 +1013,7 @@ int get_nand_write_volume(const char *device,
                                             lba_start,
                                             lba_end,
                                             session_id,
+                                            lba_bitmap,
                                             INSIGHT_QUERY_NAND_WRITE_VOLUME,
                                             json_buffer);
 }
@@ -985,6 +1024,7 @@ int get_gc_data_movement(const char *device,
                          uint64_t lba_start,
                          uint64_t lba_end,
                          int64_t session_id,
+                         const insight_lba_bitmap *lba_bitmap,
                          char *json_buffer) {
     return extract_stat_volume_from_samples(device,
                                             NVME_LBA_SIZE_BYTES,
@@ -993,6 +1033,7 @@ int get_gc_data_movement(const char *device,
                                             lba_start,
                                             lba_end,
                                             session_id,
+                                            lba_bitmap,
                                             INSIGHT_QUERY_GC_DATA_MOVEMENT,
                                             json_buffer);
 }

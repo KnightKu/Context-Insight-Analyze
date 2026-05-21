@@ -94,4 +94,12 @@ int insight_metalog_session_time_window(const struct insight_metalog_session_sum
 					uint64_t *out_lba_byte_offset_start,
 					uint64_t *out_lba_byte_offset_end);
 
+/**
+ * Returns 1 if any 4KiB bitmap unit overlapping LBA range
+ * [start_lba, start_lba + len_lba) is set; 0 if none; -1 on error.
+ */
+int insight_lba_bitmap_overlaps_lba_range(const insight_lba_bitmap *bitmap,
+					    uint64_t start_lba,
+					    uint64_t len_lba);
+
 #endif /* INSIGHT_METALOG_H */

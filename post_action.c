@@ -2,6 +2,8 @@
 
 #include "post_action.h"
 
+#include "insight_metalog.h"
+
 #include <errno.h>
 #include <inttypes.h>
 #include <pthread.h>
@@ -255,6 +257,7 @@ static uint64_t g_post_action_block_size_lba = 0ULL;
 static uint64_t g_post_action_lba_filter_lo = 0ULL;
 static uint64_t g_post_action_lba_filter_hi = 0ULL;
 static int g_post_action_lba_filter_active = 0;
+static const insight_lba_bitmap *g_post_action_lba_bitmap = NULL;
 static pthread_mutex_t g_post_action_workload_mutex = PTHREAD_MUTEX_INITIALIZER;
 static uint64_t g_post_action_qd_hist[NVME_POST_ACTION_RATIO_BUCKETS];
 static uint64_t g_post_action_wa_hist[NVME_POST_ACTION_RATIO_BUCKETS];
@@ -655,6 +658,12 @@ static int post_action_is_window_active(void) {
 }
 
 static int post_action_io_overlaps_lba_filter(uint64_t start_lba, uint64_t len_lba) {
+    if (g_post_action_lba_bitmap != NULL) {
+        int overlaps = insight_lba_bitmap_overlaps_lba_range(g_post_action_lba_bitmap,
+                                                             start_lba,
+                                                             len_lba);
+        return overlaps > 0 ? 1 : 0;
+    }
     if (g_post_action_lba_filter_active == 0) {
         return 1;
     }
@@ -1642,6 +1651,13 @@ int nvme_post_action_set_block_size_bytes(uint64_t block_size_bytes) {
     if (nvme_post_action_stats_set_block_size_bytes(block_size_bytes) != 0) {
         return -1;
     }
+    return 0;
+}
+
+int nvme_post_action_set_lba_bitmap_filter(const insight_lba_bitmap *bitmap) {
+    pthread_mutex_lock(&g_post_action_marker_mutex);
+    g_post_action_lba_bitmap = bitmap;
+    pthread_mutex_unlock(&g_post_action_marker_mutex);
     return 0;
 }
 

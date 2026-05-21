@@ -590,6 +590,10 @@ int nvme_read_set_lba_range_filter(uint64_t lba_start, uint64_t lba_end) {
     return nvme_post_action_set_lba_range_filter(lba_start, lba_end);
 }
 
+int nvme_read_set_lba_bitmap_filter(const insight_lba_bitmap *bitmap) {
+    return nvme_post_action_set_lba_bitmap_filter(bitmap);
+}
+
 int nvme_read_set_stat_sample_collection(int enabled) {
     return nvme_post_action_set_stat_sample_collection(enabled);
 }

@@ -65,6 +65,11 @@ int nvme_read_set_block_size_bytes(uint64_t block_size_bytes);
 
 int nvme_read_set_lba_range_filter(uint64_t lba_start, uint64_t lba_end);
 
+struct insight_lba_bitmap;
+typedef struct insight_lba_bitmap insight_lba_bitmap;
+
+int nvme_read_set_lba_bitmap_filter(const insight_lba_bitmap *bitmap);
+
 int nvme_read_set_stat_sample_collection(int enabled);
 
 /**
