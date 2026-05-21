@@ -33,6 +33,9 @@
 #define INSIGHT_METALOG_DEFAULT_DEVICE_CAPACITY_BYTES \
     (4ULL * 1024ULL * 1024ULL * 1024ULL * 1024ULL)
 
+/** Consecutive all-zero 64-byte records that trigger nvme_read soft-stop (ENODATA). */
+#define INSIGHT_METALOG_CONSECUTIVE_ZERO_STOP 2U
+
 #pragma pack(push, 1)
 struct insight_metalog_record {
 	uint64_t io_id;
@@ -72,7 +75,8 @@ struct insight_metalog_session_summary {
  * insight_metalog_session_free().
  *
  * Returns 0 on success, -1 on error (errno set). errno ENODATA when no record
- * matched @p session_id. nvme_read soft-stop is treated as success.
+ * matched @p session_id. nvme_read() soft-stop from consecutive all-zero metalog
+ * records (see INSIGHT_METALOG_CONSECUTIVE_ZERO_STOP) is treated as success.
  */
 int insight_metalog_read(const char *device_name,
 			 struct insight_metalog_session_summary *out_session,
