@@ -21,6 +21,17 @@ static int parse_u64_str(const char *s, uint64_t *out) {
     return 0;
 }
 
+#define INSIGHT_API_RUN(section, call, exit_code)                          \
+    do {                                                                     \
+        if ((call) != 0) {                                                   \
+            if (errno == ENODATA)                                            \
+                break;                                                       \
+            fprintf(stderr, #call " failed: %s\n", strerror(errno));         \
+            return (exit_code);                                              \
+        }                                                                    \
+        printf("=== " section " ===\n%s\n\n", json_buffer);                \
+    } while (0)
+
 int main(int argc, char *argv[]) {
     if (argc != 4) {
         fprintf(stderr, "usage: %s <device> <session_id> <block_size_bytes>\n", argv[0]);
@@ -49,86 +60,54 @@ int main(int argc, char *argv[]) {
     /* Caller time strings are ignored when session_id >= 0; placeholders only. */
     const char *ignored_time = "1970-01-01 00:00:00";
 
-    if (get_read_latency_percentiles(device, ignored_time, ignored_time, sid, json_buffer) != 0) {
-        fprintf(stderr, "get_read_latency_percentiles failed: %s\n", strerror(errno));
-        return 4;
-    }
-    printf("=== read_latency_percentiles ===\n%s\n\n", json_buffer);
-
-    if (get_write_latency_percentiles(device, ignored_time, ignored_time, sid, json_buffer) != 0) {
-        fprintf(stderr, "get_write_latency_percentiles failed: %s\n", strerror(errno));
-        return 14;
-    }
-    printf("=== write_latency_percentiles ===\n%s\n\n", json_buffer);
-
-    if (get_write_amplification(device, ignored_time, ignored_time, sid, json_buffer) != 0) {
-        fprintf(stderr, "get_write_amplification failed: %s\n", strerror(errno));
-        return 5;
-    }
-    printf("=== write_amplification ===\n%s\n\n", json_buffer);
-
-    if (get_qd_distribution(device, ignored_time, ignored_time, sid, json_buffer) != 0) {
-        fprintf(stderr, "get_qd_distribution failed: %s\n", strerror(errno));
-        return 6;
-    }
-    printf("=== qd_distribution ===\n%s\n\n", json_buffer);
-
-    if (get_read_size_distribution(device, ignored_time, ignored_time, sid, json_buffer) != 0) {
-        fprintf(stderr, "get_read_size_distribution failed: %s\n", strerror(errno));
-        return 7;
-    }
-    printf("=== read_size_distribution ===\n%s\n\n", json_buffer);
-
-    if (get_write_size_distribution(device, ignored_time, ignored_time, sid, json_buffer) != 0) {
-        fprintf(stderr, "get_write_size_distribution failed: %s\n", strerror(errno));
-        return 8;
-    }
-    printf("=== write_size_distribution ===\n%s\n\n", json_buffer);
-
-    if (get_read_throughput_distribution(device, ignored_time, ignored_time, sid, json_buffer) != 0) {
-        fprintf(stderr, "get_read_throughput_distribution failed: %s\n", strerror(errno));
-        return 9;
-    }
-    printf("=== read_throughput_distribution ===\n%s\n\n", json_buffer);
-
-    if (get_write_throughput_distribution(device, ignored_time, ignored_time, sid, json_buffer) != 0) {
-        fprintf(stderr, "get_write_throughput_distribution failed: %s\n", strerror(errno));
-        return 10;
-    }
-    printf("=== write_throughput_distribution ===\n%s\n", json_buffer);
-
-    if (get_read_count_distribution(device, block_size, ignored_time, ignored_time, sid,
-                                    json_buffer) != 0) {
-        fprintf(stderr, "get_read_count_distribution failed: %s\n", strerror(errno));
-        return 11;
-    }
-    printf("=== read_count_distribution ===\n%s\n\n", json_buffer);
-
-    if (get_write_to_first_read_distribution(device, block_size, ignored_time, ignored_time, sid,
-                                           json_buffer) != 0) {
-        fprintf(stderr, "get_write_to_first_read_distribution failed: %s\n", strerror(errno));
-        return 12;
-    }
-    printf("=== write_to_first_read_distribution ===\n%s\n\n", json_buffer);
-
-    if (get_lifecycle_distribution(device, block_size, ignored_time, ignored_time, sid,
-                                 json_buffer) != 0) {
-        fprintf(stderr, "get_lifecycle_distribution failed: %s\n", strerror(errno));
-        return 13;
-    }
-    printf("=== lifecycle_distribution ===\n%s\n\n", json_buffer);
-
-    if (get_nand_write_volume(device, ignored_time, ignored_time, sid, json_buffer) != 0) {
-        fprintf(stderr, "get_nand_write_volume failed: %s\n", strerror(errno));
-        return 15;
-    }
-    printf("=== nand_write_volume ===\n%s\n\n", json_buffer);
-
-    if (get_gc_data_movement(device, ignored_time, ignored_time, sid, json_buffer) != 0) {
-        fprintf(stderr, "get_gc_data_movement failed: %s\n", strerror(errno));
-        return 16;
-    }
-    printf("=== gc_data_movement ===\n%s\n", json_buffer);
+    INSIGHT_API_RUN("read_latency_percentiles",
+                    get_read_latency_percentiles(device, ignored_time, ignored_time, sid,
+                                                 json_buffer),
+                    4);
+    INSIGHT_API_RUN("write_latency_percentiles",
+                    get_write_latency_percentiles(device, ignored_time, ignored_time, sid,
+                                                  json_buffer),
+                    14);
+    INSIGHT_API_RUN("write_amplification",
+                    get_write_amplification(device, ignored_time, ignored_time, sid, json_buffer),
+                    5);
+    INSIGHT_API_RUN("qd_distribution",
+                    get_qd_distribution(device, ignored_time, ignored_time, sid, json_buffer),
+                    6);
+    INSIGHT_API_RUN("read_size_distribution",
+                    get_read_size_distribution(device, ignored_time, ignored_time, sid,
+                                               json_buffer),
+                    7);
+    INSIGHT_API_RUN("write_size_distribution",
+                    get_write_size_distribution(device, ignored_time, ignored_time, sid,
+                                                json_buffer),
+                    8);
+    INSIGHT_API_RUN("read_throughput_distribution",
+                    get_read_throughput_distribution(device, ignored_time, ignored_time, sid,
+                                                     json_buffer),
+                    9);
+    INSIGHT_API_RUN("write_throughput_distribution",
+                    get_write_throughput_distribution(device, ignored_time, ignored_time, sid,
+                                                      json_buffer),
+                    10);
+    INSIGHT_API_RUN("read_count_distribution",
+                    get_read_count_distribution(device, block_size, ignored_time, ignored_time,
+                                                sid, json_buffer),
+                    11);
+    INSIGHT_API_RUN("write_to_first_read_distribution",
+                    get_write_to_first_read_distribution(device, block_size, ignored_time,
+                                                         ignored_time, sid, json_buffer),
+                    12);
+    INSIGHT_API_RUN("lifecycle_distribution",
+                    get_lifecycle_distribution(device, block_size, ignored_time, ignored_time,
+                                               sid, json_buffer),
+                    13);
+    INSIGHT_API_RUN("nand_write_volume",
+                    get_nand_write_volume(device, ignored_time, ignored_time, sid, json_buffer),
+                    15);
+    INSIGHT_API_RUN("gc_data_movement",
+                    get_gc_data_movement(device, ignored_time, ignored_time, sid, json_buffer),
+                    16);
 
     return 0;
 }
