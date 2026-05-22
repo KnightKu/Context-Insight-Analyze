@@ -19,6 +19,9 @@ extern "C" {
  */
 #define INSIGHT_JSON_QUERY_SESSION_ID_NONE (-1LL)
 
+/** Drop cached insight_metalog_read() result (see insight_api session cache). */
+void insight_api_invalidate_session_cache(void);
+
 int get_read_latency_percentiles(const char *device,
                                  const char *time_start,
                                  const char *time_end,

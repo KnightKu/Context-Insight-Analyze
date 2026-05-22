@@ -76,6 +76,115 @@ static int insight_query_total_key_should_rename(insight_query_type_t query_type
 
 static pthread_mutex_t g_insight_api_mutex = PTHREAD_MUTEX_INITIALIZER;
 
+#define INSIGHT_API_DEVICE_PATH_MAX 256U
+
+typedef struct insight_api_resolved_query insight_api_resolved_query_t;
+
+struct insight_api_resolved_query {
+    const char *time_start;
+    const char *time_end;
+    char time_start_buf[INSIGHT_METALOG_TIME_STR_BUFSIZ];
+    char time_end_buf[INSIGHT_METALOG_TIME_STR_BUFSIZ];
+    struct insight_metalog_session_summary session;
+    int session_owned;
+};
+
+typedef struct {
+    int valid;
+    char device[INSIGHT_API_DEVICE_PATH_MAX];
+    int64_t session_id;
+    char time_start_buf[INSIGHT_METALOG_TIME_STR_BUFSIZ];
+    char time_end_buf[INSIGHT_METALOG_TIME_STR_BUFSIZ];
+    struct insight_metalog_session_summary session;
+} insight_api_session_cache_t;
+
+static insight_api_session_cache_t g_insight_api_session_cache;
+static pthread_mutex_t g_insight_api_session_cache_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+static int insight_api_session_cache_enabled(void) {
+    const char *value = getenv("INSIGHT_API_SESSION_CACHE");
+    if (value == NULL) {
+        return 1;
+    }
+    return (strcmp(value, "0") != 0 && strcmp(value, "false") != 0) ? 1 : 0;
+}
+
+static void insight_api_session_cache_clear_locked(void) {
+    if (g_insight_api_session_cache.valid != 0) {
+        insight_metalog_session_free(&g_insight_api_session_cache.session);
+    }
+    memset(&g_insight_api_session_cache, 0, sizeof(g_insight_api_session_cache));
+}
+
+void insight_api_invalidate_session_cache(void) {
+    pthread_mutex_lock(&g_insight_api_session_cache_mutex);
+    insight_api_session_cache_clear_locked();
+    pthread_mutex_unlock(&g_insight_api_session_cache_mutex);
+}
+
+static int insight_api_session_cache_hit_locked(const char *device, int64_t session_id) {
+    if (g_insight_api_session_cache.valid == 0) {
+        return 0;
+    }
+    return (g_insight_api_session_cache.session_id == session_id &&
+            strcmp(g_insight_api_session_cache.device, device) == 0) ? 1 : 0;
+}
+
+static int insight_api_session_cache_load(const char *device,
+                                          int64_t session_id,
+                                          insight_api_resolved_query_t *out) {
+    if (insight_api_session_cache_enabled() == 0) {
+        return 0;
+    }
+    pthread_mutex_lock(&g_insight_api_session_cache_mutex);
+    if (insight_api_session_cache_hit_locked(device, session_id) == 0) {
+        pthread_mutex_unlock(&g_insight_api_session_cache_mutex);
+        return 0;
+    }
+    out->time_start = g_insight_api_session_cache.time_start_buf;
+    out->time_end = g_insight_api_session_cache.time_end_buf;
+    out->session = g_insight_api_session_cache.session;
+    out->session_owned = 0;
+#if INSIGHT_API_PERF_DEBUG
+    fprintf(stderr,
+            "[insight-perf] session cache hit device=%s session_id=%" PRId64 "\n",
+            device,
+            session_id);
+#endif
+    pthread_mutex_unlock(&g_insight_api_session_cache_mutex);
+    return 1;
+}
+
+static int insight_api_session_cache_store(const char *device,
+                                           int64_t session_id,
+                                           const insight_api_resolved_query_t *resolved) {
+    if (insight_api_session_cache_enabled() == 0 || resolved == NULL ||
+        resolved->session.lba_map == NULL) {
+        return 0;
+    }
+    if (strlen(device) >= INSIGHT_API_DEVICE_PATH_MAX) {
+        errno = ENAMETOOLONG;
+        return -1;
+    }
+    pthread_mutex_lock(&g_insight_api_session_cache_mutex);
+    insight_api_session_cache_clear_locked();
+    memcpy(g_insight_api_session_cache.device, device, strlen(device) + 1U);
+    g_insight_api_session_cache.session_id = session_id;
+    memcpy(g_insight_api_session_cache.time_start_buf,
+           resolved->time_start_buf,
+           sizeof(g_insight_api_session_cache.time_start_buf));
+    memcpy(g_insight_api_session_cache.time_end_buf,
+           resolved->time_end_buf,
+           sizeof(g_insight_api_session_cache.time_end_buf));
+    g_insight_api_session_cache.session.session_id = resolved->session.session_id;
+    g_insight_api_session_cache.session.ts_us_start = resolved->session.ts_us_start;
+    g_insight_api_session_cache.session.ts_us_end = resolved->session.ts_us_end;
+    g_insight_api_session_cache.session.lba_map = resolved->session.lba_map;
+    g_insight_api_session_cache.valid = 1;
+    pthread_mutex_unlock(&g_insight_api_session_cache_mutex);
+    return 0;
+}
+
 #if INSIGHT_API_PERF_DEBUG
 static uint64_t insight_monotonic_now_ns(void) {
     struct timespec ts;
@@ -117,19 +226,13 @@ static const char *insight_query_type_name(insight_query_type_t query_type) {
 }
 #endif
 
-typedef struct {
-    const char *time_start;
-    const char *time_end;
-    char time_start_buf[INSIGHT_METALOG_TIME_STR_BUFSIZ];
-    char time_end_buf[INSIGHT_METALOG_TIME_STR_BUFSIZ];
-    struct insight_metalog_session_summary session;
-} insight_api_resolved_query_t;
-
 static void insight_api_resolved_query_free(insight_api_resolved_query_t *resolved) {
     if (resolved == NULL) {
         return;
     }
-    insight_metalog_session_free(&resolved->session);
+    if (resolved->session_owned != 0) {
+        insight_metalog_session_free(&resolved->session);
+    }
     memset(resolved, 0, sizeof(*resolved));
 }
 
@@ -148,7 +251,15 @@ static int insight_api_resolve_query(const char *device,
             errno = EINVAL;
             return -1;
         }
+        if (insight_api_session_cache_load(device, session_id, out) != 0) {
+            return 0;
+        }
+#if INSIGHT_API_PERF_DEBUG
+        uint64_t t_metalog_begin = insight_monotonic_now_ns();
+#endif
+        out->session_owned = 1;
         if (insight_metalog_read(device, &out->session, (unsigned int)session_id) != 0) {
+            memset(out, 0, sizeof(*out));
             return -1;
         }
         if (insight_metalog_session_time_window(&out->session,
@@ -158,18 +269,33 @@ static int insight_api_resolve_query(const char *device,
                                                 sizeof(out->time_end_buf),
                                                 NULL,
                                                 NULL) != 0) {
-            insight_metalog_session_free(&out->session);
-            memset(out, 0, sizeof(*out));
+            insight_api_resolved_query_free(out);
             return -1;
         }
         out->time_start = out->time_start_buf;
         out->time_end = out->time_end_buf;
         if (out->session.lba_map == NULL) {
-            insight_metalog_session_free(&out->session);
-            memset(out, 0, sizeof(*out));
+            insight_api_resolved_query_free(out);
             errno = ENOENT;
             return -1;
         }
+#if INSIGHT_API_PERF_DEBUG
+        {
+            uint64_t t_metalog_end = insight_monotonic_now_ns();
+            fprintf(stderr,
+                    "[insight-perf] insight_metalog_read device=%s session_id=%" PRId64
+                    " elapsed=%.3fms (metalog_scan_cap=%llu bytes)\n",
+                    device,
+                    session_id,
+                    (double)(t_metalog_end - t_metalog_begin) / 1000000.0,
+                    (unsigned long long)INSIGHT_METALOG_LEN);
+        }
+#endif
+        if (insight_api_session_cache_store(device, session_id, out) != 0) {
+            insight_api_resolved_query_free(out);
+            return -1;
+        }
+        out->session_owned = 0;
         return 0;
     }
     if (device == NULL || time_start_in == NULL || time_end_in == NULL) {
