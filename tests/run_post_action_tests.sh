@@ -94,6 +94,29 @@ if rg -i "Read Count distribution:|Write-to-First-Read Latency\\(real ms\\) dist
   echo "unexpected text-format lba sections in json mode output" >&2
   exit 1
 fi
+python3 - <<'PY' /tmp/post_action_lba_json.log
+import json, sys
+
+def check_count_mib(path, section):
+    with open(path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    buckets = data[section]["buckets"]
+    for b in buckets:
+        count = int(b.get("count", 0))
+        mib = float(b.get("MiB", 0.0))
+        if count == 0 and mib > 0.001:
+            raise SystemExit(
+                f"{section} bucket {b.get('label')!r}: count=0 but MiB={mib}"
+            )
+
+path = sys.argv[1]
+check_count_mib(path, "read_count_distribution")
+check_count_mib(path, "lifecycle_distribution")
+PY
+if [ $? -ne 0 ]; then
+  echo "lba json count/MiB bucket mismatch (read_count or lifecycle)" >&2
+  exit 1
+fi
 
 echo "  LBA-STATS selective output expected"
 if ! ./post_action_file_tester --read-count "tests/fixtures/valid_mixed.bin" >/tmp/post_action_lba_read_only.log 2>&1; then
