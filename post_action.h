@@ -5,6 +5,9 @@
 
 #include <stdint.h>
 
+struct insight_lba_bitmap;
+typedef struct insight_lba_bitmap insight_lba_bitmap;
+
 #ifndef NVME_POST_ACTION_PERF_DEBUG
 #define NVME_POST_ACTION_PERF_DEBUG 0
 #endif
@@ -54,10 +57,11 @@ int nvme_post_action_set_block_size_bytes(uint64_t block_size_bytes);
 uint64_t nvme_post_action_get_block_size_bytes(void);
 
 /**
- * Restrict read/write/trim record processing to LBAs overlapping [lba_start, lba_end]
- * (inclusive, same 4KiB LBA units as log records). Both zero disables filtering.
+ * When non-NULL, restrict read/write/trim records to LBAs overlapping set bits in the
+ * bitmap (4KiB units, same coordinate system as log record start_lba). NULL disables
+ * LBA filtering.
  */
-int nvme_post_action_set_lba_range_filter(uint64_t lba_start, uint64_t lba_end);
+int nvme_post_action_set_lba_bitmap_filter(const insight_lba_bitmap *bitmap);
 
 int nvme_post_action_set_stat_sample_collection(int enabled);
 

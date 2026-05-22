@@ -586,8 +586,8 @@ int nvme_read_set_block_size_bytes(uint64_t block_size_bytes) {
     return nvme_post_action_set_block_size_bytes(block_size_bytes);
 }
 
-int nvme_read_set_lba_range_filter(uint64_t lba_start, uint64_t lba_end) {
-    return nvme_post_action_set_lba_range_filter(lba_start, lba_end);
+int nvme_read_set_lba_bitmap_filter(const insight_lba_bitmap *bitmap) {
+    return nvme_post_action_set_lba_bitmap_filter(bitmap);
 }
 
 int nvme_read_set_stat_sample_collection(int enabled) {
@@ -601,6 +601,338 @@ int nvme_read_set_print_end_reports(int enabled) {
 
 int nvme_read_get_print_end_reports(void) {
     return g_nvme_read_print_end_reports;
+}
+
+#define NVME_LOG_MARKER_OP 0xFFU
+#define NVME_LOG_MARKER_RECORD_BYTES 16U
+#define NVME_LOG_MARKER_UNIX_MS_BYTES 7U
+
+typedef struct {
+    unsigned char buf[NVME_LOG_PROBE_READ_BYTES];
+    uint32_t len;
+} nvme_log_probe_capture_t;
+
+static uint64_t nvme_log_region_span_bytes(void) {
+    if (LOG_END_LBA <= LOG_START_LBA) {
+        return 0ULL;
+    }
+    return LOG_END_LBA - LOG_START_LBA;
+}
+
+static uint64_t nvme_log_block_count(void) {
+    uint64_t span = nvme_log_region_span_bytes();
+    if (span < NVME_READ_CHUNK_BYTES) {
+        return 0ULL;
+    }
+    return span / NVME_READ_CHUNK_BYTES;
+}
+
+static int nvme_log_parse_time_start_ms(const char *time_start, uint64_t *out_ms) {
+    if (time_start == NULL || out_ms == NULL) {
+        errno = EINVAL;
+        return -1;
+    }
+    int year = 0;
+    int month = 0;
+    int day = 0;
+    int hour = 0;
+    int minute = 0;
+    int second = 0;
+    if (sscanf(time_start, "%d-%d-%d %d:%d:%d",
+               &year, &month, &day, &hour, &minute, &second) != 6) {
+        errno = EINVAL;
+        return -1;
+    }
+    struct tm tm_val;
+    memset(&tm_val, 0, sizeof(tm_val));
+    tm_val.tm_year = year - 1900;
+    tm_val.tm_mon = month - 1;
+    tm_val.tm_mday = day;
+    tm_val.tm_hour = hour;
+    tm_val.tm_min = minute;
+    tm_val.tm_sec = second;
+    tm_val.tm_isdst = -1;
+    time_t sec = mktime(&tm_val);
+    if (sec < 0) {
+        errno = EINVAL;
+        return -1;
+    }
+    *out_ms = (uint64_t)sec * 1000ULL;
+    return 0;
+}
+
+static int nvme_log_parse_marker_unix_ms(const unsigned char *buf,
+                                         uint32_t len,
+                                         uint64_t *unix_ms_out) {
+    if (buf == NULL || unix_ms_out == NULL) {
+        errno = EINVAL;
+        return -1;
+    }
+    if (len < NVME_LOG_MARKER_RECORD_BYTES) {
+        errno = EBADMSG;
+        return -1;
+    }
+    if (buf[0] != NVME_LOG_MARKER_OP) {
+        errno = EBADMSG;
+        return -1;
+    }
+    if (buf[8] != 0U) {
+        errno = EBADMSG;
+        return -1;
+    }
+    uint64_t unix_ms = 0ULL;
+    for (unsigned i = 0U; i < NVME_LOG_MARKER_UNIX_MS_BYTES; ++i) {
+        unix_ms |= (uint64_t)buf[9U + i] << (8U * i);
+    }
+    *unix_ms_out = unix_ms;
+    return 0;
+}
+
+static int nvme_log_probe_capture_post_action(void *ctx,
+                                              void *data,
+                                              uint32_t data_len,
+                                              uint64_t offset_bytes) {
+    (void)offset_bytes;
+    nvme_log_probe_capture_t *cap = (nvme_log_probe_capture_t *)ctx;
+    if (cap == NULL) {
+        errno = EINVAL;
+        return -1;
+    }
+    if (data == NULL || data_len == 0U) {
+        return 0;
+    }
+    uint32_t copy = data_len;
+    if (copy > (uint32_t)sizeof(cap->buf)) {
+        copy = (uint32_t)sizeof(cap->buf);
+    }
+    memcpy(cap->buf, data, (size_t)copy);
+    cap->len = copy;
+    return 0;
+}
+
+typedef struct {
+    int use_file;
+    const char *device_name;
+    const char *file_path;
+    uint64_t file_region_base;
+} nvme_log_probe_io_t;
+
+static int nvme_log_probe_restore_read_env(nvme_read_post_action_t prev_action,
+                                           void *prev_ctx,
+                                           int prev_reports) {
+    (void)nvme_read_set_post_action(prev_action, prev_ctx);
+    (void)nvme_read_set_print_end_reports(prev_reports);
+    return 0;
+}
+
+static int nvme_log_probe_read_chunk(nvme_log_probe_io_t *io,
+                                     uint64_t log_byte_offset,
+                                     nvme_log_probe_capture_t *cap) {
+    if (io == NULL || cap == NULL) {
+        errno = EINVAL;
+        return -1;
+    }
+    if (log_byte_offset % NVME_READ_CHUNK_BYTES != 0ULL) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    cap->len = 0U;
+    nvme_read_post_action_t prev_action = NULL;
+    void *prev_ctx = NULL;
+    nvme_post_action_get_handler(&prev_action, &prev_ctx);
+    const int prev_reports = nvme_read_get_print_end_reports();
+
+    (void)nvme_read_set_print_end_reports(0);
+    (void)nvme_read_set_lba_bitmap_filter(NULL);
+    (void)nvme_read_set_time_window(0, 0ULL, 0ULL, 0ULL);
+    if (nvme_read_set_post_action(nvme_log_probe_capture_post_action, cap) != 0) {
+        return -1;
+    }
+
+    int rc = -1;
+    if (io->use_file != 0) {
+        if (io->file_path == NULL) {
+            errno = EINVAL;
+            rc = -1;
+        } else {
+            const uint64_t slba = LOG_START_LBA + log_byte_offset;
+            const uint64_t file_off = io->file_region_base + log_byte_offset;
+            rc = nvme_read_from_file(io->file_path, file_off, slba, NVME_LOG_PROBE_READ_BYTES);
+        }
+    } else {
+        if (io->device_name == NULL) {
+            errno = EINVAL;
+            rc = -1;
+        } else {
+            const uint64_t slba = LOG_START_LBA + log_byte_offset;
+            rc = nvme_read(io->device_name, slba, NVME_LOG_PROBE_READ_BYTES);
+        }
+    }
+
+    (void)nvme_log_probe_restore_read_env(prev_action, prev_ctx, prev_reports);
+    return rc;
+}
+
+static int nvme_log_probe_marker_unix_ms(nvme_log_probe_io_t *io,
+                                         uint64_t log_byte_offset,
+                                         uint64_t *unix_ms_out) {
+    nvme_log_probe_capture_t cap;
+    memset(&cap, 0, sizeof(cap));
+    if (nvme_log_probe_read_chunk(io, log_byte_offset, &cap) != 0) {
+        return -1;
+    }
+    return nvme_log_parse_marker_unix_ms(cap.buf, cap.len, unix_ms_out);
+}
+
+static int nvme_log_probe_find_block_index(nvme_log_probe_io_t *io,
+                                           uint64_t time_start_ms,
+                                           uint64_t max_blocks,
+                                           uint64_t *out_block_index) {
+    if (io == NULL || out_block_index == NULL || max_blocks == 0ULL) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    const uint64_t last_off = (max_blocks - 1ULL) * NVME_READ_CHUNK_BYTES;
+    uint64_t ts_last = 0ULL;
+    if (nvme_log_probe_marker_unix_ms(io, last_off, &ts_last) != 0) {
+        return -1;
+    }
+    if (time_start_ms >= ts_last) {
+        *out_block_index = max_blocks - 1ULL;
+        return 0;
+    }
+
+    uint64_t lo = 0ULL;
+    uint64_t hi = max_blocks;
+    while (lo < hi) {
+        const uint64_t mid = lo + ((hi - lo) >> 1U);
+        const uint64_t mid_off = mid * NVME_READ_CHUNK_BYTES;
+        uint64_t ts_mid = 0ULL;
+        if (nvme_log_probe_marker_unix_ms(io, mid_off, &ts_mid) != 0) {
+            return -1;
+        }
+        if (ts_mid <= time_start_ms) {
+            lo = mid + 1ULL;
+        } else {
+            hi = mid;
+        }
+    }
+
+    uint64_t block_index = 0ULL;
+    if (lo == 0ULL) {
+        block_index = 0ULL;
+    } else if (lo >= max_blocks) {
+        block_index = max_blocks - 1ULL;
+    } else {
+        block_index = lo - 1ULL;
+    }
+    *out_block_index = block_index;
+    return 0;
+}
+
+int nvme_read_probe_log_slba_by_time_ms(const char *device_name,
+                                        uint64_t time_start_ms,
+                                        uint64_t *out_log_slba) {
+    if (device_name == NULL || out_log_slba == NULL) {
+        errno = EINVAL;
+        return -1;
+    }
+    nvme_log_probe_io_t io;
+    memset(&io, 0, sizeof(io));
+    io.use_file = 0;
+    io.device_name = device_name;
+
+    uint64_t block_index = 0ULL;
+    const uint64_t max_blocks = nvme_log_block_count();
+    if (max_blocks == 0ULL) {
+        errno = ENODATA;
+        return -1;
+    }
+    if (nvme_log_probe_find_block_index(&io, time_start_ms, max_blocks, &block_index) != 0) {
+        return -1;
+    }
+    *out_log_slba = LOG_START_LBA + (block_index * NVME_READ_CHUNK_BYTES);
+    if (g_nvme_read_debug != 0) {
+        fprintf(stderr,
+                "log probe: time_start_ms=%llu block=%llu slba=%llu\n",
+                (unsigned long long)time_start_ms,
+                (unsigned long long)block_index,
+                (unsigned long long)*out_log_slba);
+    }
+    return 0;
+}
+
+int nvme_read_probe_log_slba_by_time(const char *device_name,
+                                     const char *time_start,
+                                     uint64_t *out_log_slba) {
+    uint64_t time_start_ms = 0ULL;
+    if (nvme_log_parse_time_start_ms(time_start, &time_start_ms) != 0) {
+        return -1;
+    }
+    return nvme_read_probe_log_slba_by_time_ms(device_name, time_start_ms, out_log_slba);
+}
+
+int nvme_read_probe_log_slba_by_time_ms_from_file(const char *file_path,
+                                                  uint64_t file_offset_bytes,
+                                                  uint64_t time_start_ms,
+                                                  uint64_t *out_log_slba) {
+    if (file_path == NULL || out_log_slba == NULL) {
+        errno = EINVAL;
+        return -1;
+    }
+    if (file_offset_bytes % NVME_LBA_SIZE_BYTES != 0ULL) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    struct stat st;
+    if (stat(file_path, &st) != 0) {
+        return -1;
+    }
+    if (!S_ISREG(st.st_mode) || st.st_size < 0) {
+        errno = EINVAL;
+        return -1;
+    }
+    const uint64_t file_size = (uint64_t)st.st_size;
+    if (file_offset_bytes >= file_size) {
+        errno = ERANGE;
+        return -1;
+    }
+    const uint64_t usable = file_size - file_offset_bytes;
+    if (usable < NVME_READ_CHUNK_BYTES) {
+        errno = ENODATA;
+        return -1;
+    }
+    const uint64_t max_blocks = usable / NVME_READ_CHUNK_BYTES;
+
+    nvme_log_probe_io_t io;
+    memset(&io, 0, sizeof(io));
+    io.use_file = 1;
+    io.file_path = file_path;
+    io.file_region_base = file_offset_bytes;
+
+    uint64_t block_index = 0ULL;
+    if (nvme_log_probe_find_block_index(&io, time_start_ms, max_blocks, &block_index) != 0) {
+        return -1;
+    }
+    *out_log_slba = LOG_START_LBA + (block_index * NVME_READ_CHUNK_BYTES);
+    return 0;
+}
+
+int nvme_read_probe_log_slba_by_time_from_file(const char *file_path,
+                                               uint64_t file_offset_bytes,
+                                               const char *time_start,
+                                               uint64_t *out_log_slba) {
+    uint64_t time_start_ms = 0ULL;
+    if (nvme_log_parse_time_start_ms(time_start, &time_start_ms) != 0) {
+        return -1;
+    }
+    return nvme_read_probe_log_slba_by_time_ms_from_file(file_path,
+                                                         file_offset_bytes,
+                                                         time_start_ms,
+                                                         out_log_slba);
 }
 
 int nvme_read_set_lba_stats_read_count(int enabled) {

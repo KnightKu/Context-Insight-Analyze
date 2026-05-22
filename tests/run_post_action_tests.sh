@@ -251,3 +251,8 @@ make insight_api_tester >/dev/null
 echo "[extra] build and run insight api json tester"
 make insight_api_json_tester >/dev/null
 ./insight_api_json_tester >/dev/null 2>&1
+
+echo "[extra] generate log probe fixture and run nvme_log_probe_tester"
+python3 tests/gen_post_action_fixtures.py >/dev/null
+make nvme_log_probe_tester >/dev/null
+./nvme_log_probe_tester >/dev/null 2>&1

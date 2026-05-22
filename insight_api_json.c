@@ -244,6 +244,10 @@ int insight_json_compose_query_result(const char *api_name,
         errno = EINVAL;
         return -1;
     }
+    if (session_id >= 0 && (time_start == NULL || time_end == NULL)) {
+        errno = EINVAL;
+        return -1;
+    }
     if (insight_json_validate_root_object(result_json) != 0) {
         errno = EINVAL;
         return -1;
@@ -287,7 +291,8 @@ int insight_json_compose_query_result(const char *api_name,
     if (session_id >= 0) {
         n = snprintf(json_buffer + pos, INSIGHT_JSON_BUFFER_BYTES - pos,
                      "%s\n"
-                     "    \"session_id\": %" PRIu64,
+                     "    \"session_id\": %" PRIu64 ",\n"
+                     "    \"time_start\": \"",
                      (include_block_size != 0) ? "," : "\",",
                      (uint64_t)session_id);
         if (n < 0 || (size_t)n >= (INSIGHT_JSON_BUFFER_BYTES - pos)) {
@@ -305,27 +310,27 @@ int insight_json_compose_query_result(const char *api_name,
             return -1;
         }
         pos += (size_t)n;
-        if (insight_json_append_escaped_string(json_buffer, INSIGHT_JSON_BUFFER_BYTES, &pos, time_start) != 0) {
-            return -1;
-        }
-        n = snprintf(json_buffer + pos, INSIGHT_JSON_BUFFER_BYTES - pos,
-                     "\",\n"
-                     "    \"time_end\": \"");
-        if (n < 0 || (size_t)n >= (INSIGHT_JSON_BUFFER_BYTES - pos)) {
-            errno = ENOSPC;
-            return -1;
-        }
-        pos += (size_t)n;
-        if (insight_json_append_escaped_string(json_buffer, INSIGHT_JSON_BUFFER_BYTES, &pos, time_end) != 0) {
-            return -1;
-        }
-        n = snprintf(json_buffer + pos, INSIGHT_JSON_BUFFER_BYTES - pos, "\"");
-        if (n < 0 || (size_t)n >= (INSIGHT_JSON_BUFFER_BYTES - pos)) {
-            errno = ENOSPC;
-            return -1;
-        }
-        pos += (size_t)n;
     }
+    if (insight_json_append_escaped_string(json_buffer, INSIGHT_JSON_BUFFER_BYTES, &pos, time_start) != 0) {
+        return -1;
+    }
+    n = snprintf(json_buffer + pos, INSIGHT_JSON_BUFFER_BYTES - pos,
+                 "\",\n"
+                 "    \"time_end\": \"");
+    if (n < 0 || (size_t)n >= (INSIGHT_JSON_BUFFER_BYTES - pos)) {
+        errno = ENOSPC;
+        return -1;
+    }
+    pos += (size_t)n;
+    if (insight_json_append_escaped_string(json_buffer, INSIGHT_JSON_BUFFER_BYTES, &pos, time_end) != 0) {
+        return -1;
+    }
+    n = snprintf(json_buffer + pos, INSIGHT_JSON_BUFFER_BYTES - pos, "\"");
+    if (n < 0 || (size_t)n >= (INSIGHT_JSON_BUFFER_BYTES - pos)) {
+        errno = ENOSPC;
+        return -1;
+    }
+    pos += (size_t)n;
     n = snprintf(json_buffer + pos, INSIGHT_JSON_BUFFER_BYTES - pos,
                  "\n"
                  "  },\n"

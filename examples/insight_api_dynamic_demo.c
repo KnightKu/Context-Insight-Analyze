@@ -10,11 +10,12 @@ int main(void) {
     int rc = get_qd_distribution("/dev/nvme0n1",
                                  "2026-04-26 10:05:05",
                                  "2026-04-26 12:10:05",
-                                 0ULL,
-                                 0ULL,
                                  INSIGHT_JSON_QUERY_SESSION_ID_NONE,
                                  json);
     if (rc != 0) {
+        if (errno == ENODATA) {
+            return 0;
+        }
         fprintf(stderr, "get_qd_distribution failed: %s\n", strerror(errno));
         return 1;
     }

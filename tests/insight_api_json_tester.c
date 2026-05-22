@@ -171,13 +171,14 @@ static void test_flatten_and_compose(void) {
                                                 "/dev/nvme1n1",
                                                 0,
                                                 0ULL,
-                                                NULL,
-                                                NULL,
+                                                "2024-03-09 16:00:05",
+                                                "2024-03-09 16:00:15",
                                                 42LL,
                                                 inner,
                                                 envelope));
     expect_json_valid("session envelope", envelope);
     expect_str_eq("session_id field", strstr(envelope, "\"session_id\": 42") != NULL ? "yes" : "no", "yes");
+    expect_str_eq("time_start field", strstr(envelope, "\"time_start\": \"2024-03-09 16:00:05\"") != NULL ? "yes" : "no", "yes");
 
     const char *escaped_dev = "/dev/\"weird\"";
     errno = 0;
@@ -188,7 +189,7 @@ static void test_flatten_and_compose(void) {
                                                 0ULL,
                                                 "2024-03-09 16:00:05",
                                                 "2024-03-09 16:00:15",
-                                                INSIGHT_JSON_QUERY_SESSION_ID_NONE,
+                                                  INSIGHT_JSON_QUERY_SESSION_ID_NONE,
                                                 inner,
                                                 envelope));
     expect_json_valid("escaped envelope", envelope);
