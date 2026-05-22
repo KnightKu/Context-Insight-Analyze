@@ -183,6 +183,15 @@ def main() -> None:
     )
     (fixture_dir / "valid_block_size_filter.bin").write_bytes(valid_block_size_filter)
 
+    chunk_bytes = 256 * 1024
+    probe_chunks = []
+    for idx, unix_ms in enumerate(
+        [1_710_000_000_000, 1_710_000_010_000, 1_710_000_020_000, 1_710_000_030_000]
+    ):
+        head = rec_marker((idx + 1) * 1_000_000, unix_ms)
+        probe_chunks.append(head + (b"\x00" * (chunk_bytes - len(head))))
+    (fixture_dir / "valid_log_probe_chunks.bin").write_bytes(b"".join(probe_chunks))
+
 
 if __name__ == "__main__":
     main()

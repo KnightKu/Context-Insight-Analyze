@@ -4,6 +4,8 @@
 #include <stdint.h>
 
 #define NVME_READ_CHUNK_BYTES (256ULL * 1024ULL)
+/** Bytes read per log marker probe (one sector; nvme_read alignment). */
+#define NVME_LOG_PROBE_READ_BYTES NVME_LBA_SIZE_BYTES
 #define NVME_SPLIT_BYTES (10ULL * 1024ULL * 1024ULL * 1024ULL)
 #define NVME_DEFAULT_DATA_LEN NVME_SPLIT_BYTES
 #define NVME_LBA_SIZE_BYTES 4096ULL
@@ -88,6 +90,43 @@ int nvme_post_action_set_sector_size(uint32_t sector_size);
 int nvme_read(const char *device_name,
               uint64_t slba,
               uint64_t data_len);
+
+/**
+ * Locate the audit-log read position for @p time_start using markers at each
+ * NVME_READ_CHUNK_BYTES (256 KiB) boundary.
+ *
+ * @p time_start: local time string "YYYY-MM-DD HH:MM:SS" (same as insight_api).
+ * @p out_log_slba: on success, absolute byte offset for nvme_read() @p slba
+ *   (LOG_START_LBA + N * NVME_READ_CHUNK_BYTES) of the first 256 KiB chunk whose
+ *   marker unix_time_ms satisfies @p time_start_ms >= marker.unix_time_ms.
+ *
+ * Uses binary search over log chunks; each probe reads NVME_LOG_PROBE_READ_BYTES
+ * via nvme_read() and parses the marker at the chunk head.
+ *
+ * Returns 0 on success, -1 on error (errno set).
+ */
+int nvme_read_probe_log_slba_by_time_ms(const char *device_name,
+                                        uint64_t time_start_ms,
+                                        uint64_t *out_log_slba);
+
+int nvme_read_probe_log_slba_by_time(const char *device_name,
+                                     const char *time_start,
+                                     uint64_t *out_log_slba);
+
+/**
+ * Same as nvme_read_probe_log_slba_by_time() but reads from a regular file
+ * (for tests). @p file_offset_bytes is added to the byte offset within the file
+ * for each chunk probe (typically 0).
+ */
+int nvme_read_probe_log_slba_by_time_ms_from_file(const char *file_path,
+                                                  uint64_t file_offset_bytes,
+                                                  uint64_t time_start_ms,
+                                                  uint64_t *out_log_slba);
+
+int nvme_read_probe_log_slba_by_time_from_file(const char *file_path,
+                                               uint64_t file_offset_bytes,
+                                               const char *time_start,
+                                               uint64_t *out_log_slba);
 
 /**
  * Read @p data_len bytes starting at @p file_offset_bytes in @p file_path and
