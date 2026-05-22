@@ -362,8 +362,10 @@ void nvme_post_action_stats_print_ratio_summary(int print_read_count,
     }
     uint64_t w2fr_print_hist[NVME_POST_ACTION_LATENCY_RATIO_BUCKETS];
     uint64_t life_print_hist[NVME_POST_ACTION_LATENCY_RATIO_BUCKETS];
+    uint64_t life_print_bytes_hist[NVME_POST_ACTION_LATENCY_RATIO_BUCKETS];
     memcpy(w2fr_print_hist, summary.w2fr_ms_hist, sizeof(w2fr_print_hist));
     memcpy(life_print_hist, summary.life_cycle_ms_hist, sizeof(life_print_hist));
+    memcpy(life_print_bytes_hist, summary.life_cycle_bytes_hist, sizeof(life_print_bytes_hist));
     // Display-only adjustment: merge 0ms counts into >=1h tail.
     // With split tail buckets, >=1h is represented as [1h,4h) + >=4h,
     // and 0ms counts are merged into [1h,4h) for display.
@@ -371,6 +373,9 @@ void nvme_post_action_stats_print_ratio_summary(int print_read_count,
     w2fr_print_hist[0U] = 0ULL;
     life_print_hist[NVME_POST_ACTION_LATENCY_RATIO_BUCKETS - 2U] += life_print_hist[0U];
     life_print_hist[0U] = 0ULL;
+    life_print_bytes_hist[NVME_POST_ACTION_LATENCY_RATIO_BUCKETS - 2U] +=
+        life_print_bytes_hist[0U];
+    life_print_bytes_hist[0U] = 0ULL;
 
     if (json_enabled != 0) {
         int need_comma = 0;
@@ -440,7 +445,7 @@ void nvme_post_action_stats_print_ratio_summary(int print_read_count,
                 print_ratio_hist_line_with_bytes_json(label,
                                                       life_print_hist[i],
                                                       life_total,
-                                                      summary.life_cycle_bytes_hist[i],
+                                                      life_print_bytes_hist[i],
                                                       i + 1U < NVME_POST_ACTION_LATENCY_RATIO_BUCKETS);
             }
             fprintf(stderr, "    ]\n");
@@ -505,7 +510,7 @@ void nvme_post_action_stats_print_ratio_summary(int print_read_count,
                                              life_print_hist[i],
                                              life_total,
                                              label,
-                                             summary.life_cycle_bytes_hist[i]);
+                                             life_print_bytes_hist[i]);
         }
         fprintf(stderr, "  non-zero buckets=%" PRIu64 " / %" PRIu64 " (%.2f%%)\n",
                 summary.life_cycle_non_zero_buckets,
