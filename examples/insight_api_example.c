@@ -82,14 +82,10 @@ int main(int argc, char *argv[]) {
                                                 INSIGHT_JSON_QUERY_SESSION_ID_NONE, json_buffer),
                     6);
     INSIGHT_API_RUN("read_throughput_distribution",
-                    get_read_throughput_distribution(device, time_start, time_end,
-                                                     INSIGHT_JSON_QUERY_SESSION_ID_NONE,
-                                                     json_buffer),
+                    get_read_throughput_distribution(device, time_start, time_end, json_buffer),
                     7);
     INSIGHT_API_RUN("write_throughput_distribution",
-                    get_write_throughput_distribution(device, time_start, time_end,
-                                                      INSIGHT_JSON_QUERY_SESSION_ID_NONE,
-                                                      json_buffer),
+                    get_write_throughput_distribution(device, time_start, time_end, json_buffer),
                     8);
     INSIGHT_API_RUN("read_count_distribution",
                     get_read_count_distribution(device, block_size, time_start, time_end,

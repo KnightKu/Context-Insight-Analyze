@@ -73,7 +73,6 @@ int main(void) {
     errno = 0;
     rc = get_read_throughput_distribution(NULL,
                                           "2024-03-09 16:00:05", "2024-03-09 16:00:15",
-                                          INSIGHT_JSON_QUERY_SESSION_ID_NONE,
                                           json_buf);
     if (expect_invalid("get_read_throughput_distribution(NULL device)", rc) != 0) {
         return 1;
@@ -82,7 +81,6 @@ int main(void) {
     errno = 0;
     rc = get_write_throughput_distribution(NULL,
                                            "2024-03-09 16:00:05", "2024-03-09 16:00:15",
-                                           INSIGHT_JSON_QUERY_SESSION_ID_NONE,
                                            json_buf);
     if (expect_invalid("get_write_throughput_distribution(NULL device)", rc) != 0) {
         return 1;

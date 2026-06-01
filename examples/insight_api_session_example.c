@@ -76,14 +76,6 @@ int main(int argc, char *argv[]) {
                     get_write_size_distribution(device, ignored_time, ignored_time, sid,
                                                 json_buffer),
                     8);
-    INSIGHT_API_RUN("read_throughput_distribution",
-                    get_read_throughput_distribution(device, ignored_time, ignored_time, sid,
-                                                     json_buffer),
-                    9);
-    INSIGHT_API_RUN("write_throughput_distribution",
-                    get_write_throughput_distribution(device, ignored_time, ignored_time, sid,
-                                                      json_buffer),
-                    10);
     INSIGHT_API_RUN("read_count_distribution",
                     get_read_count_distribution(device, block_size, ignored_time, ignored_time,
                                                 sid, json_buffer),

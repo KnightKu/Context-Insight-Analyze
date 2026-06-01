@@ -925,23 +925,21 @@ int get_write_size_distribution(const char *device,
 int get_read_throughput_distribution(const char *device,
                                      const char *time_start,
                                      const char *time_end,
-                                     int64_t session_id,
                                      char *json_buffer) {
-    return run_query_and_fill_wrapped_json(device, 0ULL, time_start, time_end, session_id,
-                                           INSIGHT_QUERY_READ_THROUGHPUT,
-                                           "get_read_throughput_distribution",
-                                           json_buffer);
+    return run_query_and_fill_wrapped_json_time_window(device, 0ULL, time_start, time_end,
+                                                       INSIGHT_QUERY_READ_THROUGHPUT,
+                                                       "get_read_throughput_distribution",
+                                                       json_buffer);
 }
 
 int get_write_throughput_distribution(const char *device,
                                       const char *time_start,
                                       const char *time_end,
-                                      int64_t session_id,
                                       char *json_buffer) {
-    return run_query_and_fill_wrapped_json(device, 0ULL, time_start, time_end, session_id,
-                                           INSIGHT_QUERY_WRITE_THROUGHPUT,
-                                           "get_write_throughput_distribution",
-                                           json_buffer);
+    return run_query_and_fill_wrapped_json_time_window(device, 0ULL, time_start, time_end,
+                                                       INSIGHT_QUERY_WRITE_THROUGHPUT,
+                                                       "get_write_throughput_distribution",
+                                                       json_buffer);
 }
 
 int get_read_count_distribution(const char *device,
