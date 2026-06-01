@@ -39,7 +39,6 @@ int main(void) {
     errno = 0;
     rc = get_write_amplification(NULL,
                                  "2024-03-09 16:00:05", "2024-03-09 16:00:15",
-                                 INSIGHT_JSON_QUERY_SESSION_ID_NONE,
                                  json_buf);
     if (expect_invalid("get_write_amplification(NULL device)", rc) != 0) {
         return 1;
@@ -48,7 +47,6 @@ int main(void) {
     errno = 0;
     rc = get_qd_distribution("/dev/null",
                              "bad-time", "2024-03-09 16:00:15",
-                             INSIGHT_JSON_QUERY_SESSION_ID_NONE,
                              json_buf);
     if (expect_invalid("get_qd_distribution(invalid time_start)", rc) != 0) {
         return 1;
@@ -120,7 +118,6 @@ int main(void) {
     errno = 0;
     rc = get_nand_write_volume(NULL,
                                "2024-03-09 16:00:05", "2024-03-09 16:00:15",
-                               INSIGHT_JSON_QUERY_SESSION_ID_NONE,
                                json_buf);
     if (expect_invalid("get_nand_write_volume(NULL device)", rc) != 0) {
         return 1;
@@ -129,7 +126,6 @@ int main(void) {
     errno = 0;
     rc = get_gc_data_movement("/dev/null",
                               "bad-time", "2024-03-09 16:00:15",
-                              INSIGHT_JSON_QUERY_SESSION_ID_NONE,
                               json_buf);
     if (expect_invalid("get_gc_data_movement(invalid time_start)", rc) != 0) {
         return 1;
