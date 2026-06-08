@@ -10,7 +10,6 @@ int main(void) {
     int rc = get_qd_distribution("/dev/nvme0n1",
                                  "2026-04-26 10:05:05",
                                  "2026-04-26 12:10:05",
-                                 INSIGHT_JSON_QUERY_SESSION_ID_NONE,
                                  json);
     if (rc != 0) {
         if (errno == ENODATA) {

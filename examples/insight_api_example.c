@@ -68,12 +68,10 @@ int main(int argc, char *argv[]) {
                                                 json_buffer),
                     14);
     INSIGHT_API_RUN("write_amplification",
-                    get_write_amplification(device, time_start, time_end,
-                                            INSIGHT_JSON_QUERY_SESSION_ID_NONE, json_buffer),
+                    get_write_amplification(device, time_start, time_end, json_buffer),
                     3);
     INSIGHT_API_RUN("qd_distribution",
-                    get_qd_distribution(device, time_start, time_end,
-                                        INSIGHT_JSON_QUERY_SESSION_ID_NONE, json_buffer),
+                    get_qd_distribution(device, time_start, time_end, json_buffer),
                     4);
     INSIGHT_API_RUN("read_size_distribution",
                     get_read_size_distribution(device, time_start, time_end,
@@ -84,14 +82,10 @@ int main(int argc, char *argv[]) {
                                                 INSIGHT_JSON_QUERY_SESSION_ID_NONE, json_buffer),
                     6);
     INSIGHT_API_RUN("read_throughput_distribution",
-                    get_read_throughput_distribution(device, time_start, time_end,
-                                                     INSIGHT_JSON_QUERY_SESSION_ID_NONE,
-                                                     json_buffer),
+                    get_read_throughput_distribution(device, time_start, time_end, json_buffer),
                     7);
     INSIGHT_API_RUN("write_throughput_distribution",
-                    get_write_throughput_distribution(device, time_start, time_end,
-                                                      INSIGHT_JSON_QUERY_SESSION_ID_NONE,
-                                                      json_buffer),
+                    get_write_throughput_distribution(device, time_start, time_end, json_buffer),
                     8);
     INSIGHT_API_RUN("read_count_distribution",
                     get_read_count_distribution(device, block_size, time_start, time_end,
@@ -108,12 +102,10 @@ int main(int argc, char *argv[]) {
                                                INSIGHT_JSON_QUERY_SESSION_ID_NONE, json_buffer),
                     11);
     INSIGHT_API_RUN("nand_write_volume",
-                    get_nand_write_volume(device, time_start, time_end,
-                                          INSIGHT_JSON_QUERY_SESSION_ID_NONE, json_buffer),
+                    get_nand_write_volume(device, time_start, time_end, json_buffer),
                     12);
     INSIGHT_API_RUN("gc_data_movement",
-                    get_gc_data_movement(device, time_start, time_end,
-                                         INSIGHT_JSON_QUERY_SESSION_ID_NONE, json_buffer),
+                    get_gc_data_movement(device, time_start, time_end, json_buffer),
                     13);
 
     return 0;

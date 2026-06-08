@@ -52,7 +52,7 @@ int main(int argc, char *argv[]) {
     }
 
     printf("session_id=%" PRIu64 " block_size=%" PRIu64
-           " (time/LBA from insight_metalog_read; time_start/time_end args ignored)\n\n",
+           " (time/LBA from insight_metalog_read for session-scoped APIs)\n\n",
            session_id, block_size);
 
     char json_buffer[INSIGHT_JSON_BUFFER_BYTES];
@@ -68,12 +68,6 @@ int main(int argc, char *argv[]) {
                     get_write_latency_percentiles(device, ignored_time, ignored_time, sid,
                                                   json_buffer),
                     14);
-    INSIGHT_API_RUN("write_amplification",
-                    get_write_amplification(device, ignored_time, ignored_time, sid, json_buffer),
-                    5);
-    INSIGHT_API_RUN("qd_distribution",
-                    get_qd_distribution(device, ignored_time, ignored_time, sid, json_buffer),
-                    6);
     INSIGHT_API_RUN("read_size_distribution",
                     get_read_size_distribution(device, ignored_time, ignored_time, sid,
                                                json_buffer),
@@ -82,14 +76,6 @@ int main(int argc, char *argv[]) {
                     get_write_size_distribution(device, ignored_time, ignored_time, sid,
                                                 json_buffer),
                     8);
-    INSIGHT_API_RUN("read_throughput_distribution",
-                    get_read_throughput_distribution(device, ignored_time, ignored_time, sid,
-                                                     json_buffer),
-                    9);
-    INSIGHT_API_RUN("write_throughput_distribution",
-                    get_write_throughput_distribution(device, ignored_time, ignored_time, sid,
-                                                      json_buffer),
-                    10);
     INSIGHT_API_RUN("read_count_distribution",
                     get_read_count_distribution(device, block_size, ignored_time, ignored_time,
                                                 sid, json_buffer),
@@ -102,12 +88,6 @@ int main(int argc, char *argv[]) {
                     get_lifecycle_distribution(device, block_size, ignored_time, ignored_time,
                                                sid, json_buffer),
                     13);
-    INSIGHT_API_RUN("nand_write_volume",
-                    get_nand_write_volume(device, ignored_time, ignored_time, sid, json_buffer),
-                    15);
-    INSIGHT_API_RUN("gc_data_movement",
-                    get_gc_data_movement(device, ignored_time, ignored_time, sid, json_buffer),
-                    16);
 
     return 0;
 }
