@@ -146,6 +146,25 @@ static int log_dump_process_file_buffer(const unsigned char *buf,
     return 0;
 }
 
+static int log_dump_probe_start_slba(const char *device,
+                                     const char *time_start,
+                                     uint64_t *slba_out) {
+    if (device == NULL || time_start == NULL || slba_out == NULL) {
+        errno = EINVAL;
+        return -1;
+    }
+    if (nvme_read_probe_log_slba_by_time(device, time_start, slba_out) == 0) {
+        return 0;
+    }
+    int probe_errno = errno;
+    fprintf(stderr,
+            "log_dump: start probe failed (%s); falling back to full log scan from LOG_START_LBA\n",
+            strerror(probe_errno));
+    *slba_out = LOG_START_LBA;
+    errno = 0;
+    return 0;
+}
+
 static int log_dump_run(const char *device,
                         const char *file_path,
                         uint64_t file_offset_bytes,
@@ -174,7 +193,7 @@ static int log_dump_run(const char *device,
     uint64_t slba = LOG_START_LBA;
     uint64_t data_len = 0ULL;
     if (file_path == NULL) {
-        if (nvme_read_probe_log_slba_by_time(device, time_start, &slba) != 0) {
+        if (log_dump_probe_start_slba(device, time_start, &slba) != 0) {
             nvme_post_action_set_io_record_callback(NULL, NULL);
             return -1;
         }
@@ -311,7 +330,7 @@ int main(int argc, char *argv[]) {
         rc = -1;
     }
     if (rc != 0) {
-        fprintf(stderr, "log_dump failed: %s\n", strerror(errno));
+        fprintf(stderr, "log_dump failed: %s (errno=%d)\n", strerror(errno), errno);
         return 1;
     }
     return 0;

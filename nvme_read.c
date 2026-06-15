@@ -672,20 +672,23 @@ static int nvme_log_parse_marker_unix_ms(const unsigned char *buf,
         errno = EBADMSG;
         return -1;
     }
-    if (buf[0] != NVME_LOG_MARKER_OP) {
-        errno = EBADMSG;
-        return -1;
+    for (uint32_t off = 0U; off + NVME_LOG_MARKER_RECORD_BYTES <= len;
+         off += NVME_LOG_MARKER_RECORD_BYTES) {
+        if (buf[off] != NVME_LOG_MARKER_OP) {
+            continue;
+        }
+        if (buf[off + 8U] != 0U) {
+            continue;
+        }
+        uint64_t unix_ms = 0ULL;
+        for (unsigned i = 0U; i < NVME_LOG_MARKER_UNIX_MS_BYTES; ++i) {
+            unix_ms |= (uint64_t)buf[off + 9U + i] << (8U * i);
+        }
+        *unix_ms_out = unix_ms;
+        return 0;
     }
-    if (buf[8] != 0U) {
-        errno = EBADMSG;
-        return -1;
-    }
-    uint64_t unix_ms = 0ULL;
-    for (unsigned i = 0U; i < NVME_LOG_MARKER_UNIX_MS_BYTES; ++i) {
-        unix_ms |= (uint64_t)buf[9U + i] << (8U * i);
-    }
-    *unix_ms_out = unix_ms;
-    return 0;
+    errno = EBADMSG;
+    return -1;
 }
 
 static int nvme_log_probe_capture_post_action(void *ctx,
