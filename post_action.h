@@ -28,6 +28,25 @@ int nvme_post_action_set_sector_size(uint32_t sector_size);
 
 int nvme_post_action_set_base_lba(uint64_t base_lba);
 
+/** I/O record emitted while parsing read/write/trim audit-log records. */
+typedef struct {
+    uint8_t op;
+    uint64_t abs_time_us;
+    uint64_t marker_abs_time_us;
+    uint64_t marker_unix_time_ms;
+    uint64_t start_lba;
+    uint64_t len_lba;
+} nvme_post_action_io_record_t;
+
+typedef int (*nvme_post_action_io_record_fn)(void *ctx,
+                                             const nvme_post_action_io_record_t *record);
+
+/**
+ * Optional sink for read/write/trim records while the default post-action parser
+ * runs (marker time baseline and time-window filtering unchanged). NULL clears.
+ */
+int nvme_post_action_set_io_record_callback(nvme_post_action_io_record_fn fn, void *ctx);
+
 int nvme_post_action_default(void *ctx, void *data, uint32_t data_len, uint64_t offset_bytes);
 
 int nvme_post_action_set_handler(nvme_read_post_action_t action, void *ctx);

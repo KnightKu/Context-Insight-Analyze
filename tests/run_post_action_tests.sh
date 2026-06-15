@@ -256,3 +256,15 @@ echo "[extra] generate log probe fixture and run nvme_log_probe_tester"
 python3 tests/gen_post_action_fixtures.py >/dev/null
 make nvme_log_probe_tester >/dev/null
 ./nvme_log_probe_tester >/dev/null 2>&1
+
+echo "[extra] build and run log_dump on fixture"
+make log_dump >/dev/null
+./log_dump -f tests/fixtures/valid_time_window.bin "2024-03-09 16:00:05" "2024-03-09 16:00:15" /tmp/log_dump_time_window.out >/dev/null 2>&1
+if ! rg -q "^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{6} read " /tmp/log_dump_time_window.out; then
+  echo "log_dump time-window output missing expected read line" >&2
+  exit 1
+fi
+if [ "$(wc -l < /tmp/log_dump_time_window.out | tr -d ' ')" -ne 1 ]; then
+  echo "log_dump time-window output expected exactly one record" >&2
+  exit 1
+fi

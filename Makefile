@@ -22,6 +22,9 @@ JSON_TEST_OBJS := $(JSON_TEST_SRCS:.c=.o)
 PROBE_TEST_TARGET := nvme_log_probe_tester
 PROBE_TEST_SRCS := tests/nvme_log_probe_tester.c nvme_read.c post_action.c post_action_stats.c post_action_latency.c insight_metalog.c
 PROBE_TEST_OBJS := $(PROBE_TEST_SRCS:.c=.o)
+LOG_DUMP_TARGET := log_dump
+LOG_DUMP_SRCS := tools/log_dump.c nvme_read.c post_action.c post_action_stats.c post_action_latency.c insight_metalog.c
+LOG_DUMP_OBJS := $(LOG_DUMP_SRCS:.c=.o)
 API_EXAMPLE_TARGET := insight_api_example
 API_EXAMPLE_SRCS := examples/insight_api_example.c
 API_EXAMPLE_OBJS := $(API_EXAMPLE_SRCS:.c=.o)
@@ -57,6 +60,9 @@ $(JSON_TEST_TARGET): $(JSON_TEST_OBJS)
 $(PROBE_TEST_TARGET): $(PROBE_TEST_OBJS)
 	$(CC) $(CFLAGS) -o $@ $(PROBE_TEST_OBJS) $(LDFLAGS)
 
+$(LOG_DUMP_TARGET): $(LOG_DUMP_OBJS)
+	$(CC) $(CFLAGS) -o $@ $(LOG_DUMP_OBJS) $(LDFLAGS)
+
 $(API_EXAMPLE_TARGET): $(API_EXAMPLE_OBJS) $(LIB_TARGET)
 	$(CC) $(CFLAGS) -o $@ $(API_EXAMPLE_OBJS) $(LIB_TARGET) $(LDFLAGS)
 
@@ -82,6 +88,7 @@ clean:
 		$(TEST_OBJS) $(TEST_TARGET) $(API_TEST_OBJS) $(API_TEST_TARGET) \
 		$(JSON_TEST_OBJS) $(JSON_TEST_TARGET) \
 		$(PROBE_TEST_OBJS) $(PROBE_TEST_TARGET) \
+		$(LOG_DUMP_OBJS) $(LOG_DUMP_TARGET) \
 		$(API_EXAMPLE_OBJS) $(API_EXAMPLE_TARGET) \
 		$(API_SESSION_EXAMPLE_OBJS) $(API_SESSION_EXAMPLE_TARGET) \
 		$(DYN_API_DEMO_OBJS) $(DYN_API_DEMO_TARGET)
