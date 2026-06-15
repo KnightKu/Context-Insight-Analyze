@@ -185,7 +185,6 @@ static int log_dump_run(const char *device,
     dump_ctx.out = out;
 
     if (nvme_read_set_print_end_reports(0) != 0 ||
-        nvme_read_set_time_window(1, start_ms, 1, end_ms) != 0 ||
         nvme_post_action_set_io_record_callback(log_dump_record_cb, &dump_ctx) != 0) {
         return -1;
     }
@@ -203,6 +202,11 @@ static int log_dump_run(const char *device,
             return -1;
         }
         data_len = LOG_END_LBA - slba;
+    }
+
+    if (nvme_read_set_time_window(1, start_ms, 1, end_ms) != 0) {
+        nvme_post_action_set_io_record_callback(NULL, NULL);
+        return -1;
     }
 
     int rc = 0;
@@ -271,7 +275,9 @@ static void print_usage(const char *prog) {
     fprintf(stderr,
             "usage: %s <device> <time_start \"YYYY-MM-DD HH:MM:SS\"> "
             "<time_end \"YYYY-MM-DD HH:MM:SS\"> <output_file>\n"
+            "       %s <device> <YYYY-MM-DD> <HH:MM:SS> <YYYY-MM-DD> <HH:MM:SS> <output_file>\n"
             "       %s -f <input_file> [file_offset_bytes] <time_start> <time_end> <output_file>\n",
+            prog,
             prog,
             prog);
 }
@@ -283,12 +289,35 @@ int main(int argc, char *argv[]) {
     const char *time_start = NULL;
     const char *time_end = NULL;
     const char *output_path = NULL;
+    char time_start_joined[64];
+    char time_end_joined[64];
 
     if (argc == 5) {
         device = argv[1];
         time_start = argv[2];
         time_end = argv[3];
         output_path = argv[4];
+    } else if (argc == 7 && argv[1][0] == '/') {
+        device = argv[1];
+        if (snprintf(time_start_joined,
+                     sizeof(time_start_joined),
+                     "%s %s",
+                     argv[2],
+                     argv[3]) >= (int)sizeof(time_start_joined)) {
+            print_usage(argv[0]);
+            return 1;
+        }
+        if (snprintf(time_end_joined,
+                     sizeof(time_end_joined),
+                     "%s %s",
+                     argv[4],
+                     argv[5]) >= (int)sizeof(time_end_joined)) {
+            print_usage(argv[0]);
+            return 1;
+        }
+        time_start = time_start_joined;
+        time_end = time_end_joined;
+        output_path = argv[6];
     } else if (argc == 6 && strcmp(argv[1], "-f") == 0) {
         file_path = argv[2];
         time_start = argv[3];

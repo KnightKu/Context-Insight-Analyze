@@ -1,6 +1,7 @@
 #define _POSIX_C_SOURCE 200809L
 
 #include "nvme_read.h"
+#include "post_action.h"
 
 #include <errno.h>
 #include <inttypes.h>
@@ -57,6 +58,30 @@ int main(void) {
     if (nvme_read_probe_log_slba_by_time_ms_from_file(NULL, 0ULL, 1710000000000ULL, &slba) == 0 ||
         errno != EINVAL) {
         fprintf(stderr, "expected EINVAL for NULL path\n");
+        return 1;
+    }
+
+    int tw_enabled = 0;
+    uint64_t tw_start = 0ULL;
+    uint64_t tw_end = 0ULL;
+    if (nvme_read_set_time_window(1, 1710000005000ULL, 1, 1710000020000ULL) != 0) {
+        fprintf(stderr, "failed to set time window before probe\n");
+        return 1;
+    }
+    if (nvme_read_probe_log_slba_by_time_ms_from_file(path, 0ULL, 1710000015000ULL, &slba) != 0) {
+        fprintf(stderr, "probe failed while time window was set\n");
+        return 1;
+    }
+    if (nvme_post_action_get_time_window_ms(&tw_enabled, &tw_start, &tw_end) != 0) {
+        fprintf(stderr, "failed to read time window after probe\n");
+        return 1;
+    }
+    if (tw_enabled == 0 || tw_start != 1710000005000ULL || tw_end != 1710000020000ULL) {
+        fprintf(stderr,
+                "probe must restore time window (enabled=%d start=%" PRIu64 " end=%" PRIu64 ")\n",
+                tw_enabled,
+                tw_start,
+                tw_end);
         return 1;
     }
 

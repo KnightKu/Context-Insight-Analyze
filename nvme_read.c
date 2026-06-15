@@ -722,9 +722,17 @@ typedef struct {
 
 static int nvme_log_probe_restore_read_env(nvme_read_post_action_t prev_action,
                                            void *prev_ctx,
-                                           int prev_reports) {
+                                           int prev_reports,
+                                           int prev_tw_enabled,
+                                           uint64_t prev_tw_start_ms,
+                                           uint64_t prev_tw_end_ms) {
     (void)nvme_read_set_post_action(prev_action, prev_ctx);
     (void)nvme_read_set_print_end_reports(prev_reports);
+    if (prev_tw_enabled != 0) {
+        (void)nvme_read_set_time_window(1, prev_tw_start_ms, 1, prev_tw_end_ms);
+    } else {
+        (void)nvme_read_set_time_window(0, 0ULL, 0ULL, 0ULL);
+    }
     return 0;
 }
 
@@ -745,6 +753,14 @@ static int nvme_log_probe_read_chunk(nvme_log_probe_io_t *io,
     void *prev_ctx = NULL;
     nvme_post_action_get_handler(&prev_action, &prev_ctx);
     const int prev_reports = nvme_read_get_print_end_reports();
+    int prev_tw_enabled = 0;
+    uint64_t prev_tw_start_ms = 0ULL;
+    uint64_t prev_tw_end_ms = 0ULL;
+    if (nvme_post_action_get_time_window_ms(&prev_tw_enabled,
+                                            &prev_tw_start_ms,
+                                            &prev_tw_end_ms) != 0) {
+        return -1;
+    }
 
     (void)nvme_read_set_print_end_reports(0);
     (void)nvme_read_set_lba_bitmap_filter(NULL);
@@ -773,7 +789,12 @@ static int nvme_log_probe_read_chunk(nvme_log_probe_io_t *io,
         }
     }
 
-    (void)nvme_log_probe_restore_read_env(prev_action, prev_ctx, prev_reports);
+    (void)nvme_log_probe_restore_read_env(prev_action,
+                                          prev_ctx,
+                                          prev_reports,
+                                          prev_tw_enabled,
+                                          prev_tw_start_ms,
+                                          prev_tw_end_ms);
     return rc;
 }
 
